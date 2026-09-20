@@ -175,7 +175,7 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
         stickToBottom.current =
           element.scrollHeight - element.scrollTop - element.clientHeight < 96
       }}
-      className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+      className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {messages.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-2 text-center">

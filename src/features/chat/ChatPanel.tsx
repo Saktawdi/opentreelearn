@@ -75,7 +75,7 @@ export function ChatPanel({ nodeId, onClose }: { nodeId: Id; onClose: () => void
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
-      <header className="flex h-13 shrink-0 items-center gap-1.5 border-b border-line px-3">
+      <header className="flex h-13 shrink-0 items-center gap-1.5 bg-transparent px-3">
         {renaming ? (
           <input
             value={draftTitle}

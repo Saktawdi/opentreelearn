@@ -107,14 +107,30 @@ export function AppShell() {
                     end={item.end}
                     className={({ isActive }) =>
                       cn(
-                        'flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150',
-                        isActive
-                          ? 'bg-elevated text-ink'
-                          : 'text-muted hover:bg-elevated/60 hover:text-ink',
+                        'relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150',
+                        isActive ? 'text-ink' : 'text-muted hover:text-ink',
                       )
                     }
                   >
-                    <Icon className="h-4 w-4" />
+                    {({ isActive }) => (
+                      <>
+                        {isActive ? (
+                          <motion.span
+                            layoutId="appshell-nav-indicator"
+                            className="absolute inset-0 rounded-lg bg-elevated shadow-sm"
+                            transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                          />
+                        ) : null}
+                        <motion.div
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.92 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                          className="relative z-10 flex items-center justify-center"
+                        >
+                          <Icon className="h-4 w-4" />
+                        </motion.div>
+                      </>
+                    )}
                   </NavLink>
                 </Tooltip>
               )

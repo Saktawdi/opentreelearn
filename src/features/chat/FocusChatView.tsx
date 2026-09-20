@@ -103,8 +103,8 @@ export function FocusChatView({
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
-      {/* 顶部主导航栏 */}
-      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/40 bg-transparent px-4 sm:px-6">
+      {/* 顶部主导航栏（无边框、透明背景） */}
+      <header className="flex h-13 shrink-0 items-center justify-between bg-transparent px-4 sm:px-6">
         {/* 左侧：面包屑上下文导航 */}
         <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
           <div className="flex items-center gap-1 text-[12.5px] text-muted">
@@ -195,7 +195,7 @@ export function FocusChatView({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <span className="mx-0.5 h-4 w-px bg-line" />
+          <span className="mx-0.5 h-4 w-px bg-line/40" />
 
           {/* 切换/展开折叠右侧知识树地图 */}
           <Tooltip label={isMapCollapsed ? '展开知识树地图 (Ctrl+M)' : '收起知识树地图 (Ctrl+M)'}>
@@ -217,7 +217,7 @@ export function FocusChatView({
 
       {/* 继承提示条 */}
       {forkInfo ? (
-        <div className="flex shrink-0 items-center justify-center border-b border-line/40 bg-accent-soft/15 px-4 py-1.5 text-center">
+        <div className="flex shrink-0 items-center justify-center bg-accent-soft/15 px-4 py-1.5 text-center">
           <div className="flex items-center gap-1.5 text-[12px] text-accent/90">
             <GitBranch className="h-3.5 w-3.5" />
             <span>继承自《{forkInfo.title}》</span>

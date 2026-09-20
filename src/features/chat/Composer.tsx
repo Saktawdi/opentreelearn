@@ -206,14 +206,25 @@ export function Composer({
           </div>
 
           {isStreaming ? (
-            <Button variant="subtle" size="sm" onClick={stopStreaming}>
+            <Button
+              variant="subtle"
+              size="icon-sm"
+              onClick={stopStreaming}
+              className="rounded-full"
+              title="停止生成"
+            >
               <Square className="h-3 w-3" />
-              停止
             </Button>
           ) : (
-            <Button variant="primary" size="sm" onClick={() => void submit()} disabled={!canSend}>
+            <Button
+              variant="primary"
+              size="icon-sm"
+              onClick={() => void submit()}
+              disabled={!canSend}
+              className="rounded-full shadow-sm"
+              title="发送"
+            >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizontal className="h-3.5 w-3.5" />}
-              发送
             </Button>
           )}
         </div>
