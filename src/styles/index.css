@@ -1,0 +1,398 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-canvas: #0a0c0f;
+  --color-surface: #101317;
+  --color-elevated: #171b21;
+  --color-line: #232830;
+  --color-line-strong: #313842;
+  --color-ink: #e8ebef;
+  --color-ink-soft: #b6bdc7;
+  --color-muted: #7e8795;
+  --color-accent: #e0a768;
+  --color-accent-soft: #3a2c1a;
+  --color-accent-ink: #17100a;
+  --color-danger: #e0705a;
+  --color-danger-soft: #3a1f1a;
+  --color-success: #63bf93;
+  --color-info: #6f9fd8;
+
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+
+  --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.03), 0 18px 48px -18px rgb(0 0 0 / 0.75);
+  --shadow-node: 0 1px 0 0 rgb(255 255 255 / 0.04), 0 12px 28px -14px rgb(0 0 0 / 0.7);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 32%, transparent);
+    color: var(--color-ink);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3d4551;
+    background-clip: content-box;
+  }
+
+  input,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer components {
+  .md-body {
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    color: var(--color-ink-soft);
+    word-break: break-word;
+  }
+
+  .md-body > *:first-child {
+    margin-top: 0;
+  }
+
+  .md-body > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .md-body p {
+    margin: 0.65em 0;
+  }
+
+  .md-body h1,
+  .md-body h2,
+  .md-body h3,
+  .md-body h4 {
+    color: var(--color-ink);
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 1.4em 0 0.6em;
+    letter-spacing: -0.01em;
+  }
+
+  .md-body h1 {
+    font-size: 1.35em;
+  }
+
+  .md-body h2 {
+    font-size: 1.2em;
+  }
+
+  .md-body h3 {
+    font-size: 1.06em;
+  }
+
+  .md-body h4 {
+    font-size: 1em;
+  }
+
+  .md-body strong {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .md-body a {
+    color: var(--color-accent);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--color-accent) 40%, transparent);
+  }
+
+  .md-body a:hover {
+    border-bottom-color: var(--color-accent);
+  }
+
+  .md-body ul,
+  .md-body ol {
+    margin: 0.65em 0;
+    padding-left: 1.35em;
+  }
+
+  .md-body ul {
+    list-style: disc;
+  }
+
+  .md-body ol {
+    list-style: decimal;
+  }
+
+  .md-body li {
+    margin: 0.25em 0;
+  }
+
+  .md-body li::marker {
+    color: var(--color-muted);
+  }
+
+  .md-body blockquote {
+    margin: 0.9em 0;
+    padding: 0.15em 0 0.15em 1em;
+    border-left: 2px solid var(--color-line-strong);
+    color: var(--color-muted);
+  }
+
+  .md-body hr {
+    margin: 1.4em 0;
+    border: 0;
+    border-top: 1px solid var(--color-line);
+  }
+
+  .md-body table {
+    width: 100%;
+    margin: 1em 0;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    display: block;
+    overflow-x: auto;
+  }
+
+  .md-body th,
+  .md-body td {
+    border: 1px solid var(--color-line);
+    padding: 0.45em 0.7em;
+    text-align: left;
+  }
+
+  .md-body th {
+    background: var(--color-elevated);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .md-body img {
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--color-line);
+  }
+
+  .md-body code:not(pre code) {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    padding: 0.15em 0.4em;
+    border-radius: 5px;
+    background: var(--color-elevated);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+    white-space: break-spaces;
+  }
+
+  .md-body .katex-display {
+    margin: 1.1em 0;
+    padding: 0.2em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .md-body .katex {
+    font-size: 1.05em;
+  }
+
+  .md-body .code-shell {
+    margin: 0.95em 0;
+  }
+
+  .md-body .shiki-host pre,
+  .md-body .shiki-fallback {
+    margin: 0;
+    padding: 0.95em 1.05em;
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.84em;
+    line-height: 1.65;
+  }
+
+  .md-body .shiki-fallback {
+    background: #10151c;
+    color: var(--color-ink-soft);
+  }
+
+  .md-body .shiki-host pre.shiki {
+    background: #0e131a !important;
+  }
+}
+
+.react-flow {
+  --xy-background-color: var(--color-canvas);
+  --xy-edge-stroke: var(--color-line-strong);
+  --xy-edge-stroke-selected: var(--color-accent);
+  --xy-attribution-background-color: transparent;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__edge-path {
+  stroke-width: 1.5;
+}
+
+.react-flow__edge.fork-edge .react-flow__edge-path {
+  stroke-dasharray: 4 4;
+  stroke: color-mix(in oklab, var(--color-accent) 55%, var(--color-line-strong));
+}
+
+.react-flow__handle {
+  width: 6px;
+  height: 6px;
+  border: 0;
+  background: var(--color-line-strong);
+  opacity: 0;
+}
+
+.react-flow__node {
+  cursor: grab;
+}
+
+.react-flow__node.dragging {
+  cursor: grabbing;
+}
+
+.react-flow__controls {
+  box-shadow: var(--shadow-panel);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+}
+
+.react-flow__controls-button {
+  background: var(--color-elevated);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink-soft);
+  width: 30px;
+  height: 30px;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--color-line);
+  color: var(--color-ink);
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.react-flow__minimap {
+  background: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes panel-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-overlay[data-state='open'] {
+  animation: overlay-in 180ms var(--ease-out-expo);
+}
+
+.dialog-overlay[data-state='closed'] {
+  animation: overlay-out 120ms ease-in;
+}
+
+.dialog-panel[data-state='open'] {
+  animation: panel-in 220ms var(--ease-out-expo);
+}
+
+.dialog-panel[data-state='closed'] {
+  animation: panel-out 120ms ease-in;
+}
+
+.pop-panel[data-state='open'] {
+  animation: pop-in 160ms var(--ease-out-expo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
