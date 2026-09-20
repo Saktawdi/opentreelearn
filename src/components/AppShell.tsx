@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { FolderKanban, Settings } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { Toaster } from 'sonner'
@@ -85,19 +85,81 @@ function SplashScreen() {
 
 export function AppShell() {
   const ready = useBootstrap()
+  const [headerVisible, setHeaderVisible] = useState(false)
+  const leaveTimerRef = useRef<number | null>(null)
+
+  // 增强顶部聚焦检测：全局监听鼠标纵坐标，靠近顶部即刻唤起，并保留离去缓冲
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      // 触发范围大幅增强：窗口顶部 56px 范围内即触发显现
+      if (event.clientY <= 56) {
+        if (leaveTimerRef.current) {
+          window.clearTimeout(leaveTimerRef.current)
+          leaveTimerRef.current = null
+        }
+        setHeaderVisible(true)
+      } else if (event.clientY > 72) {
+        // 离开 72px 区域后稍作缓冲（240ms），防止边缘抖动消失
+        if (!leaveTimerRef.current && headerVisible) {
+          leaveTimerRef.current = window.setTimeout(() => {
+            setHeaderVisible(false)
+            leaveTimerRef.current = null
+          }, 240)
+        }
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
+    }
+  }, [headerVisible])
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen flex-col overflow-hidden bg-canvas">
-        <header className="z-30 flex h-13 shrink-0 items-center justify-between bg-transparent px-4">
-          <NavLink to="/" className="flex items-center gap-2 text-ink">
+      <div className="relative flex h-screen flex-col overflow-hidden bg-canvas">
+        {/* 顶部超宽热区兜底（高度扩展至 48px） */}
+        <div
+          onMouseEnter={() => {
+            if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
+            setHeaderVisible(true)
+          }}
+          className="absolute left-0 right-0 top-0 z-40 h-12"
+        />
+
+        {/* 浮动悬浮 Header：增强视觉投影与毛玻璃深度 */}
+        <header
+          onMouseEnter={() => {
+            if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
+            setHeaderVisible(true)
+          }}
+          onMouseLeave={() => {
+            leaveTimerRef.current = window.setTimeout(() => {
+              setHeaderVisible(false)
+              leaveTimerRef.current = null
+            }, 240)
+          }}
+          className={cn(
+            'pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-center justify-between px-6 transition-all duration-300 ease-out-expo',
+            headerVisible
+              ? 'pointer-events-auto translate-y-0 opacity-100'
+              : '-translate-y-full opacity-0',
+          )}
+        >
+          {/* 左侧：Logo 标识与标题 */}
+          <NavLink
+            to="/"
+            className="flex items-center gap-2 rounded-xl border border-line/40 bg-surface/80 px-3 py-1.5 shadow-panel backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
+          >
             <span className="text-accent">
               <TreeMark />
             </span>
-            <span className="text-[13.5px] font-semibold tracking-tight">OpenTreeLearn</span>
+            <span className="text-[13px] font-semibold tracking-tight text-ink">OpenTreeLearn</span>
           </NavLink>
 
-          <nav className="flex items-center gap-1">
+          {/* 居中：项目和设置图标导航胶囊 */}
+          <nav className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line/50 bg-surface/85 p-1 shadow-panel backdrop-blur-md">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon
               return (
@@ -107,8 +169,8 @@ export function AppShell() {
                     end={item.end}
                     className={({ isActive }) =>
                       cn(
-                        'relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150',
-                        isActive ? 'text-ink' : 'text-muted hover:text-ink',
+                        'relative flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-150',
+                        isActive ? 'text-accent' : 'text-muted hover:text-ink',
                       )
                     }
                   >
@@ -117,13 +179,13 @@ export function AppShell() {
                         {isActive ? (
                           <motion.span
                             layoutId="appshell-nav-indicator"
-                            className="absolute inset-0 rounded-lg bg-elevated shadow-sm"
+                            className="absolute inset-0 rounded-full bg-elevated/90 ring-1 ring-accent/30 shadow-sm"
                             transition={{ type: 'spring', stiffness: 450, damping: 32 }}
                           />
                         ) : null}
                         <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.92 }}
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.9 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 25 }}
                           className="relative z-10 flex items-center justify-center"
                         >
@@ -136,6 +198,9 @@ export function AppShell() {
               )
             })}
           </nav>
+
+          {/* 右侧空占位，保证居中胶囊真正对称居中 */}
+          <div className="w-32" />
         </header>
 
         <main className="flex min-h-0 flex-1 flex-col">

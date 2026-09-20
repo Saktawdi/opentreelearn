@@ -1,12 +1,13 @@
 import {
   Background,
   BackgroundVariant,
+  Controls,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { Loader2, Maximize2 } from 'lucide-react'
+import { LayoutGrid, Loader2, Network, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -58,6 +59,7 @@ function CanvasWorkspace() {
   const loading = useWorkspaceStore((state) => state.loading)
   const error = useWorkspaceStore((state) => state.error)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
+  const setNodePosition = useWorkspaceStore((state) => state.setNodePosition)
   const relayout = useWorkspaceStore((state) => state.relayout)
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const startRootNode = useWorkspaceStore((state) => state.startRootNode)
@@ -74,8 +76,8 @@ function CanvasWorkspace() {
   const [isMapCollapsed, setIsMapCollapsed] = useState<boolean>(false)
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null)
 
-  // 始终在侧边栏使用微缩点模式（Mini Map Dot 节点）
-  const isMiniMode = true
+  // 全局视图模式：'split' (沉浸对话+右侧点树导航) | 'full-canvas' (全屏展开节点详情画布，支持自由拖动节点)
+  const [isDetailCanvasOpen, setIsDetailCanvasOpen] = useState(false)
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
@@ -113,8 +115,11 @@ function CanvasWorkspace() {
   }, [projectId, openProject, reset])
 
   const graph = useMemo(
-    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: isMiniMode }),
-    [nodes, messagesByNode, selectedNodeId, isMiniMode],
+    () =>
+      buildGraph(nodes, messagesByNode, selectedNodeId, {
+        miniMapMode: !isDetailCanvasOpen,
+      }),
+    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen],
   )
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(graph.nodes)
@@ -137,6 +142,15 @@ function CanvasWorkspace() {
   const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
     selectNode(node.id)
+  }
+
+  const handleNodeDragStop = (
+    _event: unknown,
+    node: { id: string; position: { x: number; y: number } },
+  ) => {
+    if (isDetailCanvasOpen) {
+      void setNodePosition(node.id, node.position)
+    }
   }
 
   const handleNodeContextMenu = (event: ReactMouseEvent, node: { id: string }) => {
@@ -250,6 +264,7 @@ function CanvasWorkspace() {
           nodes={flowNodes}
           edges={graph.edges}
           onNodesChange={onNodesChange}
+          onNodeDragStop={handleNodeDragStop}
           nodeTypes={nodeTypes}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
@@ -280,7 +295,21 @@ function CanvasWorkspace() {
                 onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
                 className="ml-0.5 rounded p-0.5 text-muted hover:text-ink"
               >
-                <Maximize2 className="h-3 w-3" />
+                <LayoutGrid className="h-3 w-3" />
+              </button>
+            </Tooltip>
+            <Tooltip label="展开详情画布 (支持自由拖动节点)">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailCanvasOpen(true)
+                  setTimeout(() => {
+                    void fitView({ padding: 0.2, duration: 350, maxZoom: 1 })
+                  }, 50)
+                }}
+                className="ml-0.5 rounded p-0.5 text-muted hover:text-accent"
+              >
+                <Network className="h-3 w-3" />
               </button>
             </Tooltip>
           </div>
@@ -397,6 +426,76 @@ function CanvasWorkspace() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式） */}
+      {isDetailCanvasOpen ? (
+        <div className="absolute inset-0 z-40 flex flex-col bg-canvas animate-in fade-in-0 duration-200">
+          <ReactFlow
+            nodes={flowNodes}
+            edges={graph.edges}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={handleNodeDragStop}
+            nodeTypes={nodeTypes}
+            onNodeClick={handleNodeClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneContextMenu={handlePaneContextMenu}
+            onPaneClick={() => {
+              setContextMenu(null)
+            }}
+            fitView
+            fitViewOptions={{ padding: 0.22, maxZoom: 1.2 }}
+            minZoom={0.2}
+            maxZoom={2.4}
+            nodesConnectable={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
+            <Controls className="!bg-surface !border-line !shadow-panel" />
+          </ReactFlow>
+
+          {/* 顶部浮动条：状态与返回主舞台按钮 */}
+          <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
+            <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-line/60 bg-surface/85 px-3 py-1.5 shadow-panel backdrop-blur-md">
+              <Network className="h-4 w-4 text-accent" />
+              <span className="text-[13px] font-medium text-ink">节点详情画布</span>
+              <span className="text-[11px] text-muted">（卡片形态 · 支持拖拽整理）</span>
+              <Badge tone="neutral" className="text-[11px] ml-1">
+                {activeCount} 节点
+              </Badge>
+            </div>
+
+            <div className="pointer-events-auto flex items-center gap-1.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void relayout()}
+                className="gap-1.5 rounded-xl border-line/60 bg-surface/85 shadow-panel backdrop-blur-md"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-accent" />
+                自动重排
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })}
+                className="gap-1.5 rounded-xl border-line/60 bg-surface/85 shadow-panel backdrop-blur-md"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                自适应居中
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsDetailCanvasOpen(false)}
+                className="gap-1.5 rounded-xl shadow-panel"
+              >
+                <X className="h-3.5 w-3.5" />
+                返回对话
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
