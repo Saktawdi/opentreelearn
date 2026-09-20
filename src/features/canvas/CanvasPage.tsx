@@ -7,12 +7,12 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { GitBranch, LayoutGrid, Loader2, Maximize2, Plus, Waypoints } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { GitBranch, LayoutGrid, Loader2, Maximize2, MessageSquare, Plus, Waypoints, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
-import { ChatPanel } from '@/features/chat/ChatPanel'
+import { FocusChatView } from '@/features/chat/FocusChatView'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -53,6 +53,9 @@ function CanvasWorkspace() {
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
   const selectedNodeId = useWorkspaceStore((state) => state.selectedNodeId)
+  const viewMode = useWorkspaceStore((state) => state.viewMode)
+  const setViewMode = useWorkspaceStore((state) => state.setViewMode)
+  const toggleViewMode = useWorkspaceStore((state) => state.toggleViewMode)
   const loading = useWorkspaceStore((state) => state.loading)
   const error = useWorkspaceStore((state) => state.error)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
@@ -68,9 +71,19 @@ function CanvasWorkspace() {
   const summaryModelRef = useSettingsStore((state) => state.settings.summaryModelRef)
   const hasSummaryModel = hasModel(providers, summaryModelRef)
 
-  const [panelWidth, setPanelWidth] = useState(432)
-  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
+
+  // 全局快捷键 Ctrl/Cmd + M 切换视图
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault()
+        toggleViewMode()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [toggleViewMode])
 
   // 新建根节点对话框状态
   const [createRootDialog, setCreateRootDialog] = useState<{
@@ -120,6 +133,12 @@ function CanvasWorkspace() {
     void applyAction(kind, selectedNodeId)
   }
 
+  const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
+    setContextMenu(null)
+    selectNode(node.id)
+    setViewMode('chat')
+  }
+
   const handleNodeContextMenu = (event: ReactMouseEvent, node: { id: string }) => {
     event.preventDefault()
     selectNode(node.id)
@@ -165,23 +184,30 @@ function CanvasWorkspace() {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1">
-      <div className="relative min-w-0 flex-1">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-canvas">
+      {/* 视图 1：FocusChatView 沉浸对话主舞台（默认或有选中节点时展示） */}
+      {selectedNodeId && viewMode === 'chat' ? (
+        <FocusChatView nodeId={selectedNodeId} onOpenCanvas={() => setViewMode('canvas')} />
+      ) : null}
+
+      {/* 视图 2：Canvas 全局知识树画布（当切为 canvas 模式，或项目无选中节点时展现） */}
+      <div
+        className={cn(
+          'relative min-w-0 flex-1',
+          selectedNodeId && viewMode === 'chat' ? 'hidden' : 'flex',
+        )}
+      >
         <ReactFlow
           nodes={flowNodes}
           edges={graph.edges}
           onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
-          onNodeClick={(_, node) => {
-            setContextMenu(null)
-            selectNode(node.id)
-          }}
+          onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
           onPaneContextMenu={handlePaneContextMenu}
           onNodeDragStop={(_, node) => void setNodePosition(node.id, node.position)}
           onPaneClick={() => {
             setContextMenu(null)
-            selectNode(null)
           }}
           fitView
           fitViewOptions={{ padding: 0.34, maxZoom: 1 }}
@@ -194,6 +220,7 @@ function CanvasWorkspace() {
           <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
 
+        {/* 顶部悬浮工具栏 */}
         <div className="pointer-events-none absolute left-4 top-4 flex max-w-[calc(100%-2rem)] items-center">
           <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-line bg-surface/92 p-1 shadow-panel backdrop-blur">
             <Link
@@ -205,6 +232,21 @@ function CanvasWorkspace() {
             <Badge tone="neutral" className="mr-1.5">
               {activeCount} 节点
             </Badge>
+
+            {selectedNodeId ? (
+              <>
+                <span className="mx-1 h-5 w-px bg-line" />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setViewMode('chat')}
+                  className="gap-1.5 font-medium shadow-sm"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  <span>返回对话</span>
+                </Button>
+              </>
+            ) : null}
 
             <span className="mx-1 h-5 w-px bg-line" />
 
@@ -257,6 +299,22 @@ function CanvasWorkspace() {
             </Tooltip>
           </div>
         </div>
+
+        {/* 右上角关闭画布浮动按钮（如果有正在查看的节点） */}
+        {selectedNodeId ? (
+          <div className="absolute right-4 top-4">
+            <Tooltip label="返回对话 (Ctrl+M)">
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                onClick={() => setViewMode('chat')}
+                className="rounded-full border border-line bg-surface/92 shadow-panel backdrop-blur hover:bg-elevated"
+              >
+                <X className="h-4 w-4 text-muted hover:text-ink" />
+              </Button>
+            </Tooltip>
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -369,41 +427,6 @@ function CanvasWorkspace() {
           </DialogContent>
         </Dialog>
       </div>
-
-      <AnimatePresence initial={false}>
-        {selectedNodeId ? (
-          <motion.div
-            key="chat-panel"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: panelWidth, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="relative h-full shrink-0 overflow-hidden border-l border-line"
-          >
-            <div style={{ width: panelWidth }} className="h-full">
-              <ChatPanel nodeId={selectedNodeId} onClose={() => selectNode(null)} />
-            </div>
-            <div
-              onPointerDown={(event) => {
-                event.currentTarget.setPointerCapture(event.pointerId)
-                resizeState.current = { startX: event.clientX, startWidth: panelWidth }
-              }}
-              onPointerMove={(event) => {
-                if (!resizeState.current) return
-                const delta = resizeState.current.startX - event.clientX
-                setPanelWidth(
-                  Math.min(Math.max(resizeState.current.startWidth + delta, 340), 760),
-                )
-              }}
-              onPointerUp={(event) => {
-                resizeState.current = null
-                event.currentTarget.releasePointerCapture(event.pointerId)
-              }}
-              className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-accent/50"
-            />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </div>
   )
 }

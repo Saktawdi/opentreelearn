@@ -19,6 +19,8 @@ import { loadAssetUrls } from '@/services/images'
 import { touchProject } from './projects-store'
 import { useSettingsStore } from './settings-store'
 
+export type WorkspaceViewMode = 'chat' | 'canvas'
+
 export interface StreamingState {
   nodeId: Id
   messageId: Id
@@ -34,6 +36,7 @@ interface WorkspaceState {
   nodes: Node[]
   messagesByNode: Record<Id, Message[]>
   selectedNodeId: Id | null
+  viewMode: WorkspaceViewMode
   loading: boolean
   error: string | null
   streaming: StreamingState | null
@@ -41,6 +44,8 @@ interface WorkspaceState {
   openProject: (projectId: Id) => Promise<void>
   reset: () => void
   selectNode: (id: Id | null) => void
+  setViewMode: (mode: WorkspaceViewMode) => void
+  toggleViewMode: () => void
   refreshNodes: () => Promise<void>
   startRootNode: (
     question: string,
@@ -88,6 +93,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     nodes: [],
     messagesByNode: {},
     selectedNodeId: null,
+    viewMode: 'chat',
     loading: false,
     error: null,
     streaming: null,
@@ -119,11 +125,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return
       }
 
+      // 如果已有活跃节点，默认选中最新更新的节点并进入对话模式；若无节点则展示画布模式
+      const activeNodes = nodes.filter((n) => n.status === 'active')
+      const latestNode = [...activeNodes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+
       set((state) => {
         state.project = project
         state.projectSettings = projectSettings ?? { projectId }
         state.nodes = nodes
         state.messagesByNode = groupMessages(messages)
+        state.selectedNodeId = latestNode?.id ?? null
+        state.viewMode = latestNode ? 'chat' : 'canvas'
         state.loading = false
       })
     },
@@ -138,6 +150,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.nodes = []
         state.messagesByNode = {}
         state.selectedNodeId = null
+        state.viewMode = 'chat'
         state.streaming = null
         state.error = null
       })
@@ -146,6 +159,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     selectNode: (id) => {
       set((state) => {
         state.selectedNodeId = id
+        if (id) {
+          state.viewMode = 'chat'
+        }
+      })
+    },
+
+    setViewMode: (mode) => {
+      set((state) => {
+        state.viewMode = mode
+      })
+    },
+
+    toggleViewMode: () => {
+      set((state) => {
+        state.viewMode = state.viewMode === 'chat' ? 'canvas' : 'chat'
       })
     },
 
