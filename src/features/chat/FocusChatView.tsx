@@ -1,20 +1,17 @@
 import {
   Archive,
   ChevronRight,
-  FolderKanban,
   GitBranch,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
-  Settings,
   Sparkles,
   Trash2,
   Waypoints,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { TreeMark } from '@/components/AppShell'
 import {
   Dialog,
   DialogContent,
@@ -106,28 +103,17 @@ export function FocusChatView({
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
-      {/* 顶部主导航栏（无边框、透明背景，全功能单层顶栏） */}
+      {/* 顶部主导航栏（无边框、透明背景） */}
       <header className="flex h-13 shrink-0 items-center justify-between bg-transparent px-4 sm:px-6">
-        {/* 左侧：Logo 快捷返回 + 面包屑上下文导航 */}
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden py-1">
-          <Tooltip label="返回项目列表">
-            <NavLink
-              to="/"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-accent transition-colors hover:bg-elevated/60"
-            >
-              <TreeMark />
-            </NavLink>
-          </Tooltip>
-
-          <span className="h-3.5 w-px shrink-0 bg-line/50" />
-
+        {/* 左侧：面包屑上下文导航 */}
+        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[12.5px] text-muted">
             {breadcrumbs.slice(0, -1).map((ancestor) => (
               <div key={ancestor.id} className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
                   onClick={() => selectNode(ancestor.id)}
-                  className="max-w-[120px] truncate transition-colors hover:text-ink"
+                  className="max-w-[140px] truncate transition-colors hover:text-ink"
                   title={ancestor.title}
                 >
                   {ancestor.title}
@@ -164,28 +150,8 @@ export function FocusChatView({
           )}
         </div>
 
-        {/* 右侧：全局项目/设置 + 节点操作与地图折叠入口 */}
-        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-          <Tooltip label="全部项目">
-            <NavLink
-              to="/"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated/60 hover:text-ink"
-            >
-              <FolderKanban className="h-3.5 w-3.5" />
-            </NavLink>
-          </Tooltip>
-
-          <Tooltip label="系统配置">
-            <NavLink
-              to="/settings"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-elevated/60 hover:text-ink"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </NavLink>
-          </Tooltip>
-
-          <span className="mx-0.5 h-3.5 w-px bg-line/40" />
-
+        {/* 右侧：操作区与画布入口 */}
+        <div className="flex shrink-0 items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" className="text-muted hover:text-ink">
@@ -229,7 +195,7 @@ export function FocusChatView({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <span className="mx-0.5 h-3.5 w-px bg-line/40" />
+          <span className="mx-0.5 h-4 w-px bg-line/40" />
 
           {/* 切换/展开折叠右侧知识树地图 */}
           <Tooltip label={isMapCollapsed ? '展开知识树地图 (Ctrl+M)' : '收起知识树地图 (Ctrl+M)'}>
