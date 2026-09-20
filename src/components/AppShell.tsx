@@ -1,7 +1,7 @@
 import { motion } from 'motion/react'
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense } from 'react'
 import { FolderKanban, Settings } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { to: '/settings', label: '配置', icon: Settings, end: false },
 ]
 
-function TreeMark({ animate = true }: { animate?: boolean }) {
+export function TreeMark({ animate = true }: { animate?: boolean }) {
   const draw = animate
     ? { initial: { pathLength: 0, opacity: 0 }, animate: { pathLength: 1, opacity: 1 } }
     : {}
@@ -20,7 +20,7 @@ function TreeMark({ animate = true }: { animate?: boolean }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-[22px] w-[22px]"
+      className="h-[20px] w-[20px]"
       fill="none"
       strokeWidth={1.7}
       strokeLinecap="round"
@@ -85,123 +85,65 @@ function SplashScreen() {
 
 export function AppShell() {
   const ready = useBootstrap()
-  const [headerVisible, setHeaderVisible] = useState(false)
-  const leaveTimerRef = useRef<number | null>(null)
+  const location = useLocation()
 
-  // 增强顶部聚焦检测：全局监听鼠标纵坐标，靠近顶部即刻唤起，并保留离去缓冲
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      // 触发范围大幅增强：窗口顶部 56px 范围内即触发显现
-      if (event.clientY <= 56) {
-        if (leaveTimerRef.current) {
-          window.clearTimeout(leaveTimerRef.current)
-          leaveTimerRef.current = null
-        }
-        setHeaderVisible(true)
-      } else if (event.clientY > 72) {
-        // 离开 72px 区域后稍作缓冲（240ms），防止边缘抖动消失
-        if (!leaveTimerRef.current && headerVisible) {
-          leaveTimerRef.current = window.setTimeout(() => {
-            setHeaderVisible(false)
-            leaveTimerRef.current = null
-          }, 240)
-        }
-      }
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
-    }
-  }, [headerVisible])
+  // 画布/工作区页面 (/project/:id) 内部自包含单层顶栏，避免全局 Header 导致重叠遮挡
+  const isCanvasRoute = location.pathname.startsWith('/project/')
 
   return (
     <TooltipProvider>
       <div className="relative flex h-screen flex-col overflow-hidden bg-canvas">
-        {/* 顶部超宽热区兜底（高度扩展至 48px） */}
-        <div
-          onMouseEnter={() => {
-            if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
-            setHeaderVisible(true)
-          }}
-          className="absolute left-0 right-0 top-0 z-40 h-12"
-        />
+        {/* 非项目工作区页面（如项目列表页 /、配置页 /settings）正常保留轻量通透的全局导航 */}
+        {!isCanvasRoute ? (
+          <header className="z-30 flex h-13 shrink-0 items-center justify-between bg-transparent px-6">
+            <NavLink to="/" className="flex items-center gap-2 text-ink transition-opacity hover:opacity-85">
+              <span className="text-accent">
+                <TreeMark />
+              </span>
+              <span className="text-[13.5px] font-semibold tracking-tight">OpenTreeLearn</span>
+            </NavLink>
 
-        {/* 浮动悬浮 Header：增强视觉投影与毛玻璃深度 */}
-        <header
-          onMouseEnter={() => {
-            if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
-            setHeaderVisible(true)
-          }}
-          onMouseLeave={() => {
-            leaveTimerRef.current = window.setTimeout(() => {
-              setHeaderVisible(false)
-              leaveTimerRef.current = null
-            }, 240)
-          }}
-          className={cn(
-            'pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-center justify-between px-6 transition-all duration-300 ease-out-expo',
-            headerVisible
-              ? 'pointer-events-auto translate-y-0 opacity-100'
-              : '-translate-y-full opacity-0',
-          )}
-        >
-          {/* 左侧：Logo 标识与标题 */}
-          <NavLink
-            to="/"
-            className="flex items-center gap-2 rounded-xl border border-line/40 bg-surface/80 px-3 py-1.5 shadow-panel backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
-          >
-            <span className="text-accent">
-              <TreeMark />
-            </span>
-            <span className="text-[13px] font-semibold tracking-tight text-ink">OpenTreeLearn</span>
-          </NavLink>
-
-          {/* 居中：项目和设置图标导航胶囊 */}
-          <nav className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line/50 bg-surface/85 p-1 shadow-panel backdrop-blur-md">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon
-              return (
-                <Tooltip key={item.to} label={item.label}>
-                  <NavLink
-                    to={item.to}
-                    end={item.end}
-                    className={({ isActive }) =>
-                      cn(
-                        'relative flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-150',
-                        isActive ? 'text-accent' : 'text-muted hover:text-ink',
-                      )
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive ? (
-                          <motion.span
-                            layoutId="appshell-nav-indicator"
-                            className="absolute inset-0 rounded-full bg-elevated/90 ring-1 ring-accent/30 shadow-sm"
-                            transition={{ type: 'spring', stiffness: 450, damping: 32 }}
-                          />
-                        ) : null}
-                        <motion.div
-                          whileHover={{ scale: 1.15 }}
-                          whileTap={{ scale: 0.9 }}
-                          transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                          className="relative z-10 flex items-center justify-center"
-                        >
-                          <Icon className="h-4 w-4" />
-                        </motion.div>
-                      </>
-                    )}
-                  </NavLink>
-                </Tooltip>
-              )
-            })}
-          </nav>
-
-          {/* 右侧空占位，保证居中胶囊真正对称居中 */}
-          <div className="w-32" />
-        </header>
+            <nav className="flex items-center gap-1">
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon
+                return (
+                  <Tooltip key={item.to} label={item.label}>
+                    <NavLink
+                      to={item.to}
+                      end={item.end}
+                      className={({ isActive }) =>
+                        cn(
+                          'relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150',
+                          isActive ? 'text-accent' : 'text-muted hover:text-ink',
+                        )
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          {isActive ? (
+                            <motion.span
+                              layoutId="appshell-nav-indicator"
+                              className="absolute inset-0 rounded-lg bg-elevated shadow-sm"
+                              transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                            />
+                          ) : null}
+                          <motion.div
+                            whileHover={{ scale: 1.12 }}
+                            whileTap={{ scale: 0.92 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                            className="relative z-10 flex items-center justify-center"
+                          >
+                            <Icon className="h-4 w-4" />
+                          </motion.div>
+                        </>
+                      )}
+                    </NavLink>
+                  </Tooltip>
+                )
+              })}
+            </nav>
+          </header>
+        ) : null}
 
         <main className="flex min-h-0 flex-1 flex-col">
           {ready ? (
