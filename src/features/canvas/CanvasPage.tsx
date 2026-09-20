@@ -7,12 +7,11 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { GitBranch, LayoutGrid, Loader2, Maximize2, MessageSquare, Plus, Waypoints, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { GitBranch, LayoutGrid, Loader2, Maximize2, Plus, Waypoints } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
 import { FocusChatView } from '@/features/chat/FocusChatView'
+import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -53,9 +53,6 @@ function CanvasWorkspace() {
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
   const selectedNodeId = useWorkspaceStore((state) => state.selectedNodeId)
-  const viewMode = useWorkspaceStore((state) => state.viewMode)
-  const setViewMode = useWorkspaceStore((state) => state.setViewMode)
-  const toggleViewMode = useWorkspaceStore((state) => state.toggleViewMode)
   const loading = useWorkspaceStore((state) => state.loading)
   const error = useWorkspaceStore((state) => state.error)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
@@ -71,19 +68,43 @@ function CanvasWorkspace() {
   const summaryModelRef = useSettingsStore((state) => state.settings.summaryModelRef)
   const hasSummaryModel = hasModel(providers, summaryModelRef)
 
+  // 布局状态：右侧地图宽度与折叠状态
+  const [mapWidth, setMapWidth] = useState<number>(440)
+  const [isMapCollapsed, setIsMapCollapsed] = useState<boolean>(false)
+  const resizeState = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  // 画布工具条悬浮显示逻辑（默认隐藏，鼠标在画布停留 1.2 秒后淡入显示）
+  const [toolbarVisible, setToolbarVisible] = useState(false)
+  const hoverTimer = useRef<number | null>(null)
+
+  const handleCanvasMouseEnter = () => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current)
+    hoverTimer.current = window.setTimeout(() => {
+      setToolbarVisible(true)
+    }, 1200)
+  }
+
+  const handleCanvasMouseLeave = () => {
+    if (hoverTimer.current) {
+      window.clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+    setToolbarVisible(false)
+  }
+
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
-  // 全局快捷键 Ctrl/Cmd + M 切换视图
+  // 全局快捷键 Ctrl/Cmd + M 切换右侧地图展开/收起
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault()
-        toggleViewMode()
+        setIsMapCollapsed((v) => !v)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleViewMode])
+  }, [])
 
   // 新建根节点对话框状态
   const [createRootDialog, setCreateRootDialog] = useState<{
@@ -136,7 +157,6 @@ function CanvasWorkspace() {
   const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
     selectNode(node.id)
-    setViewMode('chat')
   }
 
   const handleNodeContextMenu = (event: ReactMouseEvent, node: { id: string }) => {
@@ -185,16 +205,67 @@ function CanvasWorkspace() {
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-canvas">
-      {/* 视图 1：FocusChatView 沉浸对话主舞台（默认或有选中节点时展示） */}
-      {selectedNodeId && viewMode === 'chat' ? (
-        <FocusChatView nodeId={selectedNodeId} onOpenCanvas={() => setViewMode('canvas')} />
+      {/* 左侧：主对话舞台（FocusChatView） */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {selectedNodeId ? (
+          <FocusChatView
+            nodeId={selectedNodeId}
+            isMapCollapsed={isMapCollapsed}
+            onToggleMap={() => setIsMapCollapsed((v) => !v)}
+          />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-muted">
+            <p className="text-[14px]">暂无选中节点</p>
+            <p className="max-w-sm text-[12.5px] leading-relaxed text-muted/70">
+              请在右侧知识树地图中选择或新建一个节点，开启深度对话与知识推演。
+            </p>
+            {isMapCollapsed ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsMapCollapsed(false)}
+                className="mt-2"
+              >
+                展开知识树地图
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* 中间拖拽调节手柄（当右侧未折叠时显示） */}
+      {!isMapCollapsed ? (
+        <div
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId)
+            resizeState.current = { startX: event.clientX, startWidth: mapWidth }
+          }}
+          onPointerMove={(event) => {
+            if (!resizeState.current) return
+            // 从右往左拖动增大，从左往右拖动减小
+            const delta = resizeState.current.startX - event.clientX
+            setMapWidth(
+              Math.min(Math.max(resizeState.current.startWidth + delta, 300), 800),
+            )
+          }}
+          onPointerUp={(event) => {
+            resizeState.current = null
+            event.currentTarget.releasePointerCapture(event.pointerId)
+          }}
+          className="group relative z-30 flex w-1.5 cursor-col-resize items-center justify-center border-l border-line bg-transparent transition-colors hover:bg-accent/40"
+        >
+          <div className="h-8 w-1 rounded-full bg-line-strong opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
       ) : null}
 
-      {/* 视图 2：Canvas 全局知识树画布（当切为 canvas 模式，或项目无选中节点时展现） */}
+      {/* 右侧：知识树导航地图（Canvas Map） */}
       <div
+        style={{ width: isMapCollapsed ? 0 : mapWidth }}
+        onMouseEnter={handleCanvasMouseEnter}
+        onMouseLeave={handleCanvasMouseLeave}
         className={cn(
-          'relative min-w-0 flex-1',
-          selectedNodeId && viewMode === 'chat' ? 'hidden' : 'flex',
+          'relative flex h-full flex-col overflow-hidden bg-surface transition-[width] duration-200 ease-in-out',
+          isMapCollapsed && 'pointer-events-none opacity-0',
         )}
       >
         <ReactFlow
@@ -220,35 +291,25 @@ function CanvasWorkspace() {
           <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
 
-        {/* 顶部悬浮工具栏 */}
-        <div className="pointer-events-none absolute left-4 top-4 flex max-w-[calc(100%-2rem)] items-center">
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-line bg-surface/92 p-1 shadow-panel backdrop-blur">
+        {/* 顶部悬浮工具栏：默认隐藏，鼠标在画布聚焦悬停几秒后显示 */}
+        <div
+          className={cn(
+            'pointer-events-none absolute left-3 top-3 right-3 flex items-center justify-between transition-all duration-300',
+            toolbarVisible ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0',
+          )}
+        >
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-line bg-surface/94 p-1 shadow-panel backdrop-blur">
             <Link
               to="/"
-              className="max-w-[220px] truncate rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors hover:bg-elevated"
+              className="max-w-[140px] truncate rounded-lg px-2 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-elevated"
             >
               {project?.name ?? '项目'}
             </Link>
-            <Badge tone="neutral" className="mr-1.5">
-              {activeCount} 节点
+            <Badge tone="neutral" className="mr-1 text-[11px]">
+              {activeCount}
             </Badge>
 
-            {selectedNodeId ? (
-              <>
-                <span className="mx-1 h-5 w-px bg-line" />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setViewMode('chat')}
-                  className="gap-1.5 font-medium shadow-sm"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>返回对话</span>
-                </Button>
-              </>
-            ) : null}
-
-            <span className="mx-1 h-5 w-px bg-line" />
+            <span className="mx-0.5 h-4 w-px bg-line" />
 
             <Tooltip label="新建空白子节点">
               <Button
@@ -257,35 +318,35 @@ function CanvasWorkspace() {
                 disabled={!selectedNodeId}
                 onClick={() => handleAction('child')}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
-            <Tooltip label="从最新消息分支（继承上下文）">
+            <Tooltip label="最新消息分支">
               <Button
                 variant="ghost"
                 size="icon-sm"
                 disabled={!selectedNodeId}
                 onClick={() => handleAction('branch')}
               >
-                <GitBranch className="h-4 w-4" />
+                <GitBranch className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
-            <Tooltip label="从最新消息横向发散（继承上下文）">
+            <Tooltip label="最新消息发散">
               <Button
                 variant="ghost"
                 size="icon-sm"
                 disabled={!selectedNodeId}
                 onClick={() => handleAction('diverge')}
               >
-                <Waypoints className="h-4 w-4" />
+                <Waypoints className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
 
-            <span className="mx-1 h-5 w-px bg-line" />
+            <span className="mx-0.5 h-4 w-px bg-line" />
 
-            <Tooltip label="重新布局（清除手动位置）">
+            <Tooltip label="重新布局">
               <Button variant="ghost" size="icon-sm" onClick={() => void relayout()}>
-                <LayoutGrid className="h-4 w-4" />
+                <LayoutGrid className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
             <Tooltip label="适配视图">
@@ -294,27 +355,11 @@ function CanvasWorkspace() {
                 size="icon-sm"
                 onClick={() => void fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
               >
-                <Maximize2 className="h-4 w-4" />
+                <Maximize2 className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
           </div>
         </div>
-
-        {/* 右上角关闭画布浮动按钮（如果有正在查看的节点） */}
-        {selectedNodeId ? (
-          <div className="absolute right-4 top-4">
-            <Tooltip label="返回对话 (Ctrl+M)">
-              <Button
-                variant="secondary"
-                size="icon-sm"
-                onClick={() => setViewMode('chat')}
-                className="rounded-full border border-line bg-surface/92 shadow-panel backdrop-blur hover:bg-elevated"
-              >
-                <X className="h-4 w-4 text-muted hover:text-ink" />
-              </Button>
-            </Tooltip>
-          </div>
-        ) : null}
 
         {loading ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

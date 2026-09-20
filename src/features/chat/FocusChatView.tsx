@@ -3,7 +3,8 @@ import {
   ChevronRight,
   GitBranch,
   MoreHorizontal,
-  Network,
+  PanelRightClose,
+  PanelRightOpen,
   Sparkles,
   Trash2,
   Waypoints,
@@ -41,10 +42,12 @@ import { MessageList } from './MessageList'
 
 export function FocusChatView({
   nodeId,
-  onOpenCanvas,
+  isMapCollapsed = false,
+  onToggleMap,
 }: {
   nodeId: Id
-  onOpenCanvas: () => void
+  isMapCollapsed?: boolean
+  onToggleMap: () => void
 }) {
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const nodes = useWorkspaceStore((state) => state.nodes)
@@ -200,16 +203,19 @@ export function FocusChatView({
 
           <span className="mx-0.5 h-4 w-px bg-line" />
 
-          {/* 切换至知识树画布 */}
-          <Tooltip label="打开知识树全局画布 (Ctrl+M)">
+          {/* 切换/展开折叠右侧知识树地图 */}
+          <Tooltip label={isMapCollapsed ? '展开知识树地图 (Ctrl+M)' : '收起知识树地图 (Ctrl+M)'}>
             <Button
-              variant="secondary"
-              size="sm"
-              onClick={onOpenCanvas}
-              className="gap-1.5 font-medium shadow-sm"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onToggleMap}
+              className="text-muted hover:text-ink"
             >
-              <Network className="h-3.5 w-3.5 text-accent" />
-              <span className="hidden sm:inline">知识树地图</span>
+              {isMapCollapsed ? (
+                <PanelRightOpen className="h-4 w-4 text-accent" />
+              ) : (
+                <PanelRightClose className="h-4 w-4" />
+              )}
             </Button>
           </Tooltip>
         </div>
