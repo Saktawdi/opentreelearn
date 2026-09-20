@@ -86,7 +86,7 @@ function SplashScreen() {
 export function AppShell() {
   const ready = useBootstrap()
   const location = useLocation()
-  const isCanvasRoute = location.pathname.startsWith('/project/')
+  const isCanvasRoute = location.pathname.startsWith('/p/')
 
   // 方案 B：中央独立微型悬浮胶囊状态
   const [capsuleHovered, setCapsuleHovered] = useState(false)
