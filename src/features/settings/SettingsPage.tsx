@@ -1,10 +1,9 @@
-import { Database, Globe, KeyRound, Loader2, Plus, Sparkles, Trash2, UserRound, Zap } from 'lucide-react'
+import { Database, KeyRound, Loader2, Plus, Sparkles, Trash2, UserRound, Zap } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ModelRef, ProviderConfig } from '@/domain/models'
 import { errorMessage } from '@/lib/utils'
@@ -13,7 +12,6 @@ import {
   describeModelRef,
   describeProviderModels,
 } from '@/services/llm/catalog'
-import { resolveProxyOptions } from '@/services/llm/errors'
 import { testProviderConnection } from '@/services/llm/providers'
 import { useSettingsStore, type ModelSlot } from '@/stores/settings-store'
 import { ModelPicker } from './ModelPicker'
@@ -78,33 +76,12 @@ export function SettingsPage() {
 
   const [profile, setProfile] = useState(() => settings.backgroundProfile)
   const [budget, setBudget] = useState(() => String(settings.contextBudget))
-  const [proxyUrl, setProxyUrl] = useState(() => settings.proxyUrl)
-  const [pingingProxy, setPingingProxy] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
   const profileDirty =
     profile !== settings.backgroundProfile || budget !== String(settings.contextBudget)
-
-  const checkProxy = async () => {
-    setPingingProxy(true)
-    const target = (proxyUrl.trim() || settings.proxyUrl).replace(/\/+$/, '')
-    try {
-      const response = await fetch(`${target}/__ping`, { method: 'GET' })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = (await response.json().catch(() => ({}))) as { ok?: boolean }
-      if (data.ok) {
-        toast.success(`代理在线（${target}）`)
-      } else {
-        toast.warning(`服务已响应，但非预期代理服务`)
-      }
-    } catch (error) {
-      toast.error(`无法连接代理服务：${errorMessage(error)}。请在终端执行 pnpm proxy。`)
-    } finally {
-      setPingingProxy(false)
-    }
-  }
 
   const saveProfile = async () => {
     const parsed = Number.parseInt(budget, 10)
@@ -120,11 +97,7 @@ export function SettingsPage() {
   const testProvider = async (provider: ProviderConfig) => {
     setTestingId(provider.id)
     try {
-      await testProviderConnection(
-        provider,
-        provider.models[0],
-        resolveProxyOptions(useSettingsStore.getState().settings),
-      )
+      await testProviderConnection(provider, provider.models[0])
       toast.success(`${provider.label} 连接正常`)
     } catch (error) {
       toast.error(`连接失败：${errorMessage(error)}`)
@@ -199,57 +172,6 @@ export function SettingsPage() {
                 />
               </div>
             ))}
-          </div>
-        </Section>
-
-        <Section
-          icon={<Globe className="h-4 w-4" />}
-          title="网络与跨域（CORS）"
-          description="如果服务未返回 Access-Control-Allow-Origin（如常见的自建中转站），浏览器会直接拦截。开启本地代理后，所有 LLM 请求经由本地 Node 服务转发，绕开跨域限制。"
-        >
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line/70 bg-canvas/40 px-3.5 py-3">
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-ink-soft">通过本地代理转发 LLM 请求</p>
-                <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
-                  请在终端执行 <code className="font-mono text-accent">pnpm proxy</code> 启动代理服务（默认端口 8787）。
-                </p>
-              </div>
-              <Switch
-                checked={settings.proxyEnabled}
-                onCheckedChange={(checked) => void patch({ proxyEnabled: checked })}
-              />
-            </div>
-
-            {settings.proxyEnabled ? (
-              <div className="flex flex-wrap items-end gap-2 rounded-xl border border-line/70 bg-canvas/40 p-3.5">
-                <label className="min-w-[240px] flex-1">
-                  <span className="mb-1 block text-[12px] font-medium text-ink-soft">
-                    代理服务地址
-                  </span>
-                  <Input
-                    value={proxyUrl}
-                    onChange={(event) => setProxyUrl(event.target.value)}
-                    onBlur={() => void patch({ proxyUrl: proxyUrl.trim() || settings.proxyUrl })}
-                    placeholder="http://localhost:8787"
-                    className="font-mono text-[12.5px]"
-                  />
-                </label>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={pingingProxy}
-                  onClick={() => void checkProxy()}
-                >
-                  {pingingProxy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Zap className="h-3.5 w-3.5" />
-                  )}
-                  检测代理在线
-                </Button>
-              </div>
-            ) : null}
           </div>
         </Section>
 

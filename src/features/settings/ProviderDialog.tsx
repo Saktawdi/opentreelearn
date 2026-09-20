@@ -21,7 +21,6 @@ import {
   PROVIDER_KIND_HINT,
   PROVIDER_KIND_LABEL,
 } from '@/services/llm/catalog'
-import { resolveProxyOptions } from '@/services/llm/errors'
 import { testProviderConnection } from '@/services/llm/providers'
 import { useSettingsStore } from '@/stores/settings-store'
 
@@ -69,8 +68,7 @@ export function ProviderDialog({
     }
     setTesting(true)
     try {
-      const settings = useSettingsStore.getState().settings
-      await testProviderConnection(draft, draft.models[0], resolveProxyOptions(settings))
+      await testProviderConnection(draft, draft.models[0])
       toast.success(`连接成功：${draft.models[0]} 已响应`)
     } catch (error) {
       toast.error(`连接失败：${errorMessage(error)}`)

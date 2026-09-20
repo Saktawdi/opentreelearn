@@ -1,27 +1,8 @@
-import type { GlobalSettings, ProviderConfig } from '@/domain/models'
+import type { ProviderConfig } from '@/domain/models'
 import { PROVIDER_KIND_BASE_URL } from './catalog'
-
-export interface ProxyOptions {
-  enabled: boolean
-  url: string
-}
-
-export function resolveProxyOptions(settings: GlobalSettings): ProxyOptions {
-  return {
-    enabled: Boolean(settings.proxyEnabled && settings.proxyUrl.trim()),
-    url: settings.proxyUrl.trim().replace(/\/+$/, ''),
-  }
-}
 
 export function effectiveProviderBaseUrl(provider: ProviderConfig): string {
   return provider.baseURL?.trim() || PROVIDER_KIND_BASE_URL[provider.kind] || ''
-}
-
-export function applyProxyToBaseUrl(baseUrl: string, proxy: ProxyOptions): string {
-  if (!proxy.enabled || !proxy.url) return baseUrl
-  const trimmed = baseUrl.trim()
-  if (!trimmed) return ''
-  return `${proxy.url}/${trimmed}`
 }
 
 export interface LlmErrorInfo {
@@ -59,7 +40,7 @@ export function describeLlmError(error: unknown): LlmErrorInfo {
     return {
       kind: 'cors',
       message: '请求被浏览器跨域策略拦截或网络不可达',
-      hint: '该服务未返回跨域头。请在终端运行 pnpm proxy 启动本地代理，并在「配置 → 网络与跨域」中开启。',
+      hint: '本地开发请确认该服务返回了 CORS 头（Access-Control-Allow-Origin）；生产环境应由部署侧反向代理统一域名，避免跨域。',
     }
   }
 

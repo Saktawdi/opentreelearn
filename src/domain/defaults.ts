@@ -2,7 +2,6 @@ import type { GlobalSettings } from '@/domain/models'
 
 export const DEFAULT_CONTEXT_BUDGET = 24_000
 export const DEFAULT_RECENT_MESSAGES = 8
-export const DEFAULT_PROXY_URL = 'http://localhost:8787'
 
 export function createDefaultSettings(): GlobalSettings {
   return {
@@ -12,7 +11,5 @@ export function createDefaultSettings(): GlobalSettings {
     summaryModelRef: null,
     contextBudget: DEFAULT_CONTEXT_BUDGET,
     providers: [],
-    proxyEnabled: false,
-    proxyUrl: DEFAULT_PROXY_URL,
   }
 }

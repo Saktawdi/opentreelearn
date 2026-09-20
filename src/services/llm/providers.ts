@@ -1,20 +1,19 @@
 import { generateText, type LanguageModel } from 'ai'
 import type { GlobalSettings, ModelRef, ProviderConfig } from '@/domain/models'
 import { ModelResolutionError, findProvider } from './catalog'
-import {
-  applyProxyToBaseUrl,
-  effectiveProviderBaseUrl,
-  resolveProxyOptions,
-  type ProxyOptions,
-} from './errors'
+import { effectiveProviderBaseUrl } from './errors'
 
 export async function createLanguageModel(
   provider: ProviderConfig,
   modelId: string,
-  proxy?: ProxyOptions,
 ): Promise<LanguageModel> {
   const rawBase = effectiveProviderBaseUrl(provider)
-  const effectiveBase = proxy?.enabled ? applyProxyToBaseUrl(rawBase, proxy) : rawBase
+  // 在开发环境下（import.meta.env.DEV 为 true），如果 baseURL 是远程 http(s) 地址，
+  // 自动通过同源的 /api-proxy/ 路径转发，避免任何浏览器的 CORS 拦截（特别是 SSE 场景）
+  const effectiveBase =
+    import.meta.env.DEV && /^https?:\/\//i.test(rawBase)
+      ? `${window.location.origin}/api-proxy/${rawBase}`
+      : rawBase
   const baseURL = effectiveBase || undefined
 
   switch (provider.kind) {
@@ -52,7 +51,7 @@ export async function resolveModel(
 ): Promise<LanguageModel | null> {
   const provider = findProvider(settings.providers, ref)
   if (!provider || !ref) return null
-  return createLanguageModel(provider, ref.modelId, resolveProxyOptions(settings))
+  return createLanguageModel(provider, ref.modelId)
 }
 
 export async function requireModel(
@@ -70,9 +69,8 @@ export async function requireModel(
 export async function testProviderConnection(
   provider: ProviderConfig,
   modelId: string,
-  proxy?: ProxyOptions,
 ): Promise<string> {
-  const model = await createLanguageModel(provider, modelId, proxy)
+  const model = await createLanguageModel(provider, modelId)
   const { text } = await generateText({
     model,
     prompt: '回复两个字：可用',

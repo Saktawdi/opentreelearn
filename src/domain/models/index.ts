@@ -99,6 +99,4 @@ export interface GlobalSettings {
   summaryModelRef: ModelRef | null
   contextBudget: number
   providers: ProviderConfig[]
-  proxyEnabled: boolean
-  proxyUrl: string
 }
