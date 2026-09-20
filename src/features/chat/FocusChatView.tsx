@@ -35,7 +35,6 @@ import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { ModelPicker } from '@/features/settings/ModelPicker'
 import { cn } from '@/lib/utils'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
@@ -105,7 +104,7 @@ export function FocusChatView({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
       {/* 顶部主导航栏 */}
-      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 bg-surface/50 px-4 backdrop-blur sm:px-6">
+      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/40 bg-transparent px-4 sm:px-6">
         {/* 左侧：面包屑上下文导航 */}
         <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
           <div className="flex items-center gap-1 text-[12.5px] text-muted">
@@ -151,13 +150,8 @@ export function FocusChatView({
           )}
         </div>
 
-        {/* 右侧：操作区、模型选择与画布入口 */}
+        {/* 右侧：操作区与画布入口 */}
         <div className="flex shrink-0 items-center gap-2">
-          <ModelPicker
-            value={chatModelRef}
-            onChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
-          />
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" className="text-muted">
@@ -223,7 +217,7 @@ export function FocusChatView({
 
       {/* 继承提示条 */}
       {forkInfo ? (
-        <div className="flex shrink-0 items-center justify-center border-b border-line/60 bg-accent-soft/20 px-4 py-1.5 text-center">
+        <div className="flex shrink-0 items-center justify-center border-b border-line/40 bg-accent-soft/15 px-4 py-1.5 text-center">
           <div className="flex items-center gap-1.5 text-[12px] text-accent/90">
             <GitBranch className="h-3.5 w-3.5" />
             <span>继承自《{forkInfo.title}》</span>
@@ -237,9 +231,15 @@ export function FocusChatView({
         <MessageList nodeId={node.id} />
 
         {hasChatModel ? (
-          <Composer key={node.id} nodeId={node.id} projectId={projectId} />
+          <Composer
+            key={node.id}
+            nodeId={node.id}
+            projectId={projectId}
+            chatModelRef={chatModelRef}
+            onChatModelChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
+          />
         ) : (
-          <div className={cn('shrink-0 border-t border-line/60 p-6 text-center')}>
+          <div className={cn('shrink-0 border-t border-line/40 p-6 text-center')}>
             <p className="text-[13px] leading-relaxed text-muted">
               还没有可用的对话模型。请先到{' '}
               <Link to="/settings" className="text-accent underline underline-offset-4">

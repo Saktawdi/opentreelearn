@@ -4,17 +4,28 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getRepositories } from '@/data'
-import type { Asset, Id, MessagePart } from '@/domain/models'
+import type { Asset, Id, MessagePart, ModelRef } from '@/domain/models'
 import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { ModelPicker } from '@/features/settings/ModelPicker'
 
 interface PendingImage {
   asset: Asset
   url: string
 }
 
-export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
+export function Composer({
+  nodeId,
+  projectId,
+  chatModelRef,
+  onChatModelChange,
+}: {
+  nodeId: Id
+  projectId: Id
+  chatModelRef?: ModelRef | null
+  onChatModelChange?: (ref: ModelRef | null) => void
+}) {
   const sendMessage = useWorkspaceStore((state) => state.sendMessage)
   const isStreaming = useWorkspaceStore((state) => state.streaming?.nodeId === nodeId)
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
@@ -109,7 +120,7 @@ export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
         void attach(imagesFromDataTransfer(event.dataTransfer))
       }}
       className={cn(
-        'shrink-0 border-t border-line p-3 transition-colors',
+        'shrink-0 border-t border-line/40 p-3 transition-colors',
         dragging ? 'bg-accent-soft/40' : 'bg-transparent',
       )}
     >
@@ -134,7 +145,7 @@ export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-line bg-canvas/60 transition-colors focus-within:border-accent/50">
+      <div className="rounded-xl border border-line/50 bg-canvas/40 transition-colors focus-within:border-accent/40">
         <textarea
           ref={textareaRef}
           value={text}
@@ -161,13 +172,21 @@ export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
         />
 
         <div className="flex items-center justify-between px-2.5 pb-2">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            {onChatModelChange ? (
+              <ModelPicker
+                value={chatModelRef}
+                onChange={onChatModelChange}
+                className="h-7 border-none bg-elevated/50 px-2 py-0 hover:bg-elevated text-ink-soft hover:text-ink"
+              />
+            ) : null}
+
             <Tooltip label="插入图片">
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-muted"
+                className="text-muted hover:text-ink"
               >
                 <ImagePlus className="h-4 w-4" />
               </Button>
@@ -183,7 +202,7 @@ export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
                 event.target.value = ''
               }}
             />
-            <span className="text-[11px] text-muted/70">Enter 发送 · Shift+Enter 换行</span>
+            <span className="hidden text-[11px] text-muted/60 sm:inline">Enter 发送 · Shift+Enter 换行</span>
           </div>
 
           {isStreaming ? (

@@ -48,8 +48,8 @@ const MessageBubble = memo(function MessageBubble({
         className={cn(
           'max-w-full',
           isUser
-            ? 'max-w-[86%] rounded-2xl rounded-br-md border border-line bg-elevated px-3.5 py-2.5'
-            : 'rounded-2xl rounded-bl-md border border-line/70 bg-surface px-3.5 py-3',
+            ? 'max-w-[86%] rounded-2xl rounded-br-md border border-line/50 bg-elevated/90 px-3.5 py-2.5'
+            : 'rounded-2xl rounded-bl-md border border-line/40 bg-surface/70 px-3.5 py-3',
         )}
       >
         {isUser ? (
@@ -121,7 +121,7 @@ function StreamingBubble() {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="rounded-2xl rounded-bl-md border border-accent/25 bg-surface px-3.5 py-3">
+      <div className="rounded-2xl rounded-bl-md border border-accent/20 bg-surface/70 px-3.5 py-3">
         {text ? (
           <MarkdownView content={text} />
         ) : (

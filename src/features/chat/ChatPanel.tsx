@@ -24,7 +24,6 @@ import type { Id } from '@/domain/models'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { ModelPicker } from '@/features/settings/ModelPicker'
 import { cn } from '@/lib/utils'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
@@ -103,11 +102,6 @@ export function ChatPanel({ nodeId, onClose }: { nodeId: Id; onClose: () => void
           </button>
         )}
 
-        <ModelPicker
-          value={chatModelRef}
-          onChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
-        />
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="text-muted">
@@ -172,9 +166,15 @@ export function ChatPanel({ nodeId, onClose }: { nodeId: Id; onClose: () => void
 
       <MessageList nodeId={node.id} />
 
-      {hasChatModel ? (
-        <Composer key={node.id} nodeId={node.id} projectId={projectId} />
-      ) : (
+        {hasChatModel ? (
+          <Composer
+            key={node.id}
+            nodeId={node.id}
+            projectId={projectId}
+            chatModelRef={chatModelRef}
+            onChatModelChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
+          />
+        ) : (
         <div className={cn('shrink-0 border-t border-line p-4')}>
           <p className="text-[12.5px] leading-relaxed text-muted">
             还没有可用的对话模型。请先到{' '}
