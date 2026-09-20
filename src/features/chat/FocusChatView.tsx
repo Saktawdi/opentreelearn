@@ -232,27 +232,23 @@ export function FocusChatView({
         </div>
       ) : null}
 
-      {/* 沉浸对话主舞台（宽度自适应铺满容器，内边距自适应，兼顾大屏排版） */}
+      {/* 沉浸对话主舞台（完全铺满容器宽度） */}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
-        <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-1 flex-col px-4 sm:px-8">
-          <MessageList nodeId={node.id} />
+        <MessageList nodeId={node.id} />
 
-          {hasChatModel ? (
-            <div className="py-4 sm:py-5 sm:pt-2">
-              <Composer key={node.id} nodeId={node.id} projectId={projectId} />
-            </div>
-          ) : (
-            <div className={cn('shrink-0 border-t border-line p-6 text-center')}>
-              <p className="text-[13px] leading-relaxed text-muted">
-                还没有可用的对话模型。请先到{' '}
-                <Link to="/settings" className="text-accent underline underline-offset-4">
-                  配置
-                </Link>{' '}
-                页填写 BYOK 提供商与模型密钥，或在上方切换模型。
-              </p>
-            </div>
-          )}
-        </div>
+        {hasChatModel ? (
+          <Composer key={node.id} nodeId={node.id} projectId={projectId} />
+        ) : (
+          <div className={cn('shrink-0 border-t border-line/60 p-6 text-center')}>
+            <p className="text-[13px] leading-relaxed text-muted">
+              还没有可用的对话模型。请先到{' '}
+              <Link to="/settings" className="text-accent underline underline-offset-4">
+                配置
+              </Link>{' '}
+              页填写 BYOK 提供商与模型密钥，或在上方切换模型。
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 删除确认对话框 */}

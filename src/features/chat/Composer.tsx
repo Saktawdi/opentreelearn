@@ -110,7 +110,7 @@ export function Composer({ nodeId, projectId }: { nodeId: Id; projectId: Id }) {
       }}
       className={cn(
         'shrink-0 border-t border-line p-3 transition-colors',
-        dragging ? 'bg-accent-soft/40' : 'bg-surface',
+        dragging ? 'bg-accent-soft/40' : 'bg-transparent',
       )}
     >
       {pending.length > 0 ? (
