@@ -42,7 +42,10 @@ interface WorkspaceState {
   reset: () => void
   selectNode: (id: Id | null) => void
   refreshNodes: () => Promise<void>
-  startRootNode: (question: string) => Promise<Node | null>
+  startRootNode: (
+    question: string,
+    position?: { x: number; y: number } | null,
+  ) => Promise<Node | null>
   applyAction: (
     kind: NodeActionKind,
     sourceNodeId: Id,
@@ -155,7 +158,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       })
     },
 
-    startRootNode: async (question) => {
+    startRootNode: async (question, position = null) => {
       const projectId = get().projectId
       if (!projectId) return null
 
@@ -166,7 +169,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         parentId: null,
         forkFrom: null,
         title: '新节点',
-        position: null,
+        position,
         status: 'active',
         createdAt: now,
         updatedAt: now,
