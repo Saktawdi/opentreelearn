@@ -270,6 +270,11 @@
   stroke: color-mix(in oklab, var(--color-accent) 55%, var(--color-line-strong));
 }
 
+.react-flow__edge.mini-edge .react-flow__edge-path {
+  stroke-width: 1.2;
+  stroke: color-mix(in oklab, var(--color-line-strong) 80%, transparent);
+}
+
 .react-flow__handle {
   width: 6px;
   height: 6px;

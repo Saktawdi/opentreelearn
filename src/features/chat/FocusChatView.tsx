@@ -105,7 +105,7 @@ export function FocusChatView({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
       {/* 顶部主导航栏 */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface/85 px-4 backdrop-blur sm:px-6">
+      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 bg-surface/50 px-4 backdrop-blur sm:px-6">
         {/* 左侧：面包屑上下文导航 */}
         <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
           <div className="flex items-center gap-1 text-[12.5px] text-muted">
@@ -232,25 +232,27 @@ export function FocusChatView({
         </div>
       ) : null}
 
-      {/* 沉浸对话主舞台（宽度自适应居中） */}
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-1 flex-col">
-        <MessageList nodeId={node.id} />
+      {/* 沉浸对话主舞台（宽度自适应铺满容器，内边距自适应，兼顾大屏排版） */}
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-1 flex-col px-4 sm:px-8">
+          <MessageList nodeId={node.id} />
 
-        {hasChatModel ? (
-          <div className="p-4 sm:p-6 sm:pt-2">
-            <Composer key={node.id} nodeId={node.id} projectId={projectId} />
-          </div>
-        ) : (
-          <div className={cn('shrink-0 border-t border-line p-6 text-center')}>
-            <p className="text-[13px] leading-relaxed text-muted">
-              还没有可用的对话模型。请先到{' '}
-              <Link to="/settings" className="text-accent underline underline-offset-4">
-                配置
-              </Link>{' '}
-              页填写 BYOK 提供商与模型密钥，或在上方切换模型。
-            </p>
-          </div>
-        )}
+          {hasChatModel ? (
+            <div className="py-4 sm:py-5 sm:pt-2">
+              <Composer key={node.id} nodeId={node.id} projectId={projectId} />
+            </div>
+          ) : (
+            <div className={cn('shrink-0 border-t border-line p-6 text-center')}>
+              <p className="text-[13px] leading-relaxed text-muted">
+                还没有可用的对话模型。请先到{' '}
+                <Link to="/settings" className="text-accent underline underline-offset-4">
+                  配置
+                </Link>{' '}
+                页填写 BYOK 提供商与模型密钥，或在上方切换模型。
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 删除确认对话框 */}

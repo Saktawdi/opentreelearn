@@ -15,22 +15,39 @@ export interface LearnNodeData extends Record<string, unknown> {
   selected: boolean
 }
 
-export type LearnFlowNode = FlowNode<LearnNodeData, 'learn'>
+export type LearnFlowNode = FlowNode<LearnNodeData, 'learn' | 'dot'>
 
 export interface GraphResult {
   nodes: LearnFlowNode[]
   edges: Edge[]
 }
 
+export interface GraphOptions {
+  miniMapMode?: boolean
+}
+
 export function buildGraph(
   nodes: Node[],
   messagesByNode: Record<Id, Message[]>,
   selectedNodeId: Id | null,
+  options?: GraphOptions,
 ): GraphResult {
+  const isMini = Boolean(options?.miniMapMode)
   const active = nodes.filter((node) => node.status === 'active')
   const byId = new Map(active.map((node) => [node.id, node]))
   const index = buildTreeIndex(active)
-  const layout = computeTreeLayout(active)
+
+  // 当处于微缩点模式（Mini Map）时，节点占位和间距更紧凑
+  const layoutOptions = isMini
+    ? {
+        nodeWidth: 32,
+        nodeHeight: 32,
+        horizontalGap: 36,
+        verticalGap: 48,
+      }
+    : DEFAULT_LAYOUT_OPTIONS
+
+  const layout = computeTreeLayout(active, layoutOptions)
 
   const flowNodes: LearnFlowNode[] = active.map((node) => {
     const messages = messagesByNode[node.id] ?? []
@@ -39,12 +56,14 @@ export function buildGraph(
 
     return {
       id: node.id,
-      type: 'learn',
-      position: node.position ?? layout.positions.get(node.id) ?? { x: 0, y: 0 },
-      draggable: true,
+      type: isMini ? 'dot' : 'learn',
+      position: isMini
+        ? layout.positions.get(node.id) ?? { x: 0, y: 0 }
+        : node.position ?? layout.positions.get(node.id) ?? { x: 0, y: 0 },
+      draggable: !isMini,
       style: {
-        width: DEFAULT_LAYOUT_OPTIONS.nodeWidth,
-        height: DEFAULT_LAYOUT_OPTIONS.nodeHeight,
+        width: layoutOptions.nodeWidth,
+        height: layoutOptions.nodeHeight,
       },
       data: {
         nodeId: node.id,
@@ -67,7 +86,8 @@ export function buildGraph(
         id: `tree-${node.parentId}-${node.id}`,
         source: node.parentId,
         target: node.id,
-        type: 'smoothstep',
+        type: isMini ? 'smoothstep' : 'smoothstep',
+        className: isMini ? 'mini-edge' : undefined,
       })
     }
 
@@ -78,7 +98,7 @@ export function buildGraph(
         source: forkNodeId,
         target: node.id,
         type: 'default',
-        className: 'fork-edge',
+        className: isMini ? 'mini-edge fork-edge' : 'fork-edge',
       })
     }
   }

@@ -1,13 +1,12 @@
 import {
   Background,
   BackgroundVariant,
-  Controls,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { GitBranch, LayoutGrid, Loader2, Maximize2, Plus, Waypoints } from 'lucide-react'
+import { Loader2, Maximize2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +21,6 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
-import type { NodeActionKind } from '@/domain/node-ops/actions'
 import { FocusChatView } from '@/features/chat/FocusChatView'
 import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
@@ -31,9 +29,13 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
 import { buildGraph } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
+import { LearnNodeDot } from './LearnNodeDot'
 import { StarterPanel } from './StarterPanel'
 
-const nodeTypes = { learn: LearnNodeCard }
+const nodeTypes = {
+  learn: LearnNodeCard,
+  dot: LearnNodeDot,
+}
 
 export function CanvasPage() {
   return (
@@ -56,7 +58,6 @@ function CanvasWorkspace() {
   const loading = useWorkspaceStore((state) => state.loading)
   const error = useWorkspaceStore((state) => state.error)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
-  const setNodePosition = useWorkspaceStore((state) => state.setNodePosition)
   const relayout = useWorkspaceStore((state) => state.relayout)
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const startRootNode = useWorkspaceStore((state) => state.startRootNode)
@@ -69,28 +70,12 @@ function CanvasWorkspace() {
   const hasSummaryModel = hasModel(providers, summaryModelRef)
 
   // 布局状态：右侧地图宽度与折叠状态
-  const [mapWidth, setMapWidth] = useState<number>(440)
+  const [mapWidth, setMapWidth] = useState<number>(320)
   const [isMapCollapsed, setIsMapCollapsed] = useState<boolean>(false)
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null)
 
-  // 画布工具条悬浮显示逻辑（默认隐藏，鼠标在画布停留 1.2 秒后淡入显示）
-  const [toolbarVisible, setToolbarVisible] = useState(false)
-  const hoverTimer = useRef<number | null>(null)
-
-  const handleCanvasMouseEnter = () => {
-    if (hoverTimer.current) window.clearTimeout(hoverTimer.current)
-    hoverTimer.current = window.setTimeout(() => {
-      setToolbarVisible(true)
-    }, 1200)
-  }
-
-  const handleCanvasMouseLeave = () => {
-    if (hoverTimer.current) {
-      window.clearTimeout(hoverTimer.current)
-      hoverTimer.current = null
-    }
-    setToolbarVisible(false)
-  }
+  // 始终在侧边栏使用微缩点模式（Mini Map Dot 节点）
+  const isMiniMode = true
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
@@ -128,8 +113,8 @@ function CanvasWorkspace() {
   }, [projectId, openProject, reset])
 
   const graph = useMemo(
-    () => buildGraph(nodes, messagesByNode, selectedNodeId),
-    [nodes, messagesByNode, selectedNodeId],
+    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: isMiniMode }),
+    [nodes, messagesByNode, selectedNodeId, isMiniMode],
   )
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(graph.nodes)
@@ -148,11 +133,6 @@ function CanvasWorkspace() {
     }, 80)
     return () => window.clearTimeout(timer)
   }, [projectId, isEmpty, fitView])
-
-  const handleAction = (kind: NodeActionKind) => {
-    if (!selectedNodeId) return
-    void applyAction(kind, selectedNodeId)
-  }
 
   const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
@@ -233,7 +213,7 @@ function CanvasWorkspace() {
         )}
       </div>
 
-      {/* 中间拖拽调节手柄（当右侧未折叠时显示） */}
+      {/* 中间拖拽调节手柄（弱化实线边框，采用无缝自然渐隐过渡，消除割裂感） */}
       {!isMapCollapsed ? (
         <div
           onPointerDown={(event) => {
@@ -245,27 +225,25 @@ function CanvasWorkspace() {
             // 从右往左拖动增大，从左往右拖动减小
             const delta = resizeState.current.startX - event.clientX
             setMapWidth(
-              Math.min(Math.max(resizeState.current.startWidth + delta, 300), 800),
+              Math.min(Math.max(resizeState.current.startWidth + delta, 220), 600),
             )
           }}
           onPointerUp={(event) => {
             resizeState.current = null
             event.currentTarget.releasePointerCapture(event.pointerId)
           }}
-          className="group relative z-30 flex w-1.5 cursor-col-resize items-center justify-center border-l border-line bg-transparent transition-colors hover:bg-accent/40"
+          className="group relative z-30 flex w-1 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-accent/40"
         >
-          <div className="h-8 w-1 rounded-full bg-line-strong opacity-0 transition-opacity group-hover:opacity-100" />
+          <div className="h-10 w-1 rounded-full bg-line-strong/60 opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
       ) : null}
 
-      {/* 右侧：知识树导航地图（Canvas Map） */}
+      {/* 右侧：知识树导航地图（Canvas Map，微缩点树形态，背景同源融合） */}
       <div
         style={{ width: isMapCollapsed ? 0 : mapWidth }}
-        onMouseEnter={handleCanvasMouseEnter}
-        onMouseLeave={handleCanvasMouseLeave}
         className={cn(
-          'relative flex h-full flex-col overflow-hidden bg-surface transition-[width] duration-200 ease-in-out',
-          isMapCollapsed && 'pointer-events-none opacity-0',
+          'relative flex h-full flex-col overflow-hidden bg-canvas transition-[width] duration-200 ease-in-out border-l border-line/40',
+          isMapCollapsed && 'pointer-events-none opacity-0 border-l-0',
         )}
       >
         <ReactFlow
@@ -276,87 +254,34 @@ function CanvasWorkspace() {
           onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
           onPaneContextMenu={handlePaneContextMenu}
-          onNodeDragStop={(_, node) => void setNodePosition(node.id, node.position)}
           onPaneClick={() => {
             setContextMenu(null)
           }}
           fitView
-          fitViewOptions={{ padding: 0.34, maxZoom: 1 }}
+          fitViewOptions={{ padding: 0.28, maxZoom: 1.4 }}
           minZoom={0.2}
-          maxZoom={1.8}
+          maxZoom={2.4}
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1c2129" />
-          <Controls showInteractive={false} position="bottom-right" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#181c23" />
         </ReactFlow>
 
-        {/* 顶部悬浮工具栏：默认隐藏，鼠标在画布聚焦悬停几秒后显示 */}
-        <div
-          className={cn(
-            'pointer-events-none absolute left-3 top-3 right-3 flex items-center justify-between transition-all duration-300',
-            toolbarVisible ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0',
-          )}
-        >
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border border-line bg-surface/94 p-1 shadow-panel backdrop-blur">
-            <Link
-              to="/"
-              className="max-w-[140px] truncate rounded-lg px-2 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-elevated"
-            >
-              {project?.name ?? '项目'}
-            </Link>
-            <Badge tone="neutral" className="mr-1 text-[11px]">
+        {/* 顶部极简信息标与操作 */}
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-line/60 bg-surface/80 px-2 py-1 shadow-sm backdrop-blur">
+            <span className="text-[11px] text-muted">导航</span>
+            <Badge tone="neutral" className="text-[10px] px-1 py-0">
               {activeCount}
             </Badge>
-
-            <span className="mx-0.5 h-4 w-px bg-line" />
-
-            <Tooltip label="新建空白子节点">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={!selectedNodeId}
-                onClick={() => handleAction('child')}
+            <Tooltip label="重新居中视图">
+              <button
+                type="button"
+                onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
+                className="ml-0.5 rounded p-0.5 text-muted hover:text-ink"
               >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <Tooltip label="最新消息分支">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={!selectedNodeId}
-                onClick={() => handleAction('branch')}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <Tooltip label="最新消息发散">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={!selectedNodeId}
-                onClick={() => handleAction('diverge')}
-              >
-                <Waypoints className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-
-            <span className="mx-0.5 h-4 w-px bg-line" />
-
-            <Tooltip label="重新布局">
-              <Button variant="ghost" size="icon-sm" onClick={() => void relayout()}>
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </Button>
-            </Tooltip>
-            <Tooltip label="适配视图">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => void fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
-              >
-                <Maximize2 className="h-3.5 w-3.5" />
-              </Button>
+                <Maximize2 className="h-3 w-3" />
+              </button>
             </Tooltip>
           </div>
         </div>
