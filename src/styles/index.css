@@ -222,6 +222,29 @@
 
   .md-body .katex {
     font-size: 1.05em;
+    line-height: 1.2;
+    text-indent: 0;
+    white-space: normal;
+  }
+
+  /* 保护 KaTeX 内部精细排版元素免受 Tailwind / CSS reset 全局盒模型与继承样式干扰 */
+  .md-body .katex,
+  .md-body .katex * {
+    box-sizing: content-box;
+  }
+
+  .md-body .katex .fbox,
+  .md-body .katex .fcolorbox,
+  .md-body .katex .angl {
+    box-sizing: border-box;
+  }
+
+  .md-body .katex .vlist-t {
+    border-collapse: collapse;
+  }
+
+  .md-body .katex .vlist {
+    vertical-align: bottom;
   }
 
   .md-body .code-shell {
