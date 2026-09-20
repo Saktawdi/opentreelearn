@@ -26,11 +26,12 @@ export function mediaTypeOfDataUrl(dataUrl: string): string | undefined {
   return match ? match[1] : undefined
 }
 
+/** 每个 part 是一个独立语块（引用片段、正文、图片占位），用空行分隔才不会互相并进 Markdown 结构里。 */
 export function partsToText(parts: ContextPart[]): string {
   return parts
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text)
-    .join('\n')
+    .join('\n\n')
 }
 
 export function toModelMessages(context: ContextMessage[]): ModelMessage[] {

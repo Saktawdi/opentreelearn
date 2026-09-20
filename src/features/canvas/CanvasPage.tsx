@@ -7,10 +7,9 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { LayoutGrid, Loader2, Network, Sparkles, X } from 'lucide-react'
+import { LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -235,8 +234,8 @@ function CanvasWorkspace() {
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-[13.5px] text-ink">{error}</p>
-        <Link to="/" className="text-[13px] text-accent underline underline-offset-4">
+        <p className="text-sm text-ink">{error}</p>
+        <Link to="/" className="text-sm text-accent underline underline-offset-4">
           返回项目列表
         </Link>
       </div>
@@ -254,26 +253,21 @@ function CanvasWorkspace() {
             onToggleMap={() => setIsMapCollapsed((v) => !v)}
           />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-muted">
-            <p className="text-[14px]">暂无选中节点</p>
-            <p className="max-w-sm text-[12.5px] leading-relaxed text-muted/70">
-              请在右侧知识树地图中选择或新建一个节点，开启深度对话与知识推演。
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <p className="text-sm text-ink-soft">未选中节点</p>
+            <p className="max-w-xs text-xs leading-relaxed text-muted">
+              在右侧地图里点一个节点，或右键空白处新建根节点。
             </p>
             {isMapCollapsed ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsMapCollapsed(false)}
-                className="mt-2"
-              >
-                展开知识树地图
+              <Button variant="secondary" size="sm" onClick={() => setIsMapCollapsed(false)}>
+                展开地图
               </Button>
             ) : null}
           </div>
         )}
       </div>
 
-      {/* 中间拖拽调节手柄（弱化实线边框，采用无缝自然渐隐过渡，消除割裂感） */}
+      {/* 左右两栏之间的拖拽调宽手柄 */}
       {!isMapCollapsed ? (
         <div
           onPointerDown={(event) => {
@@ -292,18 +286,16 @@ function CanvasWorkspace() {
             resizeState.current = null
             event.currentTarget.releasePointerCapture(event.pointerId)
           }}
-          className="group relative z-30 flex w-1 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-accent/40"
-        >
-          <div className="h-10 w-1 rounded-full bg-line-strong/60 opacity-0 transition-opacity group-hover:opacity-100" />
-        </div>
+          className="relative z-30 w-px shrink-0 cursor-col-resize bg-line/60 transition-colors hover:bg-accent/50"
+        />
       ) : null}
 
-      {/* 右侧：知识树导航地图（Canvas Map，微缩点树形态，背景同源融合） */}
+      {/* 右侧：知识树微缩导航地图 */}
       <div
         style={{ width: isMapCollapsed ? 0 : mapWidth }}
         className={cn(
-          'relative flex h-full flex-col overflow-hidden bg-canvas transition-[width] duration-200 ease-in-out border-l border-line/40',
-          isMapCollapsed && 'pointer-events-none opacity-0 border-l-0',
+          'relative flex h-full flex-col overflow-hidden bg-canvas transition-[width] duration-200 ease-in-out',
+          isMapCollapsed && 'pointer-events-none opacity-0',
         )}
       >
         <ReactFlow
@@ -330,21 +322,18 @@ function CanvasWorkspace() {
 
         {/* 顶部极简信息标与操作 */}
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-line/60 bg-surface/80 px-2 py-1 shadow-sm backdrop-blur">
-            <span className="text-[11px] text-muted">导航</span>
-            <Badge tone="neutral" className="text-[10px] px-1 py-0">
-              {activeCount}
-            </Badge>
-            <Tooltip label="重新居中视图">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
+            <span className="text-2xs text-muted">{activeCount} 个节点</span>
+            <Tooltip label="重新居中">
               <button
                 type="button"
                 onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
-                className="ml-0.5 rounded p-0.5 text-muted hover:text-ink"
+                className="ml-1 rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
                 <LayoutGrid className="h-3 w-3" />
               </button>
             </Tooltip>
-            <Tooltip label="展开详情画布 (支持自由拖动节点)">
+            <Tooltip label="展开画布">
               <button
                 type="button"
                 onClick={() => {
@@ -354,7 +343,7 @@ function CanvasWorkspace() {
                     void detailApiRef.current?.fitView({ padding: 0.2, duration: 350, maxZoom: 1 })
                   }, 80)
                 }}
-                className="ml-0.5 rounded p-0.5 text-muted hover:text-accent"
+                className="rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
                 <Network className="h-3 w-3" />
               </button>
@@ -403,14 +392,11 @@ function CanvasWorkspace() {
             if (!open) setCreateRootDialog({ open: false, flowPosition: null, question: '' })
           }}
         >
-          <DialogContent className="w-[min(520px,100%)]">
+          <DialogContent className="w-[min(480px,100%)]">
             <DialogHeader>
-              <DialogTitle>新建根学习节点</DialogTitle>
-              <DialogDescription>
-                在画布指定位置开辟全新的知识主题，开始第一个问题。
-              </DialogDescription>
+              <DialogTitle>新建根节点</DialogTitle>
             </DialogHeader>
-            <div className="py-2">
+            <div className="py-1">
               <Textarea
                 value={createRootDialog.question}
                 autoFocus
@@ -424,7 +410,7 @@ function CanvasWorkspace() {
                     void handleCreateRoot()
                   }
                 }}
-                placeholder="你想从哪一个问题或概念开始？例如：不定积分的分部积分法怎么推导？"
+                placeholder="例如：不定积分的分部积分法怎么推导？"
               />
             </div>
             <DialogFooter>
@@ -441,7 +427,7 @@ function CanvasWorkspace() {
                 disabled={!createRootDialog.question.trim()}
                 onClick={() => void handleCreateRoot()}
               >
-                创建并开始
+                创建
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -449,11 +435,11 @@ function CanvasWorkspace() {
 
         {/* 节点删除确认对话框 */}
         <Dialog open={Boolean(nodeToDelete)} onOpenChange={(open) => !open && setNodeToDelete(null)}>
-          <DialogContent className="w-[min(420px,100%)]">
+          <DialogContent className="w-[min(400px,100%)]">
             <DialogHeader>
               <DialogTitle>删除节点</DialogTitle>
               <DialogDescription>
-                将删除该节点及其全部子节点与对话记录，无法恢复。
+                会连同它的全部子节点与对话一起删除，无法恢复。
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -469,7 +455,7 @@ function CanvasWorkspace() {
                   }
                 }}
               >
-                确认删除
+                删除
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -479,7 +465,7 @@ function CanvasWorkspace() {
       {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式）
           必须独占一个 ReactFlowProvider：与导航地图共享 store 时，本层卸载会 reset 掉地图的节点查找表 */}
       {isDetailCanvasOpen ? (
-        <div className="absolute inset-0 z-40 flex flex-col bg-canvas animate-in fade-in-0 duration-200">
+        <div className="reveal-layer absolute inset-0 z-40 flex flex-col bg-canvas">
           <ReactFlowProvider>
             <FlowApiBridge apiRef={detailApiRef} />
             <ReactFlow
@@ -502,19 +488,15 @@ function CanvasWorkspace() {
               proOptions={{ hideAttribution: true }}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
-              <Controls className="!bg-surface !border-line !shadow-panel" />
+              <Controls className="!border-line !bg-surface !shadow-panel" />
             </ReactFlow>
           </ReactFlowProvider>
 
           {/* 顶部浮动条：状态与返回主舞台按钮 */}
           <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
-            <div className="pointer-events-auto flex items-center gap-2 rounded-xl border border-line/60 bg-surface/85 px-3 py-1.5 shadow-panel backdrop-blur-md">
-              <Network className="h-4 w-4 text-accent" />
-              <span className="text-[13px] font-medium text-ink">节点详情画布</span>
-              <span className="text-[11px] text-muted">（卡片形态 · 支持拖拽整理）</span>
-              <Badge tone="neutral" className="text-[11px] ml-1">
-                {activeCount} 节点
-              </Badge>
+            <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-line bg-surface/90 px-3 py-1.5 backdrop-blur">
+              <span className="text-sm text-ink-soft">画布</span>
+              <span className="text-xs text-muted">{activeCount} 个节点</span>
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5">
@@ -522,25 +504,25 @@ function CanvasWorkspace() {
                 variant="secondary"
                 size="sm"
                 onClick={() => void relayout()}
-                className="gap-1.5 rounded-xl border-line/60 bg-surface/85 shadow-panel backdrop-blur-md"
+                className="gap-1.5 bg-surface/90 backdrop-blur"
               >
-                <Sparkles className="h-3.5 w-3.5 text-accent" />
-                自动重排
+                <LayoutGrid className="h-3.5 w-3.5 text-muted" />
+                重新布局
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => void detailApiRef.current?.fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })}
-                className="gap-1.5 rounded-xl border-line/60 bg-surface/85 shadow-panel backdrop-blur-md"
+                className="gap-1.5 bg-surface/90 backdrop-blur"
               >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                自适应居中
+                <Maximize2 className="h-3.5 w-3.5 text-muted" />
+                居中
               </Button>
               <Button
-                variant="primary"
+                variant="secondary"
                 size="sm"
                 onClick={() => setIsDetailCanvasOpen(false)}
-                className="gap-1.5 rounded-xl shadow-panel"
+                className="gap-1.5 bg-surface/90 backdrop-blur"
               >
                 <X className="h-3.5 w-3.5" />
                 返回对话

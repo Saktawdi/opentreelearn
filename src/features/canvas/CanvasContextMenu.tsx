@@ -4,8 +4,8 @@ import {
   LayoutGrid,
   Maximize2,
   Plus,
+  RefreshCw,
   RotateCcw,
-  Sparkles,
   Trash2,
   Waypoints,
 } from 'lucide-react'
@@ -48,9 +48,9 @@ function MenuItem({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
+      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
         disabled
-          ? 'cursor-not-allowed text-muted/40'
+          ? 'cursor-not-allowed text-faint'
           : danger
             ? 'text-danger hover:bg-danger-soft'
             : 'text-ink-soft hover:bg-elevated hover:text-ink'
@@ -107,8 +107,8 @@ export function CanvasContextMenu({
 
   if (!menu) return null
 
-  const menuWidth = 196
-  const menuHeight = menu.type === 'node' ? 240 : 160
+  const menuWidth = 188
+  const menuHeight = menu.type === 'node' ? 232 : 152
   const padding = 12
 
   let x = menu.x
@@ -127,7 +127,7 @@ export function CanvasContextMenu({
     <div
       ref={containerRef}
       style={{ left: x, top: y }}
-      className="fixed z-50 min-w-[196px] rounded-xl border border-line bg-surface/96 p-1.5 shadow-panel backdrop-blur animate-in fade-in-0 zoom-in-95 duration-100"
+      className="menu-pop fixed z-50 min-w-[188px] rounded-lg border border-line bg-surface p-1 shadow-panel"
     >
       {menu.type === 'node' ? (
         <>
@@ -141,7 +141,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<GitBranch className="h-3.5 w-3.5" />}
-            label="最新消息分支"
+            label="从最新消息分支"
             onClick={() => {
               onNodeAction('branch', menu.nodeId)
               onClose()
@@ -149,7 +149,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<Waypoints className="h-3.5 w-3.5" />}
-            label="最新消息发散"
+            label="从最新消息发散"
             onClick={() => {
               onNodeAction('diverge', menu.nodeId)
               onClose()
@@ -157,7 +157,7 @@ export function CanvasContextMenu({
           />
           <MenuSeparator />
           <MenuItem
-            icon={<Sparkles className="h-3.5 w-3.5" />}
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
             label="重新生成摘要"
             disabled={!hasSummaryModel}
             onClick={() => {
@@ -188,7 +188,7 @@ export function CanvasContextMenu({
         <>
           <MenuItem
             icon={<Plus className="h-3.5 w-3.5" />}
-            label="在此处新建根节点"
+            label="在此新建根节点"
             onClick={() => {
               onCreateRootAt(menu.flowPosition)
               onClose()
@@ -205,7 +205,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<Maximize2 className="h-3.5 w-3.5" />}
-            label="自适应视图"
+            label="居中"
             onClick={() => {
               onFitView()
               onClose()

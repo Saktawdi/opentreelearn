@@ -12,10 +12,8 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
     <Tooltip label={tooltipText} side="left">
       <div
         className={cn(
-          'group relative flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 cursor-pointer',
-          isSelected
-            ? 'ring-2 ring-accent ring-offset-2 ring-offset-canvas'
-            : 'hover:scale-125',
+          'group relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150',
+          isSelected ? 'ring-2 ring-accent ring-offset-2 ring-offset-canvas' : 'hover:scale-110',
         )}
       >
         <Handle type="target" position={Position.Top} className="opacity-0" isConnectable={false} />
@@ -26,7 +24,7 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
           className={cn(
             'flex h-6 w-6 items-center justify-center rounded-full border transition-colors',
             isSelected
-              ? 'border-accent bg-accent/15 shadow-[0_0_12px_rgba(224,167,104,0.4)]'
+              ? 'border-accent bg-accent/15'
               : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
           )}
         >
@@ -38,7 +36,7 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
                 ? 'bg-accent'
                 : data.childCount > 0
                   ? 'bg-ink-soft group-hover:bg-accent'
-                  : 'bg-muted/60 group-hover:bg-ink-soft',
+                  : 'bg-faint group-hover:bg-ink-soft',
             )}
           />
         </div>

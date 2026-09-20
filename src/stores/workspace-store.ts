@@ -355,7 +355,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       if (!projectId) return
 
       const hasContent = parts.some(
-        (part) => part.type === 'image' || (part.type === 'text' && part.text.trim().length > 0),
+        (part) =>
+          part.type === 'image' ||
+          ((part.type === 'text' || part.type === 'quote') && part.text.trim().length > 0),
       )
       if (!hasContent) return
 

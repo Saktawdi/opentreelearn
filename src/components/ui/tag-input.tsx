@@ -32,10 +32,10 @@ export function TagInput({
   }
 
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-canvas/60 px-2 py-1.5 transition-colors focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-line bg-canvas/60 px-2 py-1 transition-colors focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/20">
       {value.map((item) => (
         <Badge key={item} tone="neutral" className="gap-1 pr-1">
-          <span className="font-mono text-[11px]">{item}</span>
+          <span className="font-mono text-2xs">{item}</span>
           <button
             type="button"
             onClick={() => onChange(value.filter((entry) => entry !== item))}
@@ -60,7 +60,7 @@ export function TagInput({
         }}
         onBlur={commit}
         placeholder={value.length > 0 ? '' : placeholder}
-        className="min-w-[90px] flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted/70"
+        className="min-w-[90px] flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
       />
     </div>
   )

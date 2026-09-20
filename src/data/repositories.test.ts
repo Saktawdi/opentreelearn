@@ -56,6 +56,22 @@ describe('project repository', () => {
     await repositories.projects.remove('b')
     expect(await repositories.projects.get('b')).toBeUndefined()
   })
+
+  // 历史记录没有 schema 约束，字段缺失的记录必须在这里被修好，
+  // 而不是让 UI 层的 `project.tags.map` 抛异常把整棵树卸载成白屏。
+  it('repairs malformed rows on read and never drops them', async () => {
+    // 刻意绕过仓储直接写库，模拟旧版本 / 手工导入留下的残缺记录
+    await db.projects.put({ id: 'legacy', name: '老项目' } as unknown as Project)
+
+    const list = await repositories.projects.list()
+    expect(list.map((project) => project.id)).toEqual(['legacy'])
+    expect(list[0].tags).toEqual([])
+    expect(list[0].updatedAt).toBe(list[0].createdAt)
+
+    const loaded = await repositories.projects.get('legacy')
+    expect(loaded?.tags).toEqual([])
+    expect(loaded?.name).toBe('老项目')
+  })
 })
 
 describe('node and message repositories', () => {

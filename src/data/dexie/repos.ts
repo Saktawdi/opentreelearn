@@ -1,5 +1,5 @@
-import { createDefaultSettings } from '@/domain/defaults'
-import type { GlobalSettings, Id } from '@/domain/models'
+import type { GlobalSettings, Id, Project } from '@/domain/models'
+import { normalizeGlobalSettings, normalizeProject } from '@/domain/normalize'
 import type {
   AssetRepository,
   MessageRepository,
@@ -13,8 +13,21 @@ import { SETTINGS_KEY, type AppDatabase } from './db'
 
 function createProjectRepository(db: AppDatabase): ProjectRepository {
   return {
-    list: () => db.projects.orderBy('updatedAt').reverse().toArray(),
-    get: (id) => db.projects.get(id),
+    // 刻意不用 `orderBy('updatedAt')`：updatedAt 是索引，而 Dexie 在索引键为
+    // undefined / 非法类型时会**静默跳过**该记录 —— 一条缺字段的历史数据会从列表里
+    // 直接消失。归一化能修复字段，却救不回已经被索引筛掉的记录，所以这里全量读出、
+    // 在内存里排序，保证「读回来的记录数 == 库里的记录数」。
+    list: async () => {
+      const rows = await db.projects.toArray()
+      return rows
+        .map((row) => normalizeProject(row))
+        .filter((project): project is Project => project !== null)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+    },
+    get: async (id) => {
+      const row = await db.projects.get(id)
+      return row ? (normalizeProject(row) ?? undefined) : undefined
+    },
     create: async (project) => {
       await db.projects.put(project)
     },
@@ -105,12 +118,7 @@ function createAssetRepository(db: AppDatabase): AssetRepository {
 
 function createSettingsRepository(db: AppDatabase): SettingsRepository {
   return {
-    load: async () => {
-      const record = await db.settings.get(SETTINGS_KEY)
-      return record
-        ? { ...createDefaultSettings(), ...record.value }
-        : createDefaultSettings()
-    },
+    load: async () => normalizeGlobalSettings((await db.settings.get(SETTINGS_KEY))?.value),
     save: async (settings: GlobalSettings) => {
       await db.settings.put({ key: SETTINGS_KEY, value: settings })
     },

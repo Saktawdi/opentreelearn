@@ -35,7 +35,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
     <div className="code-shell group/code relative">
       {language ? (
-        <span className="pointer-events-none absolute right-9 top-2 text-[11px] text-muted/70">
+        <span className="pointer-events-none absolute right-9 top-2 text-2xs text-faint">
           {language}
         </span>
       ) : null}

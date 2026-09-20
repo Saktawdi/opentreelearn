@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogField,
   DialogFooter,
   DialogHeader,
@@ -62,16 +61,14 @@ export function ProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* 没有描述文本时显式置空 describedby，避免 radix 在控制台告警 */}
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{project ? '编辑项目' : '新建学习项目'}</DialogTitle>
-          <DialogDescription>
-            一个项目对应一张画布，用来把「怎么一步步学会的」这条路走完并沉淀下来。
-          </DialogDescription>
+          <DialogTitle>{project ? '编辑项目' : '新建项目'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <DialogField label="项目名称">
+          <DialogField label="名称">
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -83,7 +80,7 @@ export function ProjectDialog({
             />
           </DialogField>
 
-          <DialogField label="一句话描述" hint="可选，帮助你在项目列表里快速认出来。">
+          <DialogField label="描述" hint="可选。">
             <Textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -92,8 +89,8 @@ export function ProjectDialog({
             />
           </DialogField>
 
-          <DialogField label="标签" hint="回车或逗号分隔，例如：数学、考研、机器学习">
-            <TagInput value={tags} onChange={setTags} placeholder="添加标签" />
+          <DialogField label="标签" hint="回车或逗号分隔。">
+            <TagInput value={tags} onChange={setTags} placeholder="数学、考研…" />
           </DialogField>
         </div>
 
@@ -102,7 +99,7 @@ export function ProjectDialog({
             取消
           </Button>
           <Button variant="primary" onClick={() => void submit()} disabled={!name.trim() || saving}>
-            {project ? '保存' : '创建并开始'}
+            {project ? '保存' : '创建'}
           </Button>
         </DialogFooter>
       </DialogContent>

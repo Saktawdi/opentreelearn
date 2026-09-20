@@ -1,6 +1,7 @@
 import { lazy } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { RouteError } from '@/components/RouteError'
 import { ProjectsPage } from '@/features/projects/ProjectsPage'
 
 const CanvasPage = lazy(() =>
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppShell />,
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <ProjectsPage /> },
       { path: 'p/:projectId', element: <CanvasPage /> },

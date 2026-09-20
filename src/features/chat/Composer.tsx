@@ -1,10 +1,11 @@
-import { ImagePlus, Loader2, SendHorizontal, Square, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ImagePlus, Loader2, MessageSquareQuote, SendHorizontal, Square, X } from 'lucide-react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getRepositories } from '@/data'
 import type { Asset, Id, MessagePart, ModelRef } from '@/domain/models'
+import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -15,12 +16,19 @@ interface PendingImage {
   url: string
 }
 
+export interface ComposerHandle {
+  /** 把框选的原文追加成输入框顶部的引用胶囊（重复片段不重复添加）。 */
+  appendQuote: (text: string) => void
+}
+
 export function Composer({
+  ref,
   nodeId,
   projectId,
   chatModelRef,
   onChatModelChange,
 }: {
+  ref?: Ref<ComposerHandle>
   nodeId: Id
   projectId: Id
   chatModelRef?: ModelRef | null
@@ -31,12 +39,26 @@ export function Composer({
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
 
   const [text, setText] = useState('')
+  const [quotes, setQuotes] = useState<string[]>([])
   const [pending, setPending] = useState<PendingImage[]>([])
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef<PendingImage[]>([])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      appendQuote: (value) => {
+        const clean = value.trim()
+        if (!clean) return
+        setQuotes((previous) => (previous.includes(clean) ? previous : [...previous, clean]))
+        textareaRef.current?.focus()
+      },
+    }),
+    [],
+  )
 
   useEffect(() => {
     pendingRef.current = pending
@@ -75,15 +97,21 @@ export function Composer({
     })
   }
 
+  const removeQuote = (value: string) => {
+    setQuotes((previous) => previous.filter((quote) => quote !== value))
+  }
+
   const submit = async () => {
     const trimmed = text.trim()
     if (busy || isStreaming) return
-    if (!trimmed && pending.length === 0) return
+    if (!trimmed && quotes.length === 0 && pending.length === 0) return
 
     setBusy(true)
     try {
       const repositories = getRepositories()
       const parts: MessagePart[] = []
+      // 引用片段排在正文之前：读起来就是「先引用，后提问」
+      for (const quote of quotes) parts.push({ type: 'quote', text: quote })
       if (trimmed) parts.push({ type: 'text', text: trimmed })
 
       for (const item of pending) {
@@ -93,6 +121,7 @@ export function Composer({
 
       for (const item of pending) URL.revokeObjectURL(item.url)
       setText('')
+      setQuotes([])
       setPending([])
       const element = textareaRef.current
       if (element) element.style.height = 'auto'
@@ -105,7 +134,8 @@ export function Composer({
     }
   }
 
-  const canSend = (text.trim().length > 0 || pending.length > 0) && !isStreaming && !busy
+  const canSend =
+    (text.trim().length > 0 || quotes.length > 0 || pending.length > 0) && !isStreaming && !busy
 
   return (
     <div
@@ -120,7 +150,7 @@ export function Composer({
         void attach(imagesFromDataTransfer(event.dataTransfer))
       }}
       className={cn(
-        'shrink-0 border-t border-line/40 p-3 transition-colors',
+        'shrink-0 border-t border-line/60 p-3 transition-colors',
         dragging ? 'bg-accent-soft/40' : 'bg-transparent',
       )}
     >
@@ -131,7 +161,7 @@ export function Composer({
               <img
                 src={item.url}
                 alt={item.asset.name ?? '待发送图片'}
-                className="h-16 w-16 rounded-lg border border-line object-cover"
+                className="h-16 w-16 rounded-md border border-line object-cover"
               />
               <button
                 type="button"
@@ -145,7 +175,30 @@ export function Composer({
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-line/50 bg-canvas/40 transition-colors focus-within:border-accent/40">
+      <div className="rounded-lg border border-line/60 bg-canvas/40 transition-colors focus-within:border-accent/40">
+        {quotes.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5 px-2 pt-2">
+            {quotes.map((quote) => (
+              <span
+                key={quote}
+                title={quote}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-accent/25 bg-accent-soft/50 py-0.5 pl-2 pr-1 text-2xs text-ink-soft"
+              >
+                <MessageSquareQuote className="h-3 w-3 shrink-0 text-accent/80" />
+                <span className="max-w-[280px] truncate">{normalizeWhitespace(quote)}</span>
+                <button
+                  type="button"
+                  aria-label="移除引用"
+                  onClick={() => removeQuote(quote)}
+                  className="rounded-full p-0.5 text-muted transition-colors hover:text-ink"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <textarea
           ref={textareaRef}
           value={text}
@@ -168,16 +221,16 @@ export function Composer({
             }
           }}
           placeholder="继续追问，或粘贴一张图片…"
-          className="max-h-[180px] w-full resize-none bg-transparent px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-muted/70"
+          className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
         />
 
-        <div className="flex items-center justify-between px-2.5 pb-2">
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center justify-between px-2 pb-1.5">
+          <div className="flex items-center gap-1">
             {onChatModelChange ? (
               <ModelPicker
                 value={chatModelRef}
                 onChange={onChatModelChange}
-                className="h-7 border-none bg-elevated/50 px-2 py-0 hover:bg-elevated text-ink-soft hover:text-ink"
+                className="h-7 px-1.5 text-muted hover:text-ink"
               />
             ) : null}
 
@@ -202,7 +255,9 @@ export function Composer({
                 event.target.value = ''
               }}
             />
-            <span className="hidden text-[11px] text-muted/60 sm:inline">Enter 发送 · Shift+Enter 换行</span>
+            <span className="hidden pl-1 text-2xs text-faint sm:inline">
+              Enter 发送 · Shift+Enter 换行
+            </span>
           </div>
 
           {isStreaming ? (
@@ -221,7 +276,7 @@ export function Composer({
               size="icon-sm"
               onClick={() => void submit()}
               disabled={!canSend}
-              className="rounded-full shadow-sm"
+              className="rounded-full"
               title="发送"
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizontal className="h-3.5 w-3.5" />}

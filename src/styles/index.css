@@ -8,22 +8,35 @@
   --color-line-strong: #313842;
   --color-ink: #e8ebef;
   --color-ink-soft: #b6bdc7;
-  --color-muted: #7e8795;
+  --color-muted: #868f9d;
+  /* 第四级灰：占位符与禁用态。深浅只用这四个色，不再叠 /50 /70 /80 这类透明度。 */
+  --color-faint: #6b7482;
   --color-accent: #e0a768;
-  --color-accent-soft: #3a2c1a;
+  --color-accent-soft: #33281a;
   --color-accent-ink: #17100a;
   --color-danger: #e0705a;
   --color-danger-soft: #3a1f1a;
   --color-success: #63bf93;
   --color-info: #6f9fd8;
 
+  /* 字号阶梯。需要新尺寸先在这里加一级，不要在组件里写任意值。 */
+  --text-2xs: 0.6875rem; /* 11px — 徽标、计数 */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem; /* 12px — 辅助说明、元信息 */
+  --text-sm: 0.8125rem; /* 13px — 正文、控件 */
+  --text-base: 0.875rem; /* 14px — 主要文本、卡片标题 */
+  --text-lg: 1rem; /* 16px — 区块标题、对话框标题 */
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.25rem; /* 20px — 页面标题 */
+  --text-xl--line-height: 1.3;
+
   --font-sans:
     system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
     sans-serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 
-  --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.03), 0 18px 48px -18px rgb(0 0 0 / 0.75);
-  --shadow-node: 0 1px 0 0 rgb(255 255 255 / 0.04), 0 12px 28px -14px rgb(0 0 0 / 0.7);
+  --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.03), 0 12px 30px -14px rgb(0 0 0 / 0.6);
+  --shadow-node: 0 1px 0 0 rgb(255 255 255 / 0.04), 0 8px 20px -12px rgb(0 0 0 / 0.55);
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -79,7 +92,7 @@
 
 @layer components {
   .md-body {
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     line-height: 1.75;
     color: var(--color-ink-soft);
     word-break: break-word;
@@ -198,7 +211,7 @@
 
   .md-body img {
     max-width: 100%;
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid var(--color-line);
   }
 
@@ -220,6 +233,13 @@
     overflow-y: hidden;
   }
 
+  /*
+   * 层叠提醒：katex.min.css 没有包在 @layer 里，而本文件整体在 @layer components ——
+   * 无层样式优先于任何 @layer。所以下面这些属性里，凡是 katex.min.css 自己也声明过的
+   * 都会被 KaTeX 的值盖掉（font-size 实际来自它的 font 简写 1.21em；.katex-display 的
+   * margin 实际是 1em 0）；只有它没声明的属性（box-sizing、padding、overflow 等，见下方）
+   * 才真正落到元素上。改这里之前先确认目标属性 KaTeX 自己有没有声明。
+   */
   .md-body .katex {
     font-size: 1.05em;
     line-height: 1.2;
@@ -256,7 +276,7 @@
     margin: 0;
     padding: 0.95em 1.05em;
     border: 1px solid var(--color-line);
-    border-radius: 10px;
+    border-radius: 6px;
     overflow-x: auto;
     font-family: var(--font-mono);
     font-size: 0.84em;
@@ -316,7 +336,7 @@
 
 .react-flow__controls {
   box-shadow: var(--shadow-panel);
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--color-line);
 }
@@ -341,7 +361,7 @@
 .react-flow__minimap {
   background: color-mix(in oklab, var(--color-surface) 88%, transparent);
   border: 1px solid var(--color-line);
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 @keyframes overlay-in {
@@ -413,6 +433,17 @@
 
 .pop-panel[data-state='open'] {
   animation: pop-in 160ms var(--ease-out-expo);
+}
+
+/* 无 Radix data-state 的浮层（画布右键菜单）与全屏浮层各自复用同一组关键帧。
+   原先这两处写的是 tailwindcss-animate 的 animate-in / fade-in-0 / zoom-in-95，
+   但本项目没装该插件，等于没有任何动画。 */
+.menu-pop {
+  animation: pop-in 140ms var(--ease-out-expo);
+}
+
+.reveal-layer {
+  animation: overlay-in 200ms var(--ease-out-expo);
 }
 
 @media (prefers-reduced-motion: reduce) {

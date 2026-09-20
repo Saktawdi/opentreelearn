@@ -4,11 +4,11 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium outline-none transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-150 active:translate-y-px disabled:pointer-events-none disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-accent/45',
+  'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium outline-none transition-[background-color,border-color,color,opacity] duration-150 disabled:pointer-events-none disabled:opacity-45 focus-visible:ring-2 focus-visible:ring-accent/45',
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-accent-ink hover:bg-accent/92',
+        primary: 'bg-accent text-accent-ink hover:bg-accent/88',
         secondary: 'border border-line bg-elevated text-ink hover:border-line-strong hover:bg-line/55',
         ghost: 'text-ink-soft hover:bg-elevated hover:text-ink',
         subtle: 'bg-line/45 text-ink-soft hover:bg-line/70 hover:text-ink',
@@ -16,9 +16,9 @@ const buttonVariants = cva(
         link: 'text-accent underline-offset-4 hover:underline',
       },
       size: {
-        sm: 'h-7 px-2.5 text-[13px]',
-        md: 'h-9 px-3.5',
-        lg: 'h-10 px-5',
+        sm: 'h-7 px-2.5 text-xs',
+        md: 'h-8 px-3',
+        lg: 'h-9 px-4',
         icon: 'h-8 w-8',
         'icon-sm': 'h-7 w-7',
       },

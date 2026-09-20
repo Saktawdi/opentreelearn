@@ -5,11 +5,11 @@ import {
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
-  Sparkles,
+  RefreshCw,
   Trash2,
   Waypoints,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,9 +35,9 @@ import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { cn } from '@/lib/utils'
-import { Composer } from './Composer'
+import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
+import { SelectionMenu } from './SelectionMenu'
 
 export function FocusChatView({
   nodeId,
@@ -68,6 +68,7 @@ export function FocusChatView({
   const [renaming, setRenaming] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const composerRef = useRef<ComposerHandle>(null)
 
   // 祖先路径链路（面包屑）
   const breadcrumbs = useMemo(() => {
@@ -83,10 +84,10 @@ export function FocusChatView({
     const sourceMessage = (messagesByNode[node.forkFrom.nodeId] ?? []).find(
       (message) => message.id === node.forkFrom?.messageId,
     )
-    return {
-      title: sourceNode?.title ?? '已删除的节点',
-      preview: sourceMessage ? messagePreview(sourceMessage, 96) : null,
-    }
+    const title = sourceNode?.title ?? '已删除的节点'
+    const preview = sourceMessage ? messagePreview(sourceMessage, 96) : null
+    // 源消息文本常常就是源节点标题，此时再展示一次只会读成重复
+    return { title, preview: preview && preview !== title ? preview : null }
   }, [node, nodes, messagesByNode])
 
   if (!node || !projectId) return null
@@ -104,12 +105,12 @@ export function FocusChatView({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
       {/* 顶部主导航栏（无边框、透明背景） */}
-      <header className="flex h-13 shrink-0 items-center justify-between bg-transparent px-4 sm:px-6">
+      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-5">
         {/* 左侧：面包屑上下文导航 */}
         <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
-          <div className="flex min-w-0 items-center gap-1 overflow-hidden text-[12.5px] text-muted">
+          <div className="flex min-w-0 items-center gap-1 overflow-hidden text-xs text-muted">
             {breadcrumbs.slice(0, -1).map((ancestor) => (
-              <div key={ancestor.id} className="flex items-center gap-1 shrink-0">
+              <div key={ancestor.id} className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   onClick={() => selectNode(ancestor.id)}
@@ -133,7 +134,7 @@ export function FocusChatView({
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) void commitRename()
                 if (event.key === 'Escape') setRenaming(false)
               }}
-              className="min-w-[140px] max-w-[320px] rounded-md border border-accent/50 bg-elevated px-2 py-0.5 text-[14px] font-semibold text-ink outline-none"
+              className="min-w-[140px] max-w-[320px] rounded-md border border-accent/50 bg-elevated px-2 py-0.5 text-base font-medium text-ink outline-none"
             />
           ) : (
             <button
@@ -143,7 +144,7 @@ export function FocusChatView({
                 setRenaming(true)
               }}
               title="双击重命名"
-              className="max-w-[320px] truncate text-left text-[14px] font-semibold text-ink transition-colors hover:text-accent sm:max-w-[420px]"
+              className="max-w-[320px] truncate text-left text-base font-medium text-ink transition-colors hover:text-accent sm:max-w-[420px]"
             >
               {node.title}
             </button>
@@ -158,8 +159,8 @@ export function FocusChatView({
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[228px]">
-              <DropdownMenuLabel>节点分支与整理</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-[212px]">
+              <DropdownMenuLabel>节点</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => void applyAction('child', node.id)}>
                 <GitBranch className="h-3.5 w-3.5" />
                 新建空白子节点
@@ -177,7 +178,7 @@ export function FocusChatView({
                 disabled={!hasSummaryModel}
                 onSelect={() => void refreshSummary(node.id)}
               >
-                <Sparkles className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3.5 w-3.5" />
                 重新生成摘要
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -198,7 +199,7 @@ export function FocusChatView({
           <span className="mx-0.5 h-4 w-px bg-line/40" />
 
           {/* 切换/展开折叠右侧知识树地图 */}
-          <Tooltip label={isMapCollapsed ? '展开知识树地图 (Ctrl+M)' : '收起知识树地图 (Ctrl+M)'}>
+          <Tooltip label={isMapCollapsed ? '展开地图 (Ctrl+M)' : '收起地图 (Ctrl+M)'}>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -217,12 +218,12 @@ export function FocusChatView({
 
       {/* 继承提示条 */}
       {forkInfo ? (
-        <div className="flex shrink-0 items-center justify-center bg-accent-soft/15 px-4 py-1.5 text-center">
-          <div className="flex items-center gap-1.5 text-[12px] text-accent/90">
-            <GitBranch className="h-3.5 w-3.5" />
-            <span>继承自《{forkInfo.title}》</span>
-            {forkInfo.preview ? <span className="text-muted">“{forkInfo.preview}”</span> : null}
-          </div>
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-line/60 px-5 py-1.5 text-xs text-muted">
+          <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent/70" />
+          <span className="shrink-0">继承自 {forkInfo.title}</span>
+          {forkInfo.preview ? (
+            <span className="truncate text-faint">“{forkInfo.preview}”</span>
+          ) : null}
         </div>
       ) : null}
 
@@ -231,33 +232,40 @@ export function FocusChatView({
         <MessageList nodeId={node.id} />
 
         {hasChatModel ? (
-          <Composer
-            key={node.id}
-            nodeId={node.id}
-            projectId={projectId}
-            chatModelRef={chatModelRef}
-            onChatModelChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
-          />
+          <>
+            <Composer
+              key={node.id}
+              ref={composerRef}
+              nodeId={node.id}
+              projectId={projectId}
+              chatModelRef={chatModelRef}
+              onChatModelChange={(ref) => void updateProjectSettings({ chatModelRef: ref ?? undefined })}
+            />
+            {/* 框选消息正文后的悬浮菜单；引用动作直接落到上面这个输入框 */}
+            <SelectionMenu
+              key={`selection-${node.id}`}
+              nodeId={node.id}
+              onQuote={(text) => composerRef.current?.appendQuote(text)}
+            />
+          </>
         ) : (
-          <div className={cn('shrink-0 border-t border-line/40 p-6 text-center')}>
-            <p className="text-[13px] leading-relaxed text-muted">
-              还没有可用的对话模型。请先到{' '}
-              <Link to="/settings" className="text-accent underline underline-offset-4">
-                配置
-              </Link>{' '}
-              页填写 BYOK 提供商与模型密钥，或在上方切换模型。
-            </p>
+          <div className="shrink-0 border-t border-line/60 px-5 py-4 text-sm text-muted">
+            未配置对话模型，先到{' '}
+            <Link to="/settings" className="text-accent underline underline-offset-4">
+              配置
+            </Link>{' '}
+            页添加。
           </div>
         )}
       </div>
 
       {/* 删除确认对话框 */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="w-[min(420px,100%)]">
+        <DialogContent className="w-[min(400px,100%)]">
           <DialogHeader>
             <DialogTitle>删除节点</DialogTitle>
             <DialogDescription>
-              将删除「{node.title}」及其全部子节点与对话记录，无法恢复。
+              会连同「{node.title}」的全部子节点与对话一起删除，无法恢复。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -271,7 +279,7 @@ export function FocusChatView({
                 void deleteNode(node.id)
               }}
             >
-              确认删除
+              删除
             </Button>
           </DialogFooter>
         </DialogContent>

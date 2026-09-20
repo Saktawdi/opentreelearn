@@ -40,14 +40,14 @@ export function ModelPicker({
           className={cn('max-w-[240px] justify-between gap-1.5 text-muted', className)}
         >
           <Cpu className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-[12px]">{label ?? placeholder}</span>
+          <span className="truncate text-xs">{label ?? placeholder}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-h-[320px] w-[260px] overflow-y-auto">
+      <DropdownMenuContent align="end" className="max-h-[320px] w-[248px] overflow-y-auto">
         {withModels.length === 0 ? (
-          <div className="px-2.5 py-3 text-[12px] leading-relaxed text-muted">
-            还没有可用模型，先到「配置」页添加提供商与模型。
+          <div className="px-2 py-3 text-xs leading-relaxed text-muted">
+            还没有可用模型，先到「配置」添加。
           </div>
         ) : null}
 
@@ -66,7 +66,7 @@ export function ModelPicker({
                     key={`${provider.id}:${modelId}`}
                     onSelect={() => onChange({ providerId: provider.id, modelId })}
                   >
-                    <span className="flex-1 truncate font-mono text-[12px]">{modelId}</span>
+                    <span className="flex-1 truncate font-mono text-xs">{modelId}</span>
                     {selected ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
                   </DropdownMenuItem>
                 )
@@ -78,7 +78,7 @@ export function ModelPicker({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onChange(null)}>
-              <span className="flex-1 text-[12px] text-muted">清除选择</span>
+              <span className="flex-1 text-xs text-muted">清除选择</span>
             </DropdownMenuItem>
           </>
         ) : null}

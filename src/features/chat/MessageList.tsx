@@ -1,7 +1,7 @@
 import { GitBranch, Waypoints } from 'lucide-react'
 import { memo, useEffect, useRef } from 'react'
 import { Tooltip } from '@/components/ui/tooltip'
-import { messageImageIds, messageText } from '@/domain/messages'
+import { messageBodyText, messageImageIds, messageQuotes, messageText } from '@/domain/messages'
 import type { Id, Message } from '@/domain/models'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
@@ -40,22 +40,37 @@ const MessageBubble = memo(function MessageBubble({
 }) {
   const isUser = message.role === 'user'
   const text = messageText(message)
+  const quotes = messageQuotes(message)
+  const body = messageBodyText(message)
   const retryLast = useWorkspaceStore((state) => state.retryLast)
 
   return (
-    <div className={cn('group/message flex flex-col gap-1', isUser ? 'items-end' : 'items-stretch')}>
+    <div
+      data-message-id={message.id}
+      className={cn('group/message flex flex-col gap-1', isUser ? 'items-end' : 'items-stretch')}
+    >
       <div
         className={cn(
           'max-w-full',
           isUser
-            ? 'max-w-[86%] rounded-2xl rounded-br-md border border-line/50 bg-elevated/90 px-3.5 py-2.5'
-            : 'rounded-2xl rounded-bl-md border border-line/40 bg-surface/70 px-3.5 py-3',
+            ? 'max-w-[86%] rounded-xl rounded-br-sm border border-line/50 bg-elevated px-3.5 py-2.5'
+            : 'rounded-xl rounded-bl-sm border border-line/40 bg-surface/70 px-3.5 py-3',
         )}
       >
         {isUser ? (
-          text ? (
-            <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink">{text}</p>
-          ) : null
+          <div className="flex flex-col gap-2">
+            {quotes.map((quote, index) => (
+              <blockquote
+                key={index}
+                className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
+              >
+                {quote}
+              </blockquote>
+            ))}
+            {body ? (
+              <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">{body}</p>
+            ) : null}
+          </div>
         ) : (
           <MarkdownView content={text} />
         )}
@@ -63,34 +78,34 @@ const MessageBubble = memo(function MessageBubble({
       </div>
 
       {message.meta?.error ? (
-        <div className="flex flex-col gap-1 px-1 text-[11.5px] text-danger">
+        <div className="flex flex-col gap-1 px-1 text-2xs text-danger">
           <div className="flex flex-wrap items-center gap-2">
             <span>生成中断：{message.meta.error}</span>
             {canRetry ? (
               <button
                 type="button"
                 onClick={() => void retryLast(message.nodeId)}
-                className="rounded border border-danger/40 px-1.5 py-0.5 transition-colors hover:bg-danger-soft"
+                className="rounded-sm border border-danger/40 px-1.5 py-0.5 transition-colors hover:bg-danger-soft"
               >
                 重新生成
               </button>
             ) : null}
           </div>
           {message.meta.errorHint ? (
-            <p className="text-[11px] leading-relaxed text-muted/90">{message.meta.errorHint}</p>
+            <p className="text-2xs leading-relaxed text-muted">{message.meta.errorHint}</p>
           ) : null}
         </div>
       ) : null}
 
       <div className="flex items-center gap-1.5 px-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/message:opacity-100">
-        <span className="text-[10.5px] text-muted/70">{formatClock(message.createdAt)}</span>
+        <span className="text-2xs text-faint">{formatClock(message.createdAt)}</span>
         {isUser ? (
           <>
             <Tooltip label="以这条消息为起点，在下方新建继承上下文的节点">
               <button
                 type="button"
                 onClick={() => onAction('branch', message.id)}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted transition-colors hover:bg-elevated hover:text-ink"
+                className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-elevated hover:text-ink"
               >
                 <GitBranch className="h-3 w-3" />
                 分支
@@ -100,7 +115,7 @@ const MessageBubble = memo(function MessageBubble({
               <button
                 type="button"
                 onClick={() => onAction('diverge', message.id)}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-muted transition-colors hover:bg-elevated hover:text-ink"
+                className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-elevated hover:text-ink"
               >
                 <Waypoints className="h-3 w-3" />
                 发散
@@ -121,11 +136,11 @@ function StreamingBubble() {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="rounded-2xl rounded-bl-md border border-accent/20 bg-surface/70 px-3.5 py-3">
+      <div className="rounded-xl rounded-bl-sm border border-accent/20 bg-surface/70 px-3.5 py-3">
         {text ? (
           <MarkdownView content={text} />
         ) : (
-          <div className="flex items-center gap-2 text-[12.5px] text-muted">
+          <div className="flex items-center gap-2 text-sm text-muted">
             <span className="inline-flex gap-1">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:0ms]" />
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:150ms]" />
@@ -139,7 +154,7 @@ function StreamingBubble() {
         ) : null}
       </div>
       {streaming.error ? (
-        <p className="px-1 text-[11.5px] text-danger">{streaming.error}</p>
+        <p className="px-1 text-2xs text-danger">{streaming.error}</p>
       ) : null}
     </div>
   )
@@ -178,10 +193,10 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
       className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {messages.length === 0 ? (
-        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-          <p className="text-[13px] text-muted">这里是这个节点的对话。</p>
-          <p className="max-w-[240px] text-[11.5px] leading-relaxed text-muted/70">
-            对话本身就是节点的内容，AI 会据此生成摘要与标题。
+        <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
+          <p className="text-sm text-muted">还没有对话</p>
+          <p className="max-w-[220px] text-xs leading-relaxed text-faint">
+            对话就是节点的内容，标题与摘要都由它生成。
           </p>
         </div>
       ) : null}

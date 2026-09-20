@@ -19,7 +19,7 @@ export function DialogContent({
       <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
         <DialogPrimitive.Content
           className={cn(
-            'dialog-panel pointer-events-auto relative w-[min(560px,100%)] rounded-2xl border border-line bg-surface p-5 shadow-panel outline-none',
+            'dialog-panel pointer-events-auto relative w-[min(560px,100%)] rounded-xl border border-line bg-surface p-5 shadow-panel outline-none',
             className,
           )}
           {...props}
@@ -55,7 +55,7 @@ export function DialogTitle({
 }: ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      className={cn('text-[15px] font-semibold text-ink', className)}
+      className={cn('text-lg font-semibold tracking-tight text-ink', className)}
       {...props}
     />
   )
@@ -67,7 +67,7 @@ export function DialogDescription({
 }: ComponentProps<typeof DialogPrimitive.Description>) {
   return (
     <DialogPrimitive.Description
-      className={cn('text-[13px] leading-relaxed text-muted', className)}
+      className={cn('text-sm leading-relaxed text-muted', className)}
       {...props}
     />
   )
@@ -84,9 +84,9 @@ export function DialogField({
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="block text-[13px] font-medium text-ink-soft">{label}</span>
+      <span className="block text-sm font-medium text-ink-soft">{label}</span>
       {children}
-      {hint ? <p className="text-[12px] leading-relaxed text-muted">{hint}</p> : null}
+      {hint ? <p className="text-xs leading-relaxed text-muted">{hint}</p> : null}
     </div>
   )
 }

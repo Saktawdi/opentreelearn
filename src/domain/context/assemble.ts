@@ -1,5 +1,5 @@
 import { DEFAULT_CONTEXT_BUDGET, DEFAULT_RECENT_MESSAGES } from '@/domain/defaults'
-import { messageText } from '@/domain/messages'
+import { messageText, quoteBlock } from '@/domain/messages'
 import type { Id, Message, Node } from '@/domain/models'
 import { ancestorsOf, buildTreeIndex, pathTo } from '@/domain/tree/tree'
 import { normalizeWhitespace, truncate } from '@/lib/text'
@@ -110,9 +110,10 @@ function toContextMessages(
     const parts: ContextPart[] = []
 
     for (const part of message.parts) {
-      if (part.type === 'text') {
-        const text = limited ? truncate(part.text, options.maxChars) : part.text
-        if (limited && text.length < part.text.length) truncated += 1
+      if (part.type === 'text' || part.type === 'quote') {
+        const source = part.type === 'text' ? part.text : quoteBlock(part.text)
+        const text = limited ? truncate(source, options.maxChars) : source
+        if (limited && text.length < source.length) truncated += 1
         if (text.length > 0) parts.push({ type: 'text', text })
         continue
       }

@@ -96,12 +96,10 @@ export function ProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(620px,100%)]">
+      <DialogContent className="w-[min(580px,100%)]">
         <DialogHeader>
           <DialogTitle>{provider ? '编辑提供商' : '添加提供商'}</DialogTitle>
-          <DialogDescription>
-            API Key 只保存在浏览器本地（IndexedDB），不会上传到任何服务器。
-          </DialogDescription>
+          <DialogDescription>API Key 只保存在本机浏览器，不会上传。</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -118,17 +116,17 @@ export function ProviderDialog({
                     })
                   }
                   className={cn(
-                    'rounded-lg border px-2.5 py-1.5 text-left text-[12.5px] transition-colors',
+                    'rounded-md border px-2.5 py-1 text-left text-sm transition-colors',
                     draft.kind === kind
                       ? 'border-accent/45 bg-accent-soft text-accent'
-                      : 'border-line bg-surface text-muted hover:border-line-strong hover:text-ink-soft',
+                      : 'border-line text-muted hover:border-line-strong hover:text-ink-soft',
                   )}
                 >
                   {PROVIDER_KIND_LABEL[kind]}
                 </button>
               ))}
             </div>
-            <p className="mt-1 text-[11.5px] text-muted">{PROVIDER_KIND_HINT[draft.kind]}</p>
+            <p className="mt-1 text-xs text-muted">{PROVIDER_KIND_HINT[draft.kind]}</p>
           </DialogField>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -147,7 +145,7 @@ export function ProviderDialog({
                   value={draft.apiKey}
                   onChange={(event) => patch({ apiKey: event.target.value })}
                   placeholder="sk-..."
-                  className="pr-9 font-mono text-[12.5px]"
+                  className="pr-9 font-mono text-xs"
                 />
                 <button
                   type="button"
@@ -162,24 +160,21 @@ export function ProviderDialog({
 
           <DialogField
             label="Base URL"
-            hint="留空则使用官方默认地址；OpenAI 兼容协议必填（可指向自建代理以绕开跨域限制）。"
+            hint="留空使用官方默认地址；兼容协议可指向自建代理。"
           >
             <Input
               value={draft.baseURL ?? ''}
               onChange={(event) => patch({ baseURL: event.target.value })}
               placeholder={PROVIDER_KIND_BASE_URL[draft.kind] || 'https://your-endpoint/v1'}
-              className="font-mono text-[12.5px]"
+              className="font-mono text-xs"
             />
           </DialogField>
 
-          <DialogField
-            label="模型 ID"
-            hint="回车或逗号分隔。例如 deepseek-chat、gpt-4o-mini、claude-sonnet-4-5。"
-          >
+          <DialogField label="模型 ID" hint="回车或逗号分隔。">
             <TagInput
               value={draft.models}
               onChange={(models) => patch({ models })}
-              placeholder="添加模型 ID"
+              placeholder="deepseek-chat…"
             />
           </DialogField>
         </div>

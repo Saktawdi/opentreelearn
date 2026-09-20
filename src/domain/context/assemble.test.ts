@@ -118,6 +118,30 @@ describe('assembleContext', () => {
     ])
   })
 
+  it('renders quote parts as markdown quotes ahead of the learner text', () => {
+    const node = makeNode({ id: 'n1', createdAt: 1 })
+    const message = makeMessage({
+      id: 'm1',
+      nodeId: 'n1',
+      role: 'user',
+      parts: [
+        { type: 'quote', text: '割线斜率的极限是切线斜率' },
+        { type: 'text', text: '这为什么成立？' },
+      ],
+    })
+
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', [message]]]),
+    })
+
+    expect(result.messages[0].parts).toEqual([
+      { type: 'text', text: '> 割线斜率的极限是切线斜率' },
+      { type: 'text', text: '这为什么成立？' },
+    ])
+  })
+
   it('compacts the farthest history node first when over budget', () => {
     const a = makeNode({ id: 'a', title: '第一层', createdAt: 1 })
     const b = makeNode({

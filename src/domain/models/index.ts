@@ -48,6 +48,9 @@ export type Role = 'system' | 'user' | 'assistant'
 
 export type MessagePart =
   | { type: 'text'; text: string }
+  // 从消息里框选后「引用到对话框」的原文片段；与用户自己的话分开存，
+  // 以便气泡里渲染成引用块，而不是混进正文。
+  | { type: 'quote'; text: string }
   | { type: 'image'; assetId: Id }
 
 export interface MessageMeta {
