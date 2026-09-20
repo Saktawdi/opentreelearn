@@ -1,5 +1,6 @@
 import {
   ArrowUpRight,
+  Download,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -11,6 +12,7 @@ import {
 import { motion } from 'motion/react'
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,7 +33,8 @@ import {
 import { Input } from '@/components/ui/input'
 import type { Project } from '@/domain/models'
 import { formatRelativeTime } from '@/lib/time'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
+import { exportProjectAsTreeFile } from '@/services/export'
 import { collectTags, useProjectsStore } from '@/stores/projects-store'
 import { ProjectDialog } from './ProjectDialog'
 import { useImportProject } from './useImportProject'
@@ -50,7 +53,21 @@ export function ProjectsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
   const [deleting, setDeleting] = useState<Project | null>(null)
+  const [exportingId, setExportingId] = useState<string | null>(null)
   const [draggingFile, setDraggingFile] = useState(false)
+
+  const handleExport = async (project: Project) => {
+    if (exportingId) return
+    setExportingId(project.id)
+    try {
+      await exportProjectAsTreeFile(project)
+      toast.success(`项目「${project.name}」已成功导出`)
+    } catch (error) {
+      toast.error(`导出失败：${errorMessage(error)}`)
+    } finally {
+      setExportingId(null)
+    }
+  }
 
   const tags = useMemo(() => collectTags(projects), [projects])
 
@@ -210,6 +227,17 @@ export function ProjectsPage() {
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           编辑
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={exportingId === project.id}
+                          onSelect={() => void handleExport(project)}
+                        >
+                          {exportingId === project.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
+                          导出为 .tree
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

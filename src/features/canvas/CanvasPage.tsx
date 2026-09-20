@@ -28,7 +28,7 @@ import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
-import { buildGraph } from './graph'
+import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
 import { StarterPanel } from './StarterPanel'
@@ -36,6 +36,28 @@ import { StarterPanel } from './StarterPanel'
 const nodeTypes = {
   learn: LearnNodeCard,
   dot: LearnNodeDot,
+}
+
+const EMPTY_GRAPH: GraphResult = { nodes: [], edges: [] }
+
+type FlowApi = ReturnType<typeof useReactFlow>
+
+/**
+ * 把当前 Provider 作用域内的 React Flow 实例暴露给外层。
+ * 展开详情画布拥有独立的 ReactFlowProvider（独立 store），因此它的
+ * fitView / setViewport / screenToFlowPosition 必须走它自己的实例。
+ */
+function FlowApiBridge({ apiRef }: { apiRef: { current: FlowApi | null } }) {
+  const api = useReactFlow()
+
+  useEffect(() => {
+    apiRef.current = api
+    return () => {
+      apiRef.current = null
+    }
+  }, [api, apiRef])
+
+  return null
 }
 
 export function CanvasPage() {
@@ -48,7 +70,11 @@ export function CanvasPage() {
 
 function CanvasWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
-  const { fitView, setViewport, screenToFlowPosition } = useReactFlow()
+  // 外层 Provider 的实例 = 右侧微缩导航地图
+  const miniApi = useReactFlow()
+  const { fitView } = miniApi
+  // 展开详情画布拥有独立 store，实例由 FlowApiBridge 注入
+  const detailApiRef = useRef<FlowApi | null>(null)
 
   const openProject = useWorkspaceStore((state) => state.openProject)
   const reset = useWorkspaceStore((state) => state.reset)
@@ -78,6 +104,10 @@ function CanvasWorkspace() {
 
   // 全局视图模式：'split' (沉浸对话+右侧点树导航) | 'full-canvas' (全屏展开节点详情画布，支持自由拖动节点)
   const [isDetailCanvasOpen, setIsDetailCanvasOpen] = useState(false)
+
+  // 当前生效的画布实例：详情画布展开时用它自己的，否则用微缩导航地图的
+  const activeApi = () =>
+    isDetailCanvasOpen && detailApiRef.current ? detailApiRef.current : miniApi
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
@@ -114,21 +144,37 @@ function CanvasWorkspace() {
     }
   }, [projectId, openProject, reset])
 
-  const graph = useMemo(
-    () =>
-      buildGraph(nodes, messagesByNode, selectedNodeId, {
-        miniMapMode: !isDetailCanvasOpen,
-      }),
-    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen],
+  // 右侧微缩导航地图：始终用点阵紧凑布局
+  const miniGraph = useMemo(
+    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: true }),
+    [nodes, messagesByNode, selectedNodeId],
   )
 
-  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(graph.nodes)
+  // 展开详情画布：卡片形态、复用持久化的节点坐标；未展开时不计算
+  const detailGraph = useMemo(
+    () =>
+      isDetailCanvasOpen
+        ? buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: false })
+        : null,
+    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen],
+  )
+  const detailGeometry = detailGraph ?? EMPTY_GRAPH
+
+  // 两个 ReactFlow 各自持有独立 store 与节点状态：
+  // 共享同一个 store 时，详情画布卸载会 reset 掉导航地图的 nodeLookup，导致点阵节点整体消失
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(miniGraph.nodes)
 
   useEffect(() => {
-    setFlowNodes(graph.nodes)
-  }, [graph, setFlowNodes])
+    setFlowNodes(miniGraph.nodes)
+  }, [miniGraph, setFlowNodes])
 
-  const activeCount = graph.nodes.length
+  const [detailNodes, setDetailNodes, onDetailNodesChange] = useNodesState<LearnFlowNode>([])
+
+  useEffect(() => {
+    setDetailNodes(detailGeometry.nodes)
+  }, [detailGeometry, setDetailNodes])
+
+  const activeCount = miniGraph.nodes.length
   const isEmpty = activeCount === 0
 
   useEffect(() => {
@@ -166,7 +212,7 @@ function CanvasWorkspace() {
 
   const handlePaneContextMenu = (event: ReactMouseEvent | MouseEvent) => {
     event.preventDefault()
-    const flowPosition = screenToFlowPosition({
+    const flowPosition = activeApi().screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
     })
@@ -262,7 +308,7 @@ function CanvasWorkspace() {
       >
         <ReactFlow
           nodes={flowNodes}
-          edges={graph.edges}
+          edges={miniGraph.edges}
           onNodesChange={onNodesChange}
           onNodeDragStop={handleNodeDragStop}
           nodeTypes={nodeTypes}
@@ -303,9 +349,10 @@ function CanvasWorkspace() {
                 type="button"
                 onClick={() => {
                   setIsDetailCanvasOpen(true)
-                  setTimeout(() => {
-                    void fitView({ padding: 0.2, duration: 350, maxZoom: 1 })
-                  }, 50)
+                  // 等详情画布自己的实例挂载并同步完节点后，再由它自己居中
+                  window.setTimeout(() => {
+                    void detailApiRef.current?.fitView({ padding: 0.2, duration: 350, maxZoom: 1 })
+                  }, 80)
                 }}
                 className="ml-0.5 rounded p-0.5 text-muted hover:text-accent"
               >
@@ -343,8 +390,10 @@ function CanvasWorkspace() {
             setCreateRootDialog({ open: true, flowPosition, question: '' })
           }
           onRelayout={() => void relayout()}
-          onFitView={() => void fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
-          onResetView={() => void setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 400 })}
+          onFitView={() => void activeApi().fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
+          onResetView={() =>
+            void activeApi().setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 400 })
+          }
         />
 
         {/* 在此处新建根节点对话框 */}
@@ -427,31 +476,35 @@ function CanvasWorkspace() {
         </Dialog>
       </div>
 
-      {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式） */}
+      {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式）
+          必须独占一个 ReactFlowProvider：与导航地图共享 store 时，本层卸载会 reset 掉地图的节点查找表 */}
       {isDetailCanvasOpen ? (
         <div className="absolute inset-0 z-40 flex flex-col bg-canvas animate-in fade-in-0 duration-200">
-          <ReactFlow
-            nodes={flowNodes}
-            edges={graph.edges}
-            onNodesChange={onNodesChange}
-            onNodeDragStop={handleNodeDragStop}
-            nodeTypes={nodeTypes}
-            onNodeClick={handleNodeClick}
-            onNodeContextMenu={handleNodeContextMenu}
-            onPaneContextMenu={handlePaneContextMenu}
-            onPaneClick={() => {
-              setContextMenu(null)
-            }}
-            fitView
-            fitViewOptions={{ padding: 0.22, maxZoom: 1.2 }}
-            minZoom={0.2}
-            maxZoom={2.4}
-            nodesConnectable={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
-            <Controls className="!bg-surface !border-line !shadow-panel" />
-          </ReactFlow>
+          <ReactFlowProvider>
+            <FlowApiBridge apiRef={detailApiRef} />
+            <ReactFlow
+              nodes={detailNodes}
+              edges={detailGeometry.edges}
+              onNodesChange={onDetailNodesChange}
+              onNodeDragStop={handleNodeDragStop}
+              nodeTypes={nodeTypes}
+              onNodeClick={handleNodeClick}
+              onNodeContextMenu={handleNodeContextMenu}
+              onPaneContextMenu={handlePaneContextMenu}
+              onPaneClick={() => {
+                setContextMenu(null)
+              }}
+              fitView
+              fitViewOptions={{ padding: 0.22, maxZoom: 1.2 }}
+              minZoom={0.2}
+              maxZoom={2.4}
+              nodesConnectable={false}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
+              <Controls className="!bg-surface !border-line !shadow-panel" />
+            </ReactFlow>
+          </ReactFlowProvider>
 
           {/* 顶部浮动条：状态与返回主舞台按钮 */}
           <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
@@ -477,7 +530,7 @@ function CanvasWorkspace() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => void fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })}
+                onClick={() => void detailApiRef.current?.fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })}
                 className="gap-1.5 rounded-xl border-line/60 bg-surface/85 shadow-panel backdrop-blur-md"
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
