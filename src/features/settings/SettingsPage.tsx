@@ -1,6 +1,5 @@
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -80,18 +79,7 @@ export function SettingsPage() {
           <p className="mt-1 text-xs text-muted">数据与密钥只保存在本机浏览器。</p>
         </div>
 
-        <Section
-          title="上下文"
-          description={
-            <>
-              个人背景已移至
-              <Link to="/me" className="text-accent hover:underline">
-                「我的」
-              </Link>
-              ，这里只保留上下文预算。
-            </>
-          }
-        >
+        <Section title="上下文">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <label className="block">
               <span className="mb-1.5 block text-sm text-ink-soft">上下文预算（tokens）</span>

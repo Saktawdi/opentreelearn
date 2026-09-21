@@ -204,7 +204,7 @@ interface GlobalSettings {
 - Provider 管理：增删改（kind / apiKey / baseURL / 模型列表），连通性测试。
 - 模型分配：默认对话模型、标题模型、摘要模型。
 - 上下文预算：`contextBudget`，超出后压缩更早的父链对话。
-- 个人背景已迁至「我的」页，这里只留一句指路。
+- 个人背景在「我的」页维护。
 
 ### 我的页
 
