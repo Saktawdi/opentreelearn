@@ -419,8 +419,15 @@
   animation: overlay-in 180ms var(--ease-out-expo);
 }
 
+/* 退场动画固定住终态并让指针穿透。
+   Radix 的 Presence 靠 animationend 卸载节点：如果主线程当时正忙（同步、写 IndexedDB），
+   120ms 的动画可能在监听器挂上之前就播完，事件丢失 → 节点留在 DOM 里。
+   实测过一次「弹窗关了但 `.dialog-overlay` 还在」：opacity 回到 1（动画结束、fill 默认 none）
+   且 pointer-events 仍是 auto —— 整页变暗且点不动任何按钮。forwards + 穿透让这种卡住
+   最多只是留个空节点，不再拦人。 */
 .dialog-overlay[data-state='closed'] {
-  animation: overlay-out 120ms ease-in;
+  animation: overlay-out 120ms ease-in forwards;
+  pointer-events: none;
 }
 
 .dialog-panel[data-state='open'] {
@@ -428,7 +435,8 @@
 }
 
 .dialog-panel[data-state='closed'] {
-  animation: panel-out 120ms ease-in;
+  animation: panel-out 120ms ease-in forwards;
+  pointer-events: none;
 }
 
 .pop-panel[data-state='open'] {

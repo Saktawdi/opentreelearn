@@ -51,6 +51,7 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
         role: msg.role,
         parts: [{ type: 'text', text: msg.content }],
         createdAt: msg.createdAt,
+        updatedAt: msg.createdAt,
       })
     }
   }

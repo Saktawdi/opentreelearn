@@ -8,7 +8,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { resolveAvatarUrl, type AccountUser } from '@/services/account/client'
 import { useAccountStore } from '@/stores/account-store'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useSyncStore } from '@/stores/sync-store'
 import { AuthDialog } from './AuthDialog'
+import { FirstLoginDialog } from './FirstLoginDialog'
+import { SyncPanel } from './SyncPanel'
 import type { AuthMode } from './auth-form'
 
 function AccountAvatar({ user }: { user: AccountUser }) {
@@ -53,6 +56,9 @@ export function MePage() {
   const settings = useSettingsStore((state) => state.settings)
   const patch = useSettingsStore((state) => state.patch)
 
+  const initializeSync = useSyncStore((state) => state.initialize)
+  const resetSync = useSyncStore((state) => state.reset)
+
   const [profile, setProfile] = useState(() => settings.backgroundProfile)
   const [authOpen, setAuthOpen] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
@@ -62,6 +68,13 @@ export function MePage() {
   useEffect(() => {
     void restore()
   }, [restore])
+
+  // 登录态决定同步是否可用：登录后进本页初始化一次（未决策过 → 弹「本机数据怎么办」，
+  // 已决策过 → 顺手同步一次），退出后清掉同步状态（数据这时已切回游客库）。
+  useEffect(() => {
+    if (status === 'authenticated') void initializeSync()
+    else if (status === 'anonymous') resetSync()
+  }, [status, initializeSync, resetSync])
 
   const profileDirty = profile !== settings.backgroundProfile
 
@@ -93,7 +106,7 @@ export function MePage() {
           <p className="mt-1 text-xs text-muted">账号信息与个人背景。</p>
         </div>
 
-        <Section title="账号" description="登录后使用同一账号；设置与学习项目的云端同步尚未接入。">
+        <Section title="账号" description="登录后使用同一账号；数据按账号分别保存在本机。">
           {status === 'authenticated' && user ? (
             <div className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2.5">
               <AccountAvatar user={user} />
@@ -174,8 +187,16 @@ export function MePage() {
           </div>
         </Section>
 
+        {status === 'authenticated' ? (
+          <Section title="同步">
+            <SyncPanel />
+          </Section>
+        ) : null}
+
         <p className="border-t border-line pt-5 text-xs leading-relaxed text-muted">
-          项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失；换设备需要重新开始。
+          {status === 'authenticated'
+            ? '设置、项目、节点与对话随账号同步；图片资产暂只留在本机。'
+            : '项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失；登录后可同步到账号。'}
         </p>
       </div>
 
@@ -186,6 +207,7 @@ export function MePage() {
         onOpenChange={setAuthOpen}
         initialMode={authMode}
       />
+      <FirstLoginDialog />
     </div>
   )
 }

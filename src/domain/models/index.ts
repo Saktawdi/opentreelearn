@@ -21,6 +21,8 @@ export interface ProjectSettings {
   chatModelRef?: ModelRef
   titleModelRef?: ModelRef
   summaryModelRef?: ModelRef
+  /** 最后修改时间；历史数据可能没有，同步时以 outbox 的变更时间为准。 */
+  updatedAt?: number
 }
 
 export interface ForkRef {
@@ -69,6 +71,11 @@ export interface Message {
   role: Role
   parts: MessagePart[]
   createdAt: number
+  /**
+   * 最后修改时间。历史数据可能没有这个字段（消息一直是写完即定稿），
+   * 同步以 outbox 里的变更时间为准，这里只用于跨端合并时的比较。
+   */
+  updatedAt?: number
   meta?: MessageMeta
 }
 
@@ -126,4 +133,6 @@ export interface GlobalSettings {
   summaryModelRef: ModelRef | null
   contextBudget: number
   providers: ProviderConfig[]
+  /** 最后修改时间（epoch ms）；0 表示从未改过，同步时以云端版本为准。 */
+  updatedAt: number
 }

@@ -1,4 +1,14 @@
 import { errorMessage } from '@/lib/utils'
+import {
+  ApiError as AccountApiError,
+  interpretEnvelope,
+  readJson,
+  type ApiEnvelope,
+} from '@/services/api/envelope'
+
+// 账号客户端对外沿用 AccountApiError / interpretEnvelope 两个名字：
+// 实现已抽到 services/api/envelope.ts，与同步服务共用同一套信封与错误形状。
+export { AccountApiError, interpretEnvelope }
 
 /**
  * 若依账号系统客户端。
@@ -35,13 +45,7 @@ export interface AccountUser {
   createTime?: string
 }
 
-export interface AccountEnvelope<T> {
-  code: number
-  msg?: string
-  data?: T
-  /** 登录与刷新 token 时位于响应根对象。 */
-  token?: string
-}
+export type AccountEnvelope<T> = ApiEnvelope<T>
 
 export interface LoginInput {
   username: string
@@ -55,17 +59,6 @@ export interface RegisterInput {
   userName?: string
   phonenumber?: string
   sex?: string
-}
-
-/** 账号系统把 HTTP 状态与业务码分开表达，两者都出现时以业务码为准。 */
-export class AccountApiError extends Error {
-  readonly code: number
-
-  constructor(message: string, code: number) {
-    super(message)
-    this.name = 'AccountApiError'
-    this.code = code
-  }
 }
 
 export interface AccountRequestOptions {
@@ -103,26 +96,6 @@ export function buildAccountRequest(
   return { url: url.toString(), init: { method: options.method ?? 'GET', headers, body } }
 }
 
-/** 解析信封：非 0 业务码一律转成带原始 `msg` 的错误，让页面能直接展示上游文案。 */
-export function interpretEnvelope<T>(
-  payload: unknown,
-  httpStatus: number,
-): AccountEnvelope<T> {
-  if (!payload || typeof payload !== 'object') {
-    throw new AccountApiError(`账号服务返回了无法解析的响应（HTTP ${httpStatus}）`, httpStatus)
-  }
-
-  const envelope = payload as AccountEnvelope<T>
-  const code = typeof envelope.code === 'number' ? envelope.code : httpStatus
-  if (code !== 0) {
-    throw new AccountApiError(
-      envelope.msg?.trim() || `账号服务返回错误（code ${code}）`,
-      code,
-    )
-  }
-  return envelope
-}
-
 async function request<T>(
   path: string,
   options: AccountRequestOptions = {},
@@ -137,15 +110,7 @@ async function request<T>(
     throw new AccountApiError(`无法连接账号服务：${errorMessage(error)}`, 0)
   }
 
-  const raw = await response.text()
-  let payload: unknown = null
-  try {
-    if (raw) payload = JSON.parse(raw)
-  } catch {
-    // 非 JSON 响应体（网关错误页等）保持 null，交给 interpretEnvelope 报出 HTTP 状态。
-  }
-
-  return interpretEnvelope<T>(payload, response.status)
+  return interpretEnvelope<T>(await readJson(response), response.status)
 }
 
 /** 登录并返回 token。 */

@@ -421,7 +421,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     updateProjectSettings: async (patch) => {
       const { projectId, projectSettings } = get()
       if (!projectId) return
-      const next: ProjectSettings = { ...(projectSettings ?? { projectId }), ...patch }
+      const next: ProjectSettings = {
+        ...(projectSettings ?? { projectId }),
+        ...patch,
+        updatedAt: Date.now(),
+      }
       await getRepositories().projectSettings.save(next)
       set((state) => {
         state.projectSettings = next
@@ -520,6 +524,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         role: 'user',
         parts,
         createdAt: Date.now(),
+        updatedAt: Date.now(),
       }
 
       await repositories.messages.create(userMessage)
@@ -695,6 +700,7 @@ async function streamAssistant(nodeId: Id): Promise<void> {
       role: 'assistant',
       parts: [{ type: 'text', text: result.text }],
       createdAt: Date.now(),
+      updatedAt: Date.now(),
       meta: {
         providerId: modelRef?.providerId,
         modelId: modelRef?.modelId,
@@ -724,6 +730,7 @@ async function streamAssistant(nodeId: Id): Promise<void> {
         role: 'assistant',
         parts: [{ type: 'text', text: partial }],
         createdAt: Date.now(),
+        updatedAt: Date.now(),
         meta: {
           providerId: modelRef?.providerId,
           modelId: modelRef?.modelId,

@@ -22,5 +22,7 @@ export function createDefaultSettings(): GlobalSettings {
     summaryModelRef: null,
     contextBudget: DEFAULT_CONTEXT_BUDGET,
     providers: [],
+    // 0 表示「用户从未改过设置」：首次登录同步时云端版本会（正确地）覆盖它
+    updatedAt: 0,
   }
 }

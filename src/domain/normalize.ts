@@ -153,5 +153,6 @@ export function normalizeGlobalSettings(value: unknown): GlobalSettings {
           .map(normalizeProvider)
           .filter((provider): provider is ProviderConfig => provider !== null)
       : [],
+    updatedAt: readNumber(value.updatedAt, defaults.updatedAt),
   }
 }

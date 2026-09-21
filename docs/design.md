@@ -323,20 +323,29 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 - `cors` 包把**函数**形式的 `origin` 当异步回调 `(origin, callback)` 用。同步返回布尔的函数永远不调用 callback，结果是**所有请求挂死**（连接建立、零字节响应）。`createCorsOrigin()` 因此返回字符串/正则数组，并有单测锁住「不能是函数」。
 - 守卫对外统一回「Token 无效或已过期」，但服务端会 `warn` 记录真实原因——否则 `RUIYI_API_URL` 配错、账号系统不可用都会被误读成用户 token 过期。
 
-### 13.3 客户端接入（待做，P1 剩余部分）
+### 13.3 客户端接入（已实现，P1）
 
-范围：**全部设置 + 学习项目数据**——`GlobalSettings`（providers、模型分配、上下文预算、个人背景）、`Project` / `ProjectSettings` / `Node` / `Message` / `Note` / `Asset`。`providers[].apiKey` 默认不上云，各设备自填。
+范围：**全部设置 + 学习项目数据**（`GlobalSettings` / `Project` / `ProjectSettings` / `Node` / `Message` / `Note`）；`providers[].apiKey` 不上云，图片资产走 P2。
 
-客户端要先补齐：
-
-| 缺口 | 影响 | 处理方向 |
+| 部件 | 位置 | 作用 |
 | --- | --- | --- |
-| 删除是硬删（`remove` 直接删行） | 删除传不出去，另一端的旧数据会被当成新数据推回来 | Dexie 加 outbox 记删除；收到远端 tombstone 时本地硬删 |
-| `Message` / `Asset` / `GlobalSettings` 缺 `updatedAt` | 无法做 last-write-wins | 补 `updatedAt`（`Project` / `Node` / `Note` 已有） |
-| 本地写操作没有变更台账 | 不知道要 push 什么 | Dexie 加 outbox 表，所有写操作记账，push 成功后清账 |
-| 记录没有服务端 `rev`、账号维度没有游标 | 无法增量 pull | 记录里存 `rev`，按账号存 `lastPulledRev` |
-| 一个 IndexedDB 装所有账号 | 换账号会串数据 | 按账号分库（`opentreelearn:<loginName>`），游客继续用默认库 |
-| `Asset.blob` 是二进制 | 塞不进 JSON 同步体 | P2：对象存储上传/下载 + 本地缓存，同步体只传引用 |
-| 首次登录时本机已有数据 | 直接合并会与云端撞车 | 弹窗三选一：上传本机数据（合并）/ 以云端为准 / 暂不同步 |
+| 变更台账 | `data/dexie/db.ts` 的 `outbox` 表（v3） | 所有写操作经仓储层记账：同一条记录反复改合并成一条、删除是终点、级联删逐条记账。push 时按 `entity + localId` 读**当前**记录内容，中间态不上传 |
+| 本地同步层 | `data/sync-local.ts` | 载荷映射（设置抹掉 apiKey）、`applyRemote`（不记账，避免回环）、游标与状态、首次登录搬运游客数据 |
+| 协议类型 | `domain/sync.ts` | 与服务端 `server/src/entities.ts` 对齐的实体名与线上形状（放 domain 是因为 data 层也要用，而 data 只能依赖 domain） |
+| 网络层 | `services/sync/client.ts` | `/lern-api` 下的 pull/push/status；信封解析与账号客户端共用 `services/api/envelope.ts` |
+| 编排 | `stores/sync-store.ts` | 推增量 → 拉增量 → 落游标；token 过期先刷新再重试一次；首次登录策略 |
+| 分库 | `stores/data-session.ts` | 登录/退出/恢复会话时切库并重载 store（`opentreelearn:<loginName>`，游客用默认库） |
+| 界面 | `features/me/SyncPanel.tsx`、`FirstLoginDialog.tsx` | 状态（待同步 N 项 / 上次同步 / 失败原因）+ 立即同步；首次登录三选一 |
 
-**下一步（P1 剩余）**：Dexie outbox + 模型补 `updatedAt` + 同步引擎（push/pull + LWW + stale 覆盖）+ 首登策略弹窗 + 按账号分库。之后 P2 做图片资产，P3 做同步状态可见与触发时机（启动、写后节流、手动按钮）。
+**合并的语义**：登录后活动库就是账号库（空的），所以「上传本机数据（合并）」会先把**游客库**的记录搬进账号库（`importRecordsInto`），再记账上传；同一条记录云端更新时仍以云端为准。游客库原样保留，退出登录后还是那份内容。设置行只在账号库还没有设置时导入，图片资产没有同步通道但会一起搬（本机要能继续看图）。
+
+**首次登录策略**（每台设备问一次，决策记在账号库的 `syncState.initialized`）：
+- 上传本机数据（合并）：搬 + 推 + 拉，推荐
+- 以云端为准：清空本机实体与台账（**保留设置行**，否则本机 BYOK 密钥再也回不来），游标归零后整库重拉
+- 暂不同步：只落决策，变更仍留在 outbox，之后手动同步照样推
+
+**测试**：`data/sync-local.test.ts`（记账/合并/载荷/级联/密钥保留）与 `stores/sync-store.test.ts`（用服务端替身跑推送、增量拉取、判旧覆盖、tombstone、401 重试、三种首登策略），共 22 个用例。
+
+**待办**：
+- P2：图片资产 —— `Asset.blob` 走对象存储，同步体只传引用，`asset` 记录现在会被 `applyRemote` 跳过。
+- P3：写后节流自动同步、冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口）。

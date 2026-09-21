@@ -31,7 +31,8 @@ export const useSettingsStore = create<SettingsState>()(
     },
 
     patch: async (patch) => {
-      const next = { ...get().settings, ...patch }
+      // updatedAt 是跨端合并（LWW）的依据，任何一次设置改动都要盖时间戳
+      const next = { ...get().settings, ...patch, updatedAt: Date.now() }
       set((state) => {
         state.settings = next
       })

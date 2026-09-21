@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { errorMessage } from '@/lib/utils'
+import { bindAccountDatabase } from './data-session'
 import {
   AccountApiError,
   clearAccountToken,
@@ -28,6 +29,8 @@ interface AccountState {
   login: (input: LoginInput) => Promise<void>
   register: (input: RegisterInput, emailCode: string) => Promise<void>
   logout: () => Promise<void>
+  /** 换一个新 token（同步遇到 401 时用）；失败返回 null。 */
+  refreshSession: () => Promise<string | null>
 }
 
 /** 取用户信息；token 已失效时先换一次新 token，仍失败才认作未登录。 */
@@ -55,6 +58,8 @@ export const useAccountStore = create<AccountState>()(
 
       const stored = readAccountToken()
       if (!stored) {
+        // 没登录：确保回到游客库（首次启动时本来就停在游客库，不会真的切）
+        await bindAccountDatabase(null)
         set((draft) => {
           draft.status = 'anonymous'
           draft.restoreError = null
@@ -70,6 +75,8 @@ export const useAccountStore = create<AccountState>()(
       try {
         const { token, user } = await loadUser(stored)
         saveAccountToken(token)
+        // 换库 + 重载 store 先做完再公布「已登录」：否则界面会先拿到上一个账号的数据
+        await bindAccountDatabase(user.loginName ?? null)
         set((draft) => {
           draft.token = token
           draft.user = user
@@ -78,6 +85,7 @@ export const useAccountStore = create<AccountState>()(
       } catch (error) {
         if (error instanceof AccountApiError && error.code === 401) {
           clearAccountToken()
+          await bindAccountDatabase(null)
           set((draft) => {
             draft.token = null
             draft.user = null
@@ -97,12 +105,29 @@ export const useAccountStore = create<AccountState>()(
       const token = await requestLogin(input)
       const user = await fetchAccountUser(token)
       saveAccountToken(token)
+      await bindAccountDatabase(user.loginName ?? null)
       set((draft) => {
         draft.token = token
         draft.user = user
         draft.status = 'authenticated'
         draft.restoreError = null
       })
+    },
+
+    refreshSession: async () => {
+      const token = get().token
+      if (!token) return null
+      try {
+        const refreshed = await refreshAccountToken(token)
+        saveAccountToken(refreshed)
+        set((draft) => {
+          draft.token = refreshed
+        })
+        return refreshed
+      } catch {
+        // 刷新失败不改登录态：交给调用方决定是提示还是重新登录
+        return null
+      }
     },
 
     register: async (input, emailCode) => {
@@ -126,6 +151,8 @@ export const useAccountStore = create<AccountState>()(
         }
       }
       clearAccountToken()
+      // 回到游客库：账号库原样留在浏览器里，下次登录还能用
+      await bindAccountDatabase(null)
       set((draft) => {
         draft.token = null
         draft.user = null
