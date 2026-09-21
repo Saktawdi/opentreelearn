@@ -8,9 +8,11 @@ import { resolveThread } from '@/domain/thread/resolve'
 import { useSettingsStore } from './settings-store'
 import { isStreamingIn, useWorkspaceStore } from './workspace-store'
 
+type SummaryAssessment = import('@/services/llm/derive').SummaryAssessment
+
 const llm = vi.hoisted(() => ({
   summaryCalls: 0,
-  resolveSummary: null as null | ((value: string | null) => void),
+  resolveSummary: null as null | ((value: unknown) => void),
 }))
 
 vi.mock('@/services/llm/derive', async (importOriginal) => {
@@ -20,8 +22,8 @@ vi.mock('@/services/llm/derive', async (importOriginal) => {
     generateTitle: async () => null,
     generateSummary: () => {
       llm.summaryCalls += 1
-      return new Promise<string | null>((resolve) => {
-        llm.resolveSummary = resolve
+      return new Promise<SummaryAssessment | null>((resolve) => {
+        llm.resolveSummary = resolve as (value: unknown) => void
       })
     },
   }
@@ -56,6 +58,14 @@ async function waitFor(check: () => boolean, timeoutMs = 1000): Promise<void> {
   while (!check() && Date.now() - start < timeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
+}
+
+/** 等 mock 的 generateSummary 挂上 resolver 并取出来（返回值让 TS 不再把它收窄成 never）。 */
+async function takeSummaryResolver(): Promise<(value: unknown) => void> {
+  await waitFor(() => llm.resolveSummary !== null)
+  const resolve = llm.resolveSummary
+  if (!resolve) throw new Error('摘要 resolver 还没就绪')
+  return resolve
 }
 
 describe('workspace store', () => {
@@ -195,7 +205,11 @@ describe('summary generation', () => {
     expect(store().summarizingNodeIds).toContain(root!.id)
 
     await waitFor(() => llm.resolveSummary !== null)
-    llm.resolveSummary?.('已掌握特征值定义，计算细节仍需加强')
+    llm.resolveSummary?.({
+      summary: '已掌握特征值定义，计算细节仍需加强',
+      mastery: 72,
+      weakPoints: ['边界条件'],
+    })
     await pending
 
     expect(store().summarizingNodeIds).not.toContain(root!.id)
@@ -205,6 +219,69 @@ describe('summary generation', () => {
     expect((await getRepositories().nodes.get(root!.id))?.summary).toBe(
       '已掌握特征值定义，计算细节仍需加强',
     )
+  })
+
+  it('stores mastery and seeds the review card on the first assessment', async () => {
+    await seedProject()
+    await seedSummaryModel()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    await seedConversation(root!.id)
+    const store = () => useWorkspaceStore.getState()
+
+    const pending = store().refreshSummary(root!.id)
+    await waitFor(() => llm.resolveSummary !== null)
+    llm.resolveSummary?.({ summary: '基本掌握', mastery: 90, weakPoints: ['细节'] })
+    await pending
+
+    const node = store().nodes.find((item) => item.id === root!.id)!
+    expect(node.mastery?.score).toBe(90)
+    expect(node.mastery?.weakPoints).toEqual(['细节'])
+    // 90 分对应 Easy，直接进入 Review 状态
+    expect(node.review?.card.state).toBe('review')
+    expect(node.review?.card.due).toBeGreaterThan(node.mastery!.updatedAt)
+  })
+
+  it('keeps the existing schedule when the summary is refreshed again', async () => {
+    await seedProject()
+    await seedSummaryModel()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    await seedConversation(root!.id)
+    const store = () => useWorkspaceStore.getState()
+
+    const first = store().refreshSummary(root!.id)
+    await waitFor(() => llm.resolveSummary !== null)
+    llm.resolveSummary?.({ summary: '一评', mastery: 90, weakPoints: [] })
+    await first
+    const due = store().nodes.find((item) => item.id === root!.id)!.review!.card.due
+
+    llm.resolveSummary = null
+    const second = store().refreshSummary(root!.id)
+    const resolve = await takeSummaryResolver()
+    resolve({ summary: '二评', mastery: 30, weakPoints: ['没记住'] })
+    await second
+
+    const node = store().nodes.find((item) => item.id === root!.id)!
+    expect(node.mastery?.score).toBe(30)
+    // 手动刷新摘要不该把复习进度清零
+    expect(node.review?.card.due).toBe(due)
+  })
+
+  it('keeps the old mastery when the provider cannot produce structured output', async () => {
+    await seedProject()
+    await seedSummaryModel()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    await seedConversation(root!.id)
+    const store = () => useWorkspaceStore.getState()
+
+    const pending = store().refreshSummary(root!.id)
+    await waitFor(() => llm.resolveSummary !== null)
+    llm.resolveSummary?.({ summary: '只有摘要', mastery: null, weakPoints: [] })
+    await pending
+
+    const node = store().nodes.find((item) => item.id === root!.id)!
+    expect(node.summary).toBe('只有摘要')
+    expect(node.mastery).toBeUndefined()
+    expect(node.review).toBeUndefined()
   })
 
   it('clears the flag when the model call fails', async () => {
@@ -484,6 +561,254 @@ describe('editUserMessage', () => {
     expect(await getRepositories().notes.listByProject('p1')).toEqual([])
     expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'm-answer')).toBe(false)
     expect(node.title).toBe('第四版')
+  })
+})
+
+describe('review scheduling', () => {
+  async function seedAssessedNode(score: number, title = '问题'): Promise<string> {
+    const root = await useWorkspaceStore.getState().startRootNode(title)
+    await useWorkspaceStore.getState().setNodeAssessment(root!.id, {
+      summary: '评估',
+      mastery: score,
+      weakPoints: [],
+    })
+    return root!.id
+  }
+
+  /** 直接把卡片改成已到期（不经过真实评分，方便构造队列）。 */
+  async function seedDueNode(title: string, score: number, due: number): Promise<string> {
+    const nodeId = await seedAssessedNode(score, title)
+    await getRepositories().nodes.update(nodeId, {
+      review: {
+        card: {
+          due,
+          stability: 5,
+          difficulty: 5,
+          scheduledDays: 1,
+          learningSteps: 0,
+          reps: 1,
+          lapses: 0,
+          state: 'review',
+          lastReview: due - 24 * 60 * 60 * 1000,
+        },
+      },
+    })
+    await useWorkspaceStore.getState().openProject('p1')
+    return nodeId
+  }
+
+  it('writes the last studied time when messages land', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    const message = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0]
+    const stored = await getRepositories().nodes.get(root!.id)
+
+    // 口径 = 显示路径末条消息的 createdAt，不是 node.updatedAt
+    expect(stored?.lastStudiedAt).toBe(message.createdAt)
+
+    // 整理动作（改名、拖拽）不该被算成学习
+    await useWorkspaceStore.getState().setNodeTitle(root!.id, '改个名')
+    await useWorkspaceStore.getState().setNodePosition(root!.id, { x: 1, y: 2 })
+    expect((await getRepositories().nodes.get(root!.id))?.lastStudiedAt).toBe(message.createdAt)
+  })
+
+  it('opens the review center once and selects it on later calls', async () => {
+    await seedProject()
+    const store = () => useWorkspaceStore.getState()
+
+    const center = await store().openReviewCenter()
+    expect(center?.kind).toBe('review')
+    expect(center?.parentId).toBeNull()
+
+    const again = await store().openReviewCenter()
+    expect(again?.id).toBe(center?.id)
+    expect(store().nodes.filter((node) => node.kind === 'review')).toHaveLength(1)
+    expect(store().selectedNodeId).toBe(center?.id)
+  })
+
+  it('rates a node: card moves forward, mastery follows the band, again adds a lapse', async () => {
+    await seedProject()
+    const nodeId = await seedAssessedNode(90)
+    const store = () => useWorkspaceStore.getState()
+
+    const seeded = store().nodes.find((node) => node.id === nodeId)!
+    expect(seeded.review?.card.state).toBe('review')
+
+    // 先评 easy 到 Review 状态并记下 lapses 基线
+    await store().rateReview(nodeId, 'easy')
+    const afterEasy = store().nodes.find((node) => node.id === nodeId)!
+    expect(afterEasy.mastery?.score).toBe(100)
+    expect(afterEasy.review?.lastGrade).toBe('easy')
+
+    const before = afterEasy.review!.card
+    await store().rateReview(nodeId, 'again')
+    const afterAgain = store().nodes.find((node) => node.id === nodeId)!
+    expect(afterAgain.review?.card.lapses).toBe(before.lapses + 1)
+    expect(afterAgain.review?.card.state).toBe('relearning')
+    // 忘了之后分数落回重新学习区间
+    expect(afterAgain.mastery!.score).toBeLessThanOrEqual(35)
+    // 落库
+    const stored = await getRepositories().nodes.get(nodeId)
+    expect(stored?.review?.card.lapses).toBe(before.lapses + 1)
+    expect(stored?.mastery?.score).toBe(afterAgain.mastery!.score)
+  })
+
+  it('builds a session from due nodes and walks it to the end', async () => {
+    await seedProject()
+    const now = Date.now()
+    const first = await seedDueNode('第一个', 40, now - 60_000)
+    const second = await seedDueNode('第二个', 50, now - 120_000)
+    const store = () => useWorkspaceStore.getState()
+
+    const items = await store().startReviewSession()
+    expect(items.map((item) => item.nodeId).sort()).toEqual([first, second].sort())
+    expect(store().selectedNodeId).toBe(items[0].nodeId)
+
+    await store().rateReview(items[0].nodeId, 'good')
+    store().advanceReviewSession()
+    expect(store().reviewSession?.cursor).toBe(1)
+    expect(store().selectedNodeId).toBe(items[1].nodeId)
+
+    await store().rateReview(items[1].nodeId, 'hard')
+    store().advanceReviewSession()
+    const session = store().reviewSession!
+    expect(session.cursor).toBe(2)
+    expect(session.finishedAt).toBeGreaterThan(0)
+    expect(session.results).toEqual({ [items[0].nodeId]: 'good', [items[1].nodeId]: 'hard' })
+
+    store().endReviewSession()
+    expect(store().reviewSession).toBeNull()
+  })
+
+  it('creates the review center when a nudge-started session finishes', async () => {
+    await seedProject()
+    const nodeId = await seedDueNode('顺手复习', 60, Date.now() - 60_000)
+    const store = () => useWorkspaceStore.getState()
+
+    // 模拟「顺手复习」：项目里还没有复习中心，直接从某个到期节点切入
+    expect(store().nodes.some((node) => node.kind === 'review')).toBe(false)
+    await store().startReviewSession(nodeId)
+
+    // 开始时就把复习中心补齐了，走完才有落点可回
+    expect(store().nodes.filter((node) => node.kind === 'review')).toHaveLength(1)
+    const center = store().nodes.find((node) => node.kind === 'review')!
+
+    await store().rateReview(nodeId, 'good')
+    store().advanceReviewSession()
+
+    expect(store().reviewSession?.finishedAt).toBeGreaterThan(0)
+    expect(store().selectedNodeId).toBe(center.id)
+    // 落库了，重开项目也还在
+    expect((await getRepositories().nodes.get(center.id))?.kind).toBe('review')
+  })
+
+  it('drops a finished session when the review center has gone missing', async () => {
+    await seedProject()
+    const nodeId = await seedDueNode('无中心', 60, Date.now() - 60_000)
+    const store = () => useWorkspaceStore.getState()
+
+    await store().startReviewSession(nodeId)
+    const center = store().nodes.find((node) => node.kind === 'review')!
+    await store().archiveNode(center.id)
+
+    store().advanceReviewSession()
+
+    // 没有可返回的复习中心时直接收掉会话，不留「已结束但关不掉」的僵尸
+    expect(store().reviewSession).toBeNull()
+  })
+
+  it('does not start a session when nothing is due', async () => {
+    await seedProject()
+    const store = () => useWorkspaceStore.getState()
+
+    expect(await store().startReviewSession()).toEqual([])
+    expect(store().reviewSession).toBeNull()
+  })
+
+  it('treats a second rating in the same session as an override, not a new review', async () => {
+    await seedProject()
+    const nodeId = await seedDueNode('改判', 60, Date.now() - 60_000)
+    const store = () => useWorkspaceStore.getState()
+
+    await store().startReviewSession()
+    const baseCard = store().nodes.find((node) => node.id === nodeId)!.review!.card
+
+    await store().rateReview(nodeId, 'good')
+    const afterFirst = store().nodes.find((node) => node.id === nodeId)!
+
+    await store().rateReview(nodeId, 'again')
+    const afterOverride = store().nodes.find((node) => node.id === nodeId)!
+
+    expect(afterOverride.review?.lastGrade).toBe('again')
+    // 改判从复习前的卡重排：不是「good 的卡上再排一次 again」（那会把 reps 多算一次）
+    expect(afterOverride.review?.card.reps).toBe(baseCard.reps + 1)
+    expect(afterOverride.review?.card.lapses).toBe(baseCard.lapses + 1)
+    expect(afterOverride.review?.card.due).not.toBe(afterFirst.review!.card.due)
+    expect(store().reviewSession?.results[nodeId]).toBe('again')
+  })
+
+  it('drops the lapse when an again rating is overridden by easy', async () => {
+    await seedProject()
+    const nodeId = await seedDueNode('改判撤销遗忘', 60, Date.now() - 60_000)
+    const store = () => useWorkspaceStore.getState()
+
+    await store().startReviewSession()
+    const baseCard = store().nodes.find((node) => node.id === nodeId)!.review!.card
+
+    // 先评「忘了」：卡片进 relearning，lapses +1
+    await store().rateReview(nodeId, 'again')
+    const afterAgain = store().nodes.find((node) => node.id === nodeId)!
+    expect(afterAgain.review?.card.lapses).toBe(baseCard.lapses + 1)
+    expect(afterAgain.review?.card.state).toBe('relearning')
+
+    // 改判「太简单」：遗忘那次不该留在卡上，排期按 easy 从复习前的状态重算
+    await store().rateReview(nodeId, 'easy')
+    const afterEasy = store().nodes.find((node) => node.id === nodeId)!
+    expect(afterEasy.review?.card.lapses).toBe(baseCard.lapses)
+    expect(afterEasy.review?.card.state).toBe('review')
+    expect(afterEasy.review?.card.due).toBeGreaterThan(baseCard.due)
+  })
+
+  it('recomputes mastery from the pre-review score when a rating is overridden', async () => {
+    await seedProject()
+    const nodeId = await seedDueNode('改判分数', 60, Date.now() - 60_000)
+    const store = () => useWorkspaceStore.getState()
+    const score = () => store().nodes.find((node) => node.id === nodeId)!.mastery!.score
+
+    await store().startReviewSession()
+
+    // 首次评 again：分数被压回「重新学习」区间
+    await store().rateReview(nodeId, 'again')
+    const afterAgain = score()
+    expect(afterAgain).toBeLessThanOrEqual(35)
+
+    // 改判 good：必须按「只评过 good」从基准分重算，而不是在压低后的分数上再加
+    await store().rateReview(nodeId, 'good')
+    expect(score()).toBe(65)
+    expect(store().nodes.find((node) => node.id === nodeId)?.review?.lastGrade).toBe('good')
+    // 落库的分数也要同步
+    expect((await getRepositories().nodes.get(nodeId))?.mastery?.score).toBe(65)
+
+    // 连续改判不会叠加：再改回 again 仍应得到「基准分 - 25」的结果
+    await store().rateReview(nodeId, 'again')
+    expect(score()).toBe(afterAgain)
+  })
+
+  it('returns to the review center when the queue is finished', async () => {
+    await seedProject()
+    const now = Date.now()
+    const nodeId = await seedDueNode('唯一', 60, now - 60_000)
+    const store = () => useWorkspaceStore.getState()
+    const center = await store().openReviewCenter()
+
+    await store().startReviewSession()
+    expect(store().selectedNodeId).toBe(nodeId)
+
+    await store().rateReview(nodeId, 'good')
+    store().advanceReviewSession()
+
+    expect(store().reviewSession?.finishedAt).toBeGreaterThan(0)
+    expect(store().selectedNodeId).toBe(center!.id)
   })
 })
 

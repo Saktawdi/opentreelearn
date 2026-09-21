@@ -1,4 +1,5 @@
 import type { Id, Message, MessagePart } from '@/domain/models'
+import { stripReviewRating } from '@/domain/review/protocol'
 import { firstLine, truncate } from '@/lib/text'
 
 /** 引用片段以 Markdown 引用行进入模型上下文与导出，让「这段是引用」的语义不丢失。 */
@@ -81,8 +82,14 @@ export function replaceMessageText(message: Message, text: string): MessagePart[
   return parts
 }
 
+/**
+ * 卡片摘录 / fork 预览 / 版本横线都用它。
+ *
+ * 复习判定标记（`[[rating:good]]`）是给客户端与模型看的协议，不是给用户看的文字，
+ * 预览里剥掉；正文渲染同样处理（见 MessageList）。
+ */
 export function messagePreview(message: Message, max = 120): string {
-  const text = messageText(message)
+  const text = stripReviewRating(messageText(message))
   const label = text ? normalizeForPreview(text) : '［图片］'
   return truncate(label, max)
 }

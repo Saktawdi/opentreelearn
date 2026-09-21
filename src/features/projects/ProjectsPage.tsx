@@ -26,6 +26,7 @@ import { cn, errorMessage } from '@/lib/utils'
 import { exportProjectAsTreeFile } from '@/services/export'
 import { collectTags, useProjectsStore } from '@/stores/projects-store'
 import { ProjectDialog } from './ProjectDialog'
+import { TodayReviewPanel } from './TodayReviewPanel'
 import { useImportProject } from './useImportProject'
 
 const ALL_TAGS = '__all__'
@@ -109,6 +110,8 @@ export function ProjectsPage() {
             <p className="mt-1 text-xs text-muted">{projects.length} 个项目</p>
           ) : null}
         </div>
+
+        {projects.length > 0 ? <TodayReviewPanel projects={projects} /> : null}
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">

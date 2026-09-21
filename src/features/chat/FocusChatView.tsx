@@ -1,5 +1,7 @@
 import {
   Archive,
+  // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态图标（评估中 / 已评估）
+  Brain,
   ChevronRight,
   GitBranch,
   MoreHorizontal,
@@ -29,14 +31,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip } from '@/components/ui/tooltip'
+import { isMasteryStale } from '@/domain/mastery/aggregate'
 import { messagePreview } from '@/domain/messages'
 import type { Id } from '@/domain/models'
+import { GRADE_BAND_LABEL, gradeOfScore } from '@/domain/review/schedule'
 import { resolveThread, staleSelectionSlots } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { ReviewCenterPanel } from '@/features/review/ReviewCenterPanel'
+import { ReviewNudge } from '@/features/review/ReviewNudge'
+import { ReviewSessionBar } from '@/features/review/ReviewSessionBar'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { SelectionMenu } from './SelectionMenu'
@@ -164,6 +171,16 @@ export function FocusChatView({
               {node.title}
             </button>
           )}
+
+          {/* 掌握度：有分数就显示（过期时弱化），没有分数就给一条轻提示引导生成。
+              复习中心是元数据节点，没有可评估的学习内容，不显示它 */}
+          {node.kind !== 'review' ? (
+            <MasteryIndicator
+              nodeId={node.id}
+              hasSummaryModel={hasSummaryModel}
+              summarizing={isSummarizing}
+            />
+          ) : null}
         </div>
 
         {/* 右侧：操作区与画布入口 */}
@@ -248,10 +265,15 @@ export function FocusChatView({
 
       {/* 沉浸对话主舞台（完全铺满容器宽度） */}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
+        {node.kind === 'review' ? <ReviewCenterPanel /> : null}
         <MessageList nodeId={node.id} />
 
         {hasChatModel ? (
           <>
+            {/* 复习会话进行中、且当前正好轮到这个节点时，贴一条评分浮条 */}
+            <ReviewSessionBar nodeId={node.id} />
+            {/* 刚学完 + 有到期旧节点 ⇒ 顺手复习一下 */}
+            {node.kind !== 'review' ? <ReviewNudge nodeId={node.id} /> : null}
             <Composer
               key={node.id}
               ref={composerRef}
@@ -304,5 +326,85 @@ export function FocusChatView({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+/**
+ * 节点头部的掌握度标记。
+ *
+ * 三种形态：有分数（过期时弱化 + 说明）、没有分数（轻提示引导生成，**不自动调用 LLM**）、
+ * 生成中（转圈）。没有分数时不弹窗、不打扰，只是一条可点的提示。
+ */
+function MasteryIndicator({
+  nodeId,
+  hasSummaryModel,
+  summarizing,
+}: {
+  nodeId: Id
+  hasSummaryModel: boolean
+  summarizing: boolean
+}) {
+  const mastery = useWorkspaceStore(
+    (state) => state.nodes.find((item) => item.id === nodeId)?.mastery,
+  )
+  const lastStudiedAt = useWorkspaceStore(
+    (state) => state.nodes.find((item) => item.id === nodeId)?.lastStudiedAt,
+  )
+  const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
+
+  if (summarizing) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-2xs text-muted">
+        <RefreshCw className="h-3 w-3 animate-spin" />
+        评估中
+      </span>
+    )
+  }
+
+  if (!mastery) {
+    if (!hasSummaryModel) return null
+    return (
+      <Tooltip label="根据这段对话评估掌握度，并给出薄弱点">
+        <button
+          type="button"
+          onClick={() => void refreshSummary(nodeId)}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          <Brain className="h-3 w-3" />
+          还没有掌握度 · 生成评估
+        </button>
+      </Tooltip>
+    )
+  }
+
+  const stale = isMasteryStale(mastery, lastStudiedAt)
+  const band = GRADE_BAND_LABEL[gradeOfScore(mastery.score)]
+
+  return (
+    <Tooltip
+      label={
+        stale
+          ? '生成评估后又继续学习过，分数可能已过期 —— 重新生成一次评估'
+          : mastery.weakPoints?.length
+            ? `薄弱：${mastery.weakPoints.join('、')}`
+            : `掌握档位：${band}`
+      }
+    >
+      <button
+        type="button"
+        onClick={() => hasSummaryModel && void refreshSummary(nodeId)}
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
+          stale
+            ? 'border-line text-faint hover:border-accent/40 hover:text-accent'
+            : 'border-accent/35 bg-accent-soft text-accent',
+        )}
+      >
+        <Brain className="h-3 w-3" />
+        <span className="tabular-nums">掌握 {mastery.score}</span>
+        <span className="text-faint">· {band}</span>
+        {stale ? <span className="text-faint">· 已过期</span> : null}
+      </button>
+    </Tooltip>
   )
 }

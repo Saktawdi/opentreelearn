@@ -1,5 +1,6 @@
 import { accountDatabaseName, GUEST_DATABASE_NAME, switchDatabase } from '@/data'
 import { useProjectsStore } from './projects-store'
+import { useReviewStore } from './review-store'
 import { useSettingsStore } from './settings-store'
 import { useWorkspaceStore } from './workspace-store'
 
@@ -27,6 +28,9 @@ export async function reloadStores(): Promise<void> {
     useSettingsStore.getState().load(),
     useProjectsStore.getState().load(),
   ])
+
+  // 到期概况也依赖库里内容（重载后可能整库换了），顺手标成未加载让页面自己刷新
+  useReviewStore.getState().reset()
 
   const workspace = useWorkspaceStore.getState()
   if (!workspace.projectId) return

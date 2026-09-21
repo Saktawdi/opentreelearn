@@ -66,6 +66,70 @@ export interface NodeThread {
 
 export type NodeStatus = 'active' | 'archived'
 
+/**
+ * 节点类型。缺省（含老数据与导入的 `.tree`）= 普通学习节点。
+ *
+ * - `review`：复习中心。每个项目至多一个，自成一棵根树，**不参与掌握度聚合**，
+ *   它的对话上下文走 `domain/review/digest` 的学习快照而不是普通前置脉络。
+ */
+export type NodeKind = 'topic' | 'review'
+
+/**
+ * 掌握度快照：AI 评估（生成学习摘要）或复习评分写下的一个时间点切片。
+ *
+ * `score` 只用于展示与排序 —— 一切决策（排期、分流）都走档位，因为不同模型
+ * 给分分布不可比，把原始分数当阈值判据是假精度。
+ */
+export interface MasterySnapshot {
+  /** 0-100（超出范围由 normalize 夹紧） */
+  score: number
+  /**
+   * AI 给出的薄弱点（至多 3 条）。**只做出题材料，绝不作为调度键** ——
+   * 每次生成文本都会漂移，无法稳定标识一个记忆。
+   */
+  weakPoints?: string[]
+  /** 快照时间（epoch ms）：之后又继续学习超过阈值就算过期（见 domain/mastery） */
+  updatedAt: number
+}
+
+/** FSRS 卡片状态；与 ts-fsrs 的 State 枚举一一对应，存成字符串免得版本换了数字含义 */
+export type ReviewCardState = 'new' | 'learning' | 'review' | 'relearning'
+
+/**
+ * 一张 FSRS 卡片的**序列化形状**：全部是普通 number（时间戳用 epoch ms）。
+ *
+ * Date 与 `elapsed_days` 这类会随 ts-fsrs 6.0 消失的 API 一律不进来 ——
+ * 适配层（domain/review/fsrs.ts）负责在我们的形状和 ts-fsrs 的 `Card` 之间往返。
+ */
+export interface ReviewCard {
+  /** 下次到期时间（epoch ms） */
+  due: number
+  stability: number
+  difficulty: number
+  scheduledDays: number
+  /** 当前处在第几个（重）学习步；与 ts-fsrs 的 learning_steps 对齐 */
+  learningSteps: number
+  reps: number
+  lapses: number
+  state: ReviewCardState
+  /** 上次复习时间（epoch ms）；新卡没有 */
+  lastReview?: number
+}
+
+export type ReviewGrade = 'again' | 'hard' | 'good' | 'easy'
+
+export const REVIEW_GRADES: readonly ReviewGrade[] = ['again', 'hard', 'good', 'easy']
+
+export function isReviewGrade(value: unknown): value is ReviewGrade {
+  return typeof value === 'string' && (REVIEW_GRADES as readonly string[]).includes(value)
+}
+
+/** 挂在节点上的复习状态：一张卡片 + 最近一次评分档位。 */
+export interface NodeReview {
+  card: ReviewCard
+  lastGrade?: ReviewGrade
+}
+
 export interface Node {
   id: Id
   projectId: Id
@@ -78,6 +142,19 @@ export interface Node {
   status: NodeStatus
   /** 节点内「编辑重发 + 重新生成」的历史版本；缺省 = 线性对话 */
   thread?: NodeThread
+  /** 缺省 = 普通学习节点；`review` = 复习中心 */
+  kind?: NodeKind
+  /** 掌握度快照；没生成过就没有（不等于 0 分） */
+  mastery?: MasterySnapshot
+  /** 复习调度状态；有 mastery 的节点在第一次复习后才有 */
+  review?: NodeReview
+  /**
+   * 最后学习时间（epoch ms）= 显示路径末条消息的 createdAt。
+   *
+   * 刻意不是 `updatedAt`：重命名、拖拽、生成摘要、切版本都会改 updatedAt，
+   * 用它当「学过没有」会把整理动作误读成学习。单一写入口在消息落库处。
+   */
+  lastStudiedAt?: number
   createdAt: number
   updatedAt: number
 }

@@ -1,12 +1,18 @@
 import { createDefaultSettings, clampContextBudget } from './defaults'
 import type {
   GlobalSettings,
+  MasterySnapshot,
   ModelRef,
+  Node,
+  NodeReview,
   Note,
   ProviderConfig,
   ProviderKind,
   Project,
+  ReviewCard,
+  ReviewCardState,
 } from './models'
+import { isReviewGrade } from './models'
 import { isNoteKind } from './notes'
 
 /**
@@ -131,6 +137,139 @@ export function normalizeNote(value: unknown, now = Date.now()): Note | null {
     start,
     end,
     body: readString(value.body),
+    createdAt,
+    updatedAt: readNumber(value.updatedAt, createdAt),
+  }
+}
+
+/** 掌握度分数只认 0-100 的有限数值；其余一律夹紧，不把 NaN / 越界值带进聚合。 */
+function clampScore(value: number): number {
+  return Math.min(Math.max(Math.round(value), 0), 100)
+}
+
+const REVIEW_CARD_STATES: readonly ReviewCardState[] = [
+  'new',
+  'learning',
+  'review',
+  'relearning',
+]
+
+/**
+ * 掌握度快照的读回归一化。
+ *
+ * 缺 `updatedAt` 时退回 0 而不是丢弃：一个没有时间的分数会被当成「很旧」，
+ * 而丢弃会让用户已经生成过的分数凭空消失 —— 前者是弱化显示，后者是数据丢失。
+ */
+export function normalizeMastery(value: unknown): MasterySnapshot | undefined {
+  if (!isRecord(value)) return undefined
+  if (typeof value.score !== 'number' || !Number.isFinite(value.score)) return undefined
+
+  const weakPoints = readStringArray(value.weakPoints).slice(0, 3)
+
+  return {
+    score: clampScore(value.score),
+    ...(weakPoints.length > 0 ? { weakPoints } : {}),
+    updatedAt: readNumber(value.updatedAt, 0),
+  }
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/**
+ * 复习卡片的读回归一化。
+ *
+ * 卡片是一个整体：任一关键字段坏掉都不能只修一半 —— 半张卡会让 FSRS 用
+ * 错误的 stability / state 排期，宁可整张丢掉（下一轮复习时重新建卡）。
+ */
+export function normalizeReview(value: unknown): NodeReview | undefined {
+  if (!isRecord(value)) return undefined
+  const card = isRecord(value.card) ? value.card : null
+  if (!card) return undefined
+
+  const due = readOptionalNumber(card.due)
+  const stability = readOptionalNumber(card.stability)
+  const difficulty = readOptionalNumber(card.difficulty)
+  const scheduledDays = readOptionalNumber(card.scheduledDays)
+  const learningSteps = readOptionalNumber(card.learningSteps)
+  const reps = readOptionalNumber(card.reps)
+  const lapses = readOptionalNumber(card.lapses)
+  if (
+    due === undefined ||
+    stability === undefined ||
+    difficulty === undefined ||
+    scheduledDays === undefined ||
+    learningSteps === undefined ||
+    reps === undefined ||
+    lapses === undefined
+  ) {
+    return undefined
+  }
+
+  const state = REVIEW_CARD_STATES.includes(card.state as ReviewCardState)
+    ? (card.state as ReviewCardState)
+    : 'new'
+  const lastReview = readOptionalNumber(card.lastReview)
+
+  const normalizedCard: ReviewCard = {
+    due,
+    stability,
+    difficulty,
+    scheduledDays,
+    learningSteps,
+    reps: Math.max(0, Math.floor(reps)),
+    lapses: Math.max(0, Math.floor(lapses)),
+    state,
+    ...(lastReview !== undefined ? { lastReview } : {}),
+  }
+
+  return {
+    card: normalizedCard,
+    ...(isReviewGrade(value.lastGrade) ? { lastGrade: value.lastGrade } : {}),
+  }
+}
+
+/**
+ * 节点的读回归一化。
+ *
+ * 与笔记不同，节点**永远不丢**：缺 `id` / `projectId` 才拒绝。新加的可选字段
+ * （kind / mastery / review / lastStudiedAt）在这里兜底，坏数据退化成缺省行为
+ * （没有掌握度、没有复习排期），不会让画布或复习队列崩掉。
+ */
+export function normalizeNode(value: unknown): Node | null {
+  if (!isRecord(value)) return null
+  const id = readString(value.id)
+  const projectId = readString(value.projectId)
+  if (!id || !projectId) return null
+
+  const createdAt = readNumber(value.createdAt, Date.now())
+  // 坐标要么是完整可用的两个数（= 用户手动摆过，锁定），要么退化成自动布局；
+  // 半个坐标补 0 会把节点悄悄钉到原点上
+  const position =
+    isRecord(value.position) &&
+    typeof value.position.x === 'number' &&
+    Number.isFinite(value.position.x) &&
+    typeof value.position.y === 'number' &&
+    Number.isFinite(value.position.y)
+      ? { x: value.position.x, y: value.position.y }
+      : null
+
+  return {
+    id,
+    projectId,
+    parentId: typeof value.parentId === 'string' ? value.parentId : null,
+    forkFrom: isRecord(value.forkFrom) ? (value.forkFrom as unknown as Node['forkFrom']) : null,
+    title: readString(value.title) ?? '未命名节点',
+    summary: readString(value.summary),
+    contextSeed: Array.isArray(value.contextSeed) ? readStringArray(value.contextSeed) : undefined,
+    position,
+    status: value.status === 'archived' ? 'archived' : 'active',
+    thread: isRecord(value.thread) ? (value.thread as unknown as Node['thread']) : undefined,
+    kind: value.kind === 'review' ? 'review' : value.kind === 'topic' ? 'topic' : undefined,
+    mastery: normalizeMastery(value.mastery),
+    review: normalizeReview(value.review),
+    lastStudiedAt: readOptionalNumber(value.lastStudiedAt),
     createdAt,
     updatedAt: readNumber(value.updatedAt, createdAt),
   }

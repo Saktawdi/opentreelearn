@@ -25,9 +25,15 @@ export interface ProjectSettingsRepository {
 
 export interface NodeRepository {
   listByProject(projectId: Id): Promise<Node[]>
+  /** 全项目读出节点：首页「今日复习」要跨项目统计到期数。 */
+  listAll(): Promise<Node[]>
   get(id: Id): Promise<Node | undefined>
   create(node: Node): Promise<void>
   createMany(nodes: Node[]): Promise<void>
+  /**
+   * 改一条节点。**所有节点写入都必须走这里**：直接 `db.nodes.update` 会绕过
+   * outbox 记账，改动就同步不出去（掌握度 / 复习排期全在节点载荷里）。
+   */
   update(id: Id, patch: Partial<Node>): Promise<void>
   remove(id: Id): Promise<void>
   removeByProject(projectId: Id): Promise<void>

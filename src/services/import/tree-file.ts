@@ -16,6 +16,14 @@ const rawCardSchema = z.object({
   messages: z.array(rawMessageSchema).optional(),
   children: z.array(z.string()).optional(),
   depth: z.coerce.number().optional(),
+  // 掌握度与复习中心的导出字段；旧文件没有，缺省即普通节点
+  kind: z.string().optional(),
+  mastery: z
+    .object({
+      score: z.coerce.number(),
+      weakPoints: z.array(z.string()).optional(),
+    })
+    .optional(),
 })
 
 const treeFileSchema = z.object({
@@ -50,6 +58,10 @@ export interface ParsedCard {
   parentSourceId: string | null
   messages: ParsedMessage[]
   contextSeed?: string[]
+  /** 复习中心标记（`.tree` 里有 kind: 'review' 时） */
+  kind?: 'review'
+  /** 导入时携带的掌握度分数；没有复习排期（那是设备本地状态） */
+  mastery?: { score: number; weakPoints?: string[] }
 }
 
 export interface ParsedProject {
@@ -194,12 +206,24 @@ export function parseTreeJson(rawJson: unknown, fallbackName = '未命名项目'
 
     if (seedSet.size > 0) totalContextSeeds += 1
 
+    const mastery =
+      card.mastery && Number.isFinite(card.mastery.score)
+        ? {
+            score: Math.min(Math.max(Math.round(card.mastery.score), 0), 100),
+            ...(card.mastery.weakPoints && card.mastery.weakPoints.length > 0
+              ? { weakPoints: card.mastery.weakPoints.slice(0, 3) }
+              : {}),
+          }
+        : undefined
+
     return {
       sourceId: card.id,
       title,
       parentSourceId,
       messages,
       contextSeed: seedSet.size > 0 ? Array.from(seedSet).slice(0, 8) : undefined,
+      kind: card.kind === 'review' ? 'review' : undefined,
+      mastery,
     }
   })
 

@@ -1,6 +1,8 @@
 import { DEFAULT_CONTEXT_BUDGET, DEFAULT_RECENT_MESSAGES } from '@/domain/defaults'
 import { messageText, quoteBlock } from '@/domain/messages'
 import type { Id, Message, Node } from '@/domain/models'
+import { buildStudyDigest, renderStudyDigest } from '@/domain/review/digest'
+import { REVIEW_RATING_MARKER_HINT } from '@/domain/review/protocol'
 import { resolveThread } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex, pathTo } from '@/domain/tree/tree'
 import { normalizeWhitespace, truncate } from '@/lib/text'
@@ -23,6 +25,10 @@ export interface AssembleInput {
   projectSystemPrompt?: string
   budgetTokens?: number
   recentMessages?: number
+  /** 当前节点正处在复习会话中：`review` = 回忆巩固，`relearn` = 低掌握度重新学习 */
+  reviewMode?: 'review' | 'relearn'
+  /** 学习快照的计算基准时间；缺省取当前时间 */
+  now?: number
 }
 
 export interface AssembleStats {
@@ -44,6 +50,38 @@ const BASE_SYSTEM = [
   '回答要准确、结构化、可验证；不确定时明确说明不确定性，不要编造。',
   '当学习者的问题偏离当前节点主题时，先给出简短回答，再提醒可以另开节点深入。',
 ].join('\n')
+
+/**
+ * 复习中心（kind: 'review'）的系统提示：只做诊断、计划与答疑。
+ * 「不改别的节点数据」这句不是客套 —— 它挡住了模型顺手改掌握度的冲动，
+ * 评分回流只由学习者按下评分键时发生。
+ */
+const REVIEW_CENTER_SYSTEM = [
+  '你现在位于「复习中心」：这里只做三件事 —— 诊断遗忘、制定复习计划、出回忆题与答疑。',
+  '不要修改其他节点的任何数据（掌握度、复习排期、摘要都不改）：评分由学习者在原节点复习后按下评分键完成。',
+  '出题优先出需要主动回忆的题，尤其是结构性题目（例如「这个主题该挂在哪个主题下面」「A 和 B 是什么关系」），它们比孤立的事实更值得复习。',
+  '学习者问「今天复习什么」时，按学习快照给出顺序：先说到期、保持率低、档位生疏的，再给一个能执行完的短清单。',
+].join('\n')
+
+/**
+ * 复习会话中（原节点里）的导师规则：先让学习者回忆，再点评，最后给判定标记。
+ *
+ * 「重新学习」与「复习」分开写：低掌握度的节点让学习者硬回忆只会挫败，
+ * 先补最小必要的讲解再让他复述，才是对应 FSRS Learning/Relearning 的行为。
+ */
+const REVIEW_TUTOR_SYSTEM: Record<'review' | 'relearn', string> = {
+  review: [
+    '这个节点正在复习会话中：以「主动回忆」的方式带学习者复习，而不是重新讲授一遍。',
+    '流程：先让学习者凭记忆复述核心内容或回答一个回忆题，再点评对错与缺口；不要一上来就给出完整答案。',
+    '出题优先出结构性题目（例如「这个主题该挂在哪个主题下面」「A 和 B 是什么关系」），比孤立的事实更值得复习。',
+    `点评结束后给出本次判定：${REVIEW_RATING_MARKER_HINT}`,
+  ].join('\n'),
+  relearn: [
+    '这个节点的掌握度偏低，正在「重新学习」而不是复习：学习者还没到能靠回忆巩固的程度，硬回忆只会挫败。',
+    '流程：先用最短的篇幅把最关键的概念/推导讲清（只补缺口，不要从头讲一遍），然后让学习者用自己的话复述一遍。',
+    `点评结束后给出本次判定：${REVIEW_RATING_MARKER_HINT}`,
+  ].join('\n'),
+}
 
 const IMAGE_TOKEN_COST = 320
 const TRUNCATE_CHARS = 480
@@ -205,12 +243,19 @@ export function assembleContext(input: AssembleInput): AssembleResult {
       sections.push(`## 项目要求\n${projectPrompt}`)
     }
 
-    const index = buildTreeIndex(input.nodes)
-    const ancestors = ancestorsOf(index, input.node.id)
-    const chain = [...ancestors.map((node) => node.title), input.node.title]
-    if (chain.length > 0) {
-      const rendered = chain.map((title, depth) => `${'  '.repeat(depth)}- ${title}`).join('\n')
-      sections.push(`## 当前学习位置\n${rendered}`)
+    if (input.node.kind === 'review') {
+      // 复习中心不参与学习树定位，走学习快照（每次发送时重算，不冻结）
+      sections.push(REVIEW_CENTER_SYSTEM)
+      const digest = buildStudyDigest(input.nodes, { now: input.now ?? Date.now() })
+      sections.push(`## 学习快照\n${renderStudyDigest(digest)}`)
+    } else {
+      const index = buildTreeIndex(input.nodes)
+      const ancestors = ancestorsOf(index, input.node.id)
+      const chain = [...ancestors.map((node) => node.title), input.node.title]
+      if (chain.length > 0) {
+        const rendered = chain.map((title, depth) => `${'  '.repeat(depth)}- ${title}`).join('\n')
+        sections.push(`## 当前学习位置\n${rendered}`)
+      }
     }
 
     const seed = (input.node.contextSeed ?? [])
@@ -230,6 +275,10 @@ export function assembleContext(input: AssembleInput): AssembleResult {
     const droppedCount = modes.filter((mode) => mode === 'dropped').length
     if (droppedCount > 0) {
       sections.push(`（更早的 ${droppedCount} 个前置节点因上下文预算已省略）`)
+    }
+
+    if (input.reviewMode && input.node.kind !== 'review') {
+      sections.push(REVIEW_TUTOR_SYSTEM[input.reviewMode])
     }
 
     return sections.join('\n\n')

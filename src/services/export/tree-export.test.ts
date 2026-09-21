@@ -112,6 +112,67 @@ describe('tree-export', () => {
     expect(reparsedChild.contextSeed).toEqual(['引用前文极限知识'])
   })
 
+  it('carries mastery and the review-center mark, without the rating markers', () => {
+    const project: Project = {
+      id: 'p-1',
+      name: '复习项目',
+      tags: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    const topic: Node = {
+      id: 'n-topic',
+      projectId: 'p-1',
+      parentId: null,
+      forkFrom: null,
+      title: '特征值',
+      position: null,
+      status: 'active',
+      mastery: { score: 72, weakPoints: ['边界条件', '符号'], updatedAt: 5 },
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    const center: Node = {
+      id: 'n-center',
+      projectId: 'p-1',
+      parentId: null,
+      forkFrom: null,
+      title: '复习中心',
+      position: null,
+      status: 'active',
+      kind: 'review',
+      createdAt: 2,
+      updatedAt: 2,
+    }
+    const messages: Message[] = [
+      {
+        id: 'm-1',
+        nodeId: 'n-topic',
+        projectId: 'p-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '先复述定义。\n\n[[rating:good]]' }],
+        createdAt: 3,
+      },
+    ]
+
+    const exported = buildTreeExportData(project, [topic, center], messages)
+    const topicCard = exported.data.cards.find((card) => card.id === 'n-topic')!
+    const centerCard = exported.data.cards.find((card) => card.id === 'n-center')!
+
+    expect(topicCard.mastery).toEqual({ score: 72, weakPoints: ['边界条件', '符号'] })
+    expect(centerCard.kind).toBe('review')
+    expect(centerCard.mastery).toBeUndefined()
+    // 评分标记是应用内协议，不进导出文件
+    expect(topicCard.messages[0].content).toBe('先复述定义。')
+
+    // 再导入时掌握度与复习中心标记都还在
+    const reparsed = parseTreeJson(JSON.parse(stringifyTreeExport(exported)))
+    const reparsedTopic = reparsed.cards.find((card) => card.sourceId === 'n-topic')!
+    const reparsedCenter = reparsed.cards.find((card) => card.sourceId === 'n-center')!
+    expect(reparsedTopic.mastery).toEqual({ score: 72, weakPoints: ['边界条件', '符号'] })
+    expect(reparsedCenter.kind).toBe('review')
+  })
+
   it('exports only the displayed version (lossy by design)', () => {
     const project: Project = {
       id: 'p-1',

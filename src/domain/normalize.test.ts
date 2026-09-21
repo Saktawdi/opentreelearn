@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultSettings, DEFAULT_CONTEXT_BUDGET } from './defaults'
 import {
   normalizeGlobalSettings,
+  normalizeMastery,
   normalizeModelRef,
+  normalizeNode,
   normalizeNote,
   normalizeProject,
   normalizeProvider,
+  normalizeReview,
 } from './normalize'
 
 describe('normalizeProject', () => {
@@ -123,6 +126,152 @@ describe('normalizeGlobalSettings', () => {
     expect(
       normalizeGlobalSettings({ defaultChatModelRef: { providerId: 'v1' } }).defaultChatModelRef,
     ).toBeNull()
+  })
+})
+
+describe('normalizeMastery', () => {
+  it('keeps a well-formed snapshot intact', () => {
+    expect(normalizeMastery({ score: 72, weakPoints: ['边界'], updatedAt: 5 })).toEqual({
+      score: 72,
+      weakPoints: ['边界'],
+      updatedAt: 5,
+    })
+  })
+
+  it('clamps the score and caps weak points at three', () => {
+    expect(normalizeMastery({ score: 140, updatedAt: 1 })?.score).toBe(100)
+    expect(normalizeMastery({ score: -20, updatedAt: 1 })?.score).toBe(0)
+    expect(normalizeMastery({ score: 66.6, updatedAt: 1 })?.score).toBe(67)
+    expect(
+      normalizeMastery({ score: 50, updatedAt: 1, weakPoints: ['a', 'b', 'c', 'd'] })?.weakPoints,
+    ).toEqual(['a', 'b', 'c'])
+  })
+
+  it('drops the snapshot when there is no usable score', () => {
+    expect(normalizeMastery({ updatedAt: 1 })).toBeUndefined()
+    expect(normalizeMastery({ score: '80', updatedAt: 1 })).toBeUndefined()
+    expect(normalizeMastery(null)).toBeUndefined()
+  })
+
+  it('keeps a score without a timestamp but marks it as ancient', () => {
+    // 丢分数等于数据丢失；缺时间只是「不知道什么时候打的」，弱化显示即可
+    expect(normalizeMastery({ score: 80 })).toEqual({ score: 80, updatedAt: 0 })
+  })
+})
+
+describe('normalizeReview', () => {
+  const card = {
+    due: 1_000,
+    stability: 12.5,
+    difficulty: 5.2,
+    scheduledDays: 10,
+    learningSteps: 0,
+    reps: 4,
+    lapses: 1,
+    state: 'review',
+    lastReview: 500,
+  }
+
+  it('keeps a well-formed card intact', () => {
+    expect(normalizeReview({ card, lastGrade: 'good' })).toEqual({ card, lastGrade: 'good' })
+  })
+
+  it('drops a half-broken card instead of letting FSRS schedule on bad data', () => {
+    expect(normalizeReview({ card: { ...card, stability: 'high' } })).toBeUndefined()
+    expect(normalizeReview({ card: { ...card, due: undefined } })).toBeUndefined()
+    expect(normalizeReview({ card: null })).toBeUndefined()
+    expect(normalizeReview({})).toBeUndefined()
+  })
+
+  it('falls back to new for an unknown state and drops an unknown grade', () => {
+    const result = normalizeReview({ card: { ...card, state: 'someday' }, lastGrade: '完美' })
+    expect(result?.card.state).toBe('new')
+    expect(result?.lastGrade).toBeUndefined()
+  })
+
+  it('floors negative counters', () => {
+    const result = normalizeReview({ card: { ...card, reps: -3, lapses: 2.9 } })
+    expect(result?.card.reps).toBe(0)
+    expect(result?.card.lapses).toBe(2)
+  })
+})
+
+describe('normalizeNode', () => {
+  const base = {
+    id: 'n1',
+    projectId: 'p1',
+    parentId: null,
+    forkFrom: null,
+    title: '特征值',
+    position: null,
+    status: 'active',
+    createdAt: 1,
+    updatedAt: 2,
+  }
+
+  it('keeps old records working without the new fields', () => {
+    const node = normalizeNode(base)
+
+    expect(node).toMatchObject(base)
+    expect(node?.kind).toBeUndefined()
+    expect(node?.mastery).toBeUndefined()
+    expect(node?.review).toBeUndefined()
+    expect(node?.lastStudiedAt).toBeUndefined()
+  })
+
+  it('carries the new fields through', () => {
+    const node = normalizeNode({
+      ...base,
+      kind: 'review',
+      mastery: { score: 88, updatedAt: 9 },
+      review: {
+        card: {
+          due: 10,
+          stability: 1,
+          difficulty: 1,
+          scheduledDays: 1,
+          learningSteps: 0,
+          reps: 1,
+          lapses: 0,
+          state: 'learning',
+        },
+      },
+      lastStudiedAt: 8,
+    })
+
+    expect(node?.kind).toBe('review')
+    expect(node?.mastery?.score).toBe(88)
+    expect(node?.review?.card.state).toBe('learning')
+    expect(node?.lastStudiedAt).toBe(8)
+  })
+
+  it('degrades broken new fields to defaults instead of throwing', () => {
+    const node = normalizeNode({
+      ...base,
+      kind: 'exam',
+      mastery: { score: NaN, updatedAt: 1 },
+      review: { card: { due: 'later' } },
+      lastStudiedAt: 'yesterday',
+    })
+
+    expect(node?.kind).toBeUndefined()
+    expect(node?.mastery).toBeUndefined()
+    expect(node?.review).toBeUndefined()
+    expect(node?.lastStudiedAt).toBeUndefined()
+  })
+
+  it('repairs missing title/status/timestamps', () => {
+    const node = normalizeNode({ id: 'n1', projectId: 'p1' })
+
+    expect(node?.title).toBe('未命名节点')
+    expect(node?.status).toBe('active')
+    expect(typeof node?.createdAt).toBe('number')
+  })
+
+  it('rejects records without id or projectId', () => {
+    expect(normalizeNode({ projectId: 'p1' })).toBeNull()
+    expect(normalizeNode({ id: 'n1' })).toBeNull()
+    expect(normalizeNode(null)).toBeNull()
   })
 })
 

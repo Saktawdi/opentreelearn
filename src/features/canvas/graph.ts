@@ -1,6 +1,7 @@
 import type { Edge, Node as FlowNode } from '@xyflow/react'
 import { messagePreview } from '@/domain/messages'
-import type { Id, Message, Node } from '@/domain/models'
+import type { Id, Message, Node, ReviewCard } from '@/domain/models'
+import { isMasteryStale, masteryIndex } from '@/domain/mastery/aggregate'
 import { resolveThread } from '@/domain/thread/resolve'
 import { DEFAULT_LAYOUT_OPTIONS, computeTreeLayout } from '@/domain/tree/layout'
 import { buildTreeIndex } from '@/domain/tree/tree'
@@ -16,6 +17,21 @@ export interface LearnNodeData extends Record<string, unknown> {
   childCount: number
   forkFromTitle?: string
   selected: boolean
+  /** 复习中心（kind: 'review'）：卡片上有专门的标记 */
+  reviewCenter: boolean
+  /** 子树聚合的掌握度：均值 + 覆盖率（learned/total）；没有掌握度时 score 为 null */
+  mastery: { score: number | null; learned: number; total: number } | null
+  /** 掌握度快照已过期：摘要之后又学了很久，分数不再代表现状 */
+  masteryStale: boolean
+  /**
+   * 复习卡；没排过卡时不带。
+   *
+   * 保持率不在这里算：「随分钟衰减」的展示只在**可见卡片**里计算
+   * （卡片组件用 `cardRetention` + 下面这个分钟级时钟现算），离屏卡片不参与。
+   */
+  reviewCard?: ReviewCard
+  /** 分钟级时钟（见 CanvasPage 的 useDecayClock）；保持率现算的基准 */
+  now: number
 }
 
 export type LearnFlowNode = FlowNode<LearnNodeData, 'learn' | 'dot'>
@@ -28,6 +44,11 @@ export interface GraphResult {
 export interface GraphOptions {
   miniMapMode?: boolean
   summarizingNodeIds?: Id[]
+  /**
+   * 保持率的计算基准时间。调用方按分钟级节流传进来：保持率随时间连续衰减，
+   * 没必要每帧重算（见 CanvasPage 的 useDecayClock）。
+   */
+  now?: number
 }
 
 export function buildGraph(
@@ -38,9 +59,11 @@ export function buildGraph(
 ): GraphResult {
   const isMini = Boolean(options?.miniMapMode)
   const summarizing = new Set(options?.summarizingNodeIds ?? [])
+  const now = options?.now ?? Date.now()
   const active = nodes.filter((node) => node.status === 'active')
   const byId = new Map(active.map((node) => [node.id, node]))
   const index = buildTreeIndex(active)
+  const aggregates = masteryIndex(active)
 
   // 当处于微缩点模式（Mini Map）时，节点占位和间距更紧凑
   const layoutOptions = isMini
@@ -59,6 +82,7 @@ export function buildGraph(
     const path = resolveThread(node, messagesByNode[node.id] ?? []).path
     const lastAssistant = [...path].reverse().find((message) => message.role === 'assistant')
     const forkSource = node.forkFrom ? byId.get(node.forkFrom.nodeId) : undefined
+    const aggregate = aggregates.get(node.id)
 
     return {
       id: node.id,
@@ -82,6 +106,13 @@ export function buildGraph(
         childCount: (index.children.get(node.id) ?? []).length,
         forkFromTitle: forkSource?.title,
         selected: node.id === selectedNodeId,
+        reviewCenter: node.kind === 'review',
+        mastery: aggregate
+          ? { score: aggregate.score, learned: aggregate.learned, total: aggregate.total }
+          : null,
+        masteryStale: isMasteryStale(node.mastery, node.lastStudiedAt),
+        ...(node.review ? { reviewCard: node.review.card } : {}),
+        now,
       },
     }
   })

@@ -1,5 +1,10 @@
-import type { GlobalSettings, Id, Note, Project } from '@/domain/models'
-import { normalizeGlobalSettings, normalizeNote, normalizeProject } from '@/domain/normalize'
+import type { GlobalSettings, Id, Node, Note, Project } from '@/domain/models'
+import {
+  normalizeGlobalSettings,
+  normalizeNode,
+  normalizeNote,
+  normalizeProject,
+} from '@/domain/normalize'
 import type {
   AssetRepository,
   MessageRepository,
@@ -62,10 +67,24 @@ function createProjectSettingsRepository(
   }
 }
 
+/** 节点读出来的兜底归一化：坏字段退化成缺省行为，缺 mastery/review 时上层不用到处判空。 */
+function readNodes(rows: unknown[]): Node[] {
+  return rows
+    .map((row) => normalizeNode(row))
+    .filter((node): node is Node => node !== null)
+}
+
 function createNodeRepository(db: AppDatabase, sync: SyncLocal): NodeRepository {
   return {
-    listByProject: (projectId) => db.nodes.where('projectId').equals(projectId).toArray(),
-    get: (id) => db.nodes.get(id),
+    listByProject: async (projectId) =>
+      readNodes(await db.nodes.where('projectId').equals(projectId).toArray()),
+    // 首页「今日复习」要看所有项目的到期情况：全量读出在内存里过滤，
+    // 与 projects.list 同样的理由 —— 不让索引键缺失的历史数据被静默筛掉
+    listAll: async () => readNodes(await db.nodes.toArray()),
+    get: async (id) => {
+      const row = await db.nodes.get(id)
+      return row ? (normalizeNode(row) ?? undefined) : undefined
+    },
     create: async (node) => {
       await db.nodes.put(node)
       await sync.recordChange('node', node.id, 'upsert')

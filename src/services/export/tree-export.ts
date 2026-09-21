@@ -1,5 +1,6 @@
 import type { Message, Node, Project } from '@/domain/models'
 import { messageText } from '@/domain/messages'
+import { stripReviewRating } from '@/domain/review/protocol'
 import { resolveThread } from '@/domain/thread/resolve'
 import { buildTreeIndex, depthOf } from '@/domain/tree/tree'
 
@@ -20,6 +21,10 @@ export interface RawTreeExportCard {
   children: string[]
   depth?: number
   position?: [number, number, number]
+  /** 复习中心标记；普通学习节点不写这个字段 */
+  kind?: 'review'
+  /** 掌握度（0-100）。只导出分数与薄弱点：复习排期是随设备时间变化的本地状态 */
+  mastery?: { score: number; weakPoints?: string[] }
 }
 
 export interface RawTreeExportProject {
@@ -65,7 +70,8 @@ export function buildTreeExportData(
     const childIds = (index.children.get(node.id) ?? []).map((child) => child.id)
 
     const mappedMessages: RawTreeExportMessage[] = nodeMsgs.map((msg) => {
-      const text = messageText(msg)
+      // 评分标记是应用内协议，导出给别的工具读时剥掉
+      const text = stripReviewRating(messageText(msg))
       const isUser = msg.role === 'user'
       const role: 'user' | 'ai' = isUser ? 'user' : 'ai'
 
@@ -95,6 +101,15 @@ export function buildTreeExportData(
 
     if (node.position) {
       card.position = [node.position.x, node.position.y, 0]
+    }
+
+    if (node.kind === 'review') {
+      card.kind = 'review'
+    } else if (node.mastery) {
+      card.mastery = {
+        score: node.mastery.score,
+        ...(node.mastery.weakPoints ? { weakPoints: node.mastery.weakPoints } : {}),
+      }
     }
 
     return card

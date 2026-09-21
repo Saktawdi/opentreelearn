@@ -1,11 +1,30 @@
 import { getDatabase, getRepositories } from '@/data'
 import type { Message, Node, Project } from '@/domain/models'
+import { seedReviewCard } from '@/domain/review/schedule'
 import { newId } from '@/lib/id'
-import { parseTreeFileText, type ParsedProject } from './tree-file'
+import { parseTreeFileText, type ParsedCard, type ParsedProject } from './tree-file'
 
 export interface ImportResult {
   project: Project
   stats: ParsedProject['stats']
+}
+
+/**
+ * 导入卡片的「最后学习时间」。
+ *
+ * 口径与应用内一致：显示路径末条消息的 `createdAt`（`.tree` 只导出显示路径）。
+ * 刻意不按数组顺序取最后一条 —— 外部工具生成的 `.tree` 不保证消息有序。
+ *
+ * 没有对话、只剩掌握度的卡片（对话在导出前被裁掉）退回掌握度快照时间：
+ * 否则它会显示成「尚未学习」，复习中心的 digest 与掌握度过期标记都会读错。
+ */
+function importedLastStudiedAt(card: ParsedCard, masteryAt: number): number | undefined {
+  let latest: number | undefined
+  for (const message of card.messages) {
+    if (latest === undefined || message.createdAt > latest) latest = message.createdAt
+  }
+  if (latest !== undefined) return latest
+  return card.mastery ? masteryAt : undefined
 }
 
 export async function importParsedProject(parsed: ParsedProject): Promise<ImportResult> {
@@ -27,18 +46,36 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
   }
 
   const baseOrderTime = project.createdAt
-  const nodes: Node[] = parsed.cards.map((card, index) => ({
-    id: idMap.get(card.sourceId)!,
-    projectId: project.id,
-    parentId: card.parentSourceId ? idMap.get(card.parentSourceId) ?? null : null,
-    forkFrom: null,
-    title: card.title,
-    contextSeed: card.contextSeed,
-    position: null,
-    status: 'active',
-    createdAt: baseOrderTime + index,
-    updatedAt: baseOrderTime + index,
-  }))
+  const nodes: Node[] = parsed.cards.map((card, index) => {
+    const masteryAt = baseOrderTime + index
+    const lastStudiedAt = importedLastStudiedAt(card, masteryAt)
+    return {
+      id: idMap.get(card.sourceId)!,
+      projectId: project.id,
+      parentId: card.parentSourceId ? idMap.get(card.parentSourceId) ?? null : null,
+      forkFrom: null,
+      title: card.title,
+      contextSeed: card.contextSeed,
+      position: null,
+      status: 'active',
+      ...(card.kind === 'review' ? { kind: 'review' as const } : {}),
+      // 导入的掌握度按档位种一张卡（导入时刻起排期），跟应用内首次评估一致；
+      // .tree 不携带复习排期本身
+      ...(card.mastery
+        ? {
+            mastery: {
+              score: card.mastery.score,
+              weakPoints: card.mastery.weakPoints,
+              updatedAt: masteryAt,
+            },
+            review: seedReviewCard(card.mastery.score, masteryAt),
+          }
+        : {}),
+      ...(lastStudiedAt === undefined ? {} : { lastStudiedAt }),
+      createdAt: masteryAt,
+      updatedAt: masteryAt,
+    }
+  })
 
   const messages: Message[] = []
   for (const card of parsed.cards) {
@@ -56,7 +93,9 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
     }
   }
 
-  await db.transaction('rw', db.projects, db.nodes, db.messages, async () => {
+  // outbox 必须在事务里：仓储的每次写入都要记同步台账，漏了这张表
+  // Dexie 会直接抛 SubTransactionError，整次导入回滚。
+  await db.transaction('rw', db.projects, db.nodes, db.messages, db.outbox, async () => {
     await repositories.projects.create(project)
     await repositories.nodes.createMany(nodes)
     await repositories.messages.createMany(messages)

@@ -270,6 +270,58 @@ describe('assembleContext', () => {
     expect(result.messages).toHaveLength(2)
   })
 
+  it('sends the review center a study digest instead of a tree position', () => {
+    const topic = makeNode({ id: 't1', title: '特征值', createdAt: 1 })
+    topic.mastery = { score: 72, updatedAt: 2, weakPoints: ['边界条件'] }
+    topic.lastStudiedAt = 3
+    const center = makeNode({ id: 'review', title: '复习中心', kind: 'review', createdAt: 4 })
+
+    const result = assembleContext({
+      node: center,
+      nodes: [topic, center],
+      messagesByNode: messagesByNode([['review', []]]),
+      now: 5,
+    })
+
+    expect(result.system).toContain('复习中心')
+    expect(result.system).toContain('学习快照')
+    expect(result.system).toContain('《特征值》')
+    expect(result.system).toContain('档位 good')
+    expect(result.system).toContain('薄弱：边界条件')
+    expect(result.system).toContain('不要修改其他节点的任何数据')
+    // 元数据节点不该出现在「当前学习位置」里
+    expect(result.system).not.toContain('当前学习位置')
+  })
+
+  it('tells the tutor to elicit recall and emit a rating during a review session', () => {
+    const node = makeNode({ id: 'n1', title: '特征值', createdAt: 1 })
+
+    const normal = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', []]]),
+    })
+    const reviewing = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', []]]),
+      reviewMode: 'review',
+    })
+    const relearning = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', []]]),
+      reviewMode: 'relearn',
+    })
+
+    expect(normal.system).not.toContain('主动回忆')
+    expect(reviewing.system).toContain('主动回忆')
+    expect(reviewing.system).toContain('[[rating:again|hard|good|easy]]')
+    // 重新学习不是硬回忆：先补最小必要的讲解
+    expect(relearning.system).toContain('重新学习')
+    expect(relearning.system).not.toContain('主动回忆')
+  })
+
   it('degrades to a minimal context when the budget is tiny', () => {
     const node = makeNode({ id: 'n1', createdAt: 1 })
     const messages = Array.from({ length: 12 }, (_, i) =>

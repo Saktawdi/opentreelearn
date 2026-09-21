@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Asset, Message, Node, Note, Project } from '@/domain/models'
 import { AppDatabase } from './dexie/db'
 import { createDexieRepositories, purgeProject } from './dexie/repos'
+import { createSyncLocal } from './sync-local'
 
 let db: AppDatabase
 let repositories: ReturnType<typeof createDexieRepositories>
@@ -104,6 +105,84 @@ describe('node and message repositories', () => {
     const messages = await repositories.messages.listByNode('n1')
     expect(messages.map((message) => message.id)).toEqual(['m1', 'm2'])
     expect(await repositories.messages.listByProject('p1')).toHaveLength(2)
+  })
+
+  it('round-trips the mastery / review fields and repairs broken ones', async () => {
+    await repositories.nodes.create({
+      ...makeNode('n1', 'p1', null),
+      kind: 'review',
+      mastery: { score: 72, weakPoints: ['边界条件'], updatedAt: 5 },
+      review: {
+        card: {
+          due: 99,
+          stability: 3.5,
+          difficulty: 5,
+          scheduledDays: 2,
+          learningSteps: 0,
+          reps: 2,
+          lapses: 1,
+          state: 'review',
+          lastReview: 50,
+        },
+        lastGrade: 'good',
+      },
+      lastStudiedAt: 40,
+    })
+
+    const stored = (await repositories.nodes.listAll()).find((node) => node.id === 'n1')!
+    expect(stored.kind).toBe('review')
+    expect(stored.mastery).toEqual({ score: 72, weakPoints: ['边界条件'], updatedAt: 5 })
+    expect(stored.review?.card.state).toBe('review')
+    expect(stored.review?.lastGrade).toBe('good')
+    expect(stored.lastStudiedAt).toBe(40)
+
+    // 直接写一条坏记录：坏字段退化成缺省行为，节点本身不丢
+    await db.nodes.put({
+      id: 'bad',
+      projectId: 'p1',
+      mastery: { score: '高' },
+      review: { card: { due: 'later' } },
+      lastStudiedAt: 'yesterday',
+    } as unknown as Node)
+
+    const bad = await repositories.nodes.get('bad')
+    expect(bad).toBeDefined()
+    expect(bad?.mastery).toBeUndefined()
+    expect(bad?.review).toBeUndefined()
+    expect(bad?.lastStudiedAt).toBeUndefined()
+  })
+
+  // 掌握度 / 复习排期 / 最后学习时间都写在 node 载荷里，靠同步推到别的设备。
+  // 这条测试盯住的是「更新节点会记账」这个契约本身：一旦有人绕过仓储直接
+  // `db.nodes.update(...)`，outbox 里就一条都不会有，改动会静默丢在本地。
+  it('records node updates in the sync outbox so mastery / review reach other devices', async () => {
+    const sync = createSyncLocal(db)
+    await repositories.nodes.create(makeNode('n1', 'p1', null))
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
+
+    const mastery = { score: 65, weakPoints: ['边界条件'], updatedAt: 10 }
+    const review = {
+      card: {
+        due: 99,
+        stability: 3.5,
+        difficulty: 5,
+        scheduledDays: 2,
+        learningSteps: 0,
+        reps: 2,
+        lapses: 1,
+        state: 'review' as const,
+        lastReview: 50,
+      },
+      lastGrade: 'good' as const,
+    }
+    await repositories.nodes.update('n1', { mastery, review, lastStudiedAt: 40 })
+
+    const outbox = await sync.readOutbox()
+    expect(outbox).toHaveLength(1)
+    expect(outbox[0]).toMatchObject({ entity: 'node', localId: 'n1', op: 'upsert' })
+    // 载荷就是库里那条记录：同步推的是当前状态，不是变更内容
+    const payload = await sync.loadPayload('node', 'n1')
+    expect(payload?.data).toMatchObject({ mastery, review, lastStudiedAt: 40 })
   })
 
   it('stores image assets as blobs', async () => {

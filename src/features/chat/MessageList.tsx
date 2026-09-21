@@ -24,6 +24,7 @@ import {
 } from '@/domain/messages'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
+import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { resolveThread, summarizeSlotVersions } from '@/domain/thread/resolve'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
@@ -368,7 +369,8 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         ) : (
           <div ref={bodyRef} {...bodyProps(message.id)}>
-            <MarkdownView content={text} />
+            {/* 复习评分标记是给客户端与模型看的协议，不进正文 */}
+            <MarkdownView content={stripReviewRating(text)} />
           </div>
         )}
         <MessageImages urls={assetUrls} />
@@ -486,7 +488,8 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
     <div className="flex flex-col gap-1">
       <div className="rounded-xl rounded-bl-sm border border-accent/20 bg-surface/70 px-3.5 py-3">
         {text ? (
-          <MarkdownView content={text} />
+          // 流式期间也把（可能写到一半的）评分标记收掉
+          <MarkdownView content={stripStreamingReviewRating(text)} />
         ) : (
           <div className="flex items-center gap-2 text-sm text-muted">
             <span className="inline-flex gap-1">

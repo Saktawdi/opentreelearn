@@ -7,9 +7,9 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
+import { Brain, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,6 +31,7 @@ import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
 import { StarterPanel } from './StarterPanel'
+import { useDecayClock } from '@/features/chat/useDecayClock'
 
 const nodeTypes = {
   learn: LearnNodeCard,
@@ -69,6 +70,7 @@ export function CanvasPage() {
 
 function CanvasWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
+  const location = useLocation()
   // 外层 Provider 的实例 = 右侧微缩导航地图
   const miniApi = useReactFlow()
   const { fitView } = miniApi
@@ -92,6 +94,10 @@ function CanvasWorkspace() {
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
   const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
+  const openReviewCenter = useWorkspaceStore((state) => state.openReviewCenter)
+
+  // 保持率热力图：分钟级时钟，交互抖动不触发额外重算
+  const heatNow = useDecayClock()
 
   const providers = useSettingsStore((state) => state.settings.providers)
   const summaryModelRef = useSettingsStore((state) => state.settings.summaryModelRef)
@@ -142,17 +148,35 @@ function CanvasWorkspace() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [contextMenu, createRootDialog.open, nodeToDelete])
 
+  /**
+   * 首页「今日复习」带 openReviewCenter 进来时，只消费**那一次导航**。
+   *
+   * 按 `location.key` 记账而不是一个布尔 ref：组件在 `/p/a` → `/p/b` 这类
+   * 只换参数的跳转里不会卸载，布尔标记一旦为 true 就会被下一个项目再消费一次
+   * （普通进入也莫名弹出复习中心）。key 唯一标识一条历史记录，消费完即作废。
+   */
+  const wantsReviewCenter = Boolean(
+    (location.state as { openReviewCenter?: boolean } | null)?.openReviewCenter,
+  )
+  const navKey = location.key
+  const consumedNavKey = useRef<string | null>(null)
+
   useEffect(() => {
-    if (projectId) void openProject(projectId)
+    if (!projectId) return
+    void openProject(projectId).then(() => {
+      if (!wantsReviewCenter || consumedNavKey.current === navKey) return
+      consumedNavKey.current = navKey
+      void openReviewCenter()
+    })
     return () => {
       reset()
     }
-  }, [projectId, openProject, reset])
+  }, [projectId, navKey, wantsReviewCenter, openProject, openReviewCenter, reset])
 
   // 右侧微缩导航地图：始终用点阵紧凑布局
   const miniGraph = useMemo(
-    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: true }),
-    [nodes, messagesByNode, selectedNodeId],
+    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: true, now: heatNow }),
+    [nodes, messagesByNode, selectedNodeId, heatNow],
   )
 
   // 展开详情画布：卡片形态、复用持久化的节点坐标；未展开时不计算
@@ -162,9 +186,10 @@ function CanvasWorkspace() {
         ? buildGraph(nodes, messagesByNode, selectedNodeId, {
             miniMapMode: false,
             summarizingNodeIds,
+            now: heatNow,
           })
         : null,
-    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds],
+    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds, heatNow],
   )
   const detailGeometry = detailGraph ?? EMPTY_GRAPH
 
@@ -342,6 +367,16 @@ function CanvasWorkspace() {
         {/* 顶部极简信息标与操作 */}
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
+            <Tooltip label="复习中心：今日该复习什么">
+              <button
+                type="button"
+                aria-label="复习中心"
+                onClick={() => void openReviewCenter()}
+                className="mr-0.5 rounded-sm p-0.5 text-muted transition-colors hover:text-accent"
+              >
+                <Brain className="h-3 w-3" />
+              </button>
+            </Tooltip>
             <span className="text-2xs text-muted">{activeCount} 个节点</span>
             <Tooltip label="重新居中">
               <button
@@ -508,6 +543,9 @@ function CanvasWorkspace() {
               minZoom={0.2}
               maxZoom={2.4}
               nodesConnectable={false}
+              // 热力图的角度、徽标与掌握度都在节点组件里算：离屏卡片不该参与，
+              // 顺便省掉大树上不可见节点的渲染开销
+              onlyRenderVisibleElements
               proOptions={{ hideAttribution: true }}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
@@ -525,6 +563,18 @@ function CanvasWorkspace() {
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setIsDetailCanvasOpen(false)
+                  void openReviewCenter()
+                }}
+                className="gap-1.5 bg-surface/90 backdrop-blur"
+              >
+                <Brain className="h-3.5 w-3.5 text-muted" />
+                复习中心
+              </Button>
               <Button
                 variant="secondary"
                 size="sm"
