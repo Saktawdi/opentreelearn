@@ -1,5 +1,14 @@
 import Dexie, { type Table } from 'dexie'
-import type { Asset, GlobalSettings, Id, Message, Node, Project, ProjectSettings } from '@/domain/models'
+import type {
+  Asset,
+  GlobalSettings,
+  Id,
+  Message,
+  Node,
+  Note,
+  Project,
+  ProjectSettings,
+} from '@/domain/models'
 
 export interface SettingsRecord {
   key: string
@@ -14,6 +23,7 @@ export class AppDatabase extends Dexie {
   nodes!: Table<Node, Id>
   messages!: Table<Message, Id>
   assets!: Table<Asset, Id>
+  notes!: Table<Note, Id>
   settings!: Table<SettingsRecord, string>
 
   constructor(name = 'opentreelearn') {
@@ -26,6 +36,12 @@ export class AppDatabase extends Dexie {
       messages: 'id, nodeId, projectId, [nodeId+createdAt]',
       assets: 'id, projectId',
       settings: 'key',
+    })
+
+    // v2 只加表，不改老表：Dexie 会把新声明合并进已有 schema，v1 的索引原样保留。
+    // nodeId 与 messageId 都建索引 —— 删除节点/重试消息时都要按它们级联清笔记。
+    this.version(2).stores({
+      notes: 'id, projectId, nodeId, messageId',
     })
   }
 }

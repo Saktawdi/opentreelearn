@@ -1,9 +1,10 @@
-import type { GlobalSettings, Id, Project } from '@/domain/models'
-import { normalizeGlobalSettings, normalizeProject } from '@/domain/normalize'
+import type { GlobalSettings, Id, Note, Project } from '@/domain/models'
+import { normalizeGlobalSettings, normalizeNote, normalizeProject } from '@/domain/normalize'
 import type {
   AssetRepository,
   MessageRepository,
   NodeRepository,
+  NoteRepository,
   ProjectRepository,
   ProjectSettingsRepository,
   Repositories,
@@ -116,6 +117,32 @@ function createAssetRepository(db: AppDatabase): AssetRepository {
   }
 }
 
+function createNoteRepository(db: AppDatabase): NoteRepository {
+  return {
+    listByProject: async (projectId) => {
+      const rows = await db.notes.where('projectId').equals(projectId).toArray()
+      return rows
+        .map((row) => normalizeNote(row))
+        .filter((note): note is Note => note !== null)
+    },
+    create: async (note) => {
+      await db.notes.put(note)
+    },
+    remove: async (id) => {
+      await db.notes.delete(id)
+    },
+    removeByNode: async (nodeId) => {
+      await db.notes.where('nodeId').equals(nodeId).delete()
+    },
+    removeByMessage: async (messageId) => {
+      await db.notes.where('messageId').equals(messageId).delete()
+    },
+    removeByProject: async (projectId) => {
+      await db.notes.where('projectId').equals(projectId).delete()
+    },
+  }
+}
+
 function createSettingsRepository(db: AppDatabase): SettingsRepository {
   return {
     load: async () => normalizeGlobalSettings((await db.settings.get(SETTINGS_KEY))?.value),
@@ -132,16 +159,23 @@ export function createDexieRepositories(db: AppDatabase): Repositories {
     nodes: createNodeRepository(db),
     messages: createMessageRepository(db),
     assets: createAssetRepository(db),
+    notes: createNoteRepository(db),
     settings: createSettingsRepository(db),
   }
 }
 
 export async function purgeProject(db: AppDatabase, projectId: Id): Promise<void> {
-  await db.transaction('rw', db.projects, db.projectSettings, db.nodes, db.messages, db.assets, async () => {
-    await db.projects.delete(projectId)
-    await db.projectSettings.delete(projectId)
-    await db.nodes.where('projectId').equals(projectId).delete()
-    await db.messages.where('projectId').equals(projectId).delete()
-    await db.assets.where('projectId').equals(projectId).delete()
-  })
+  // 表已经多到超过 transaction 的可变参重载（最多五张），改用数组形式
+  await db.transaction(
+    'rw',
+    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes],
+    async () => {
+      await db.projects.delete(projectId)
+      await db.projectSettings.delete(projectId)
+      await db.nodes.where('projectId').equals(projectId).delete()
+      await db.messages.where('projectId').equals(projectId).delete()
+      await db.assets.where('projectId').equals(projectId).delete()
+      await db.notes.where('projectId').equals(projectId).delete()
+    },
+  )
 }

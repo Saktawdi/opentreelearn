@@ -115,3 +115,73 @@ describe('workspace store', () => {
     expect((await getRepositories().nodes.get(child!.id))?.status).toBe('archived')
   })
 })
+
+describe('note actions', () => {
+  it('adds, edits and removes notes, persisting every step', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('什么是特征值？')
+    const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
+    const store = () => useWorkspaceStore.getState()
+
+    const note = await store().addNote({
+      nodeId: root!.id,
+      messageId,
+      kind: 'annotation',
+      quote: '特征值',
+      start: 2,
+      end: 5,
+      body: '  重点  ',
+    })
+
+    expect(note?.body).toBe('重点')
+    expect(store().notesByMessage[messageId]).toHaveLength(1)
+    expect(await getRepositories().notes.listByProject('p1')).toHaveLength(1)
+
+    await store().updateNote(note!.id, { body: '换个说法' })
+    expect(store().notesByMessage[messageId][0].body).toBe('换个说法')
+    expect((await getRepositories().notes.listByProject('p1'))[0].body).toBe('换个说法')
+
+    // 清空批注：body 要真的从记录里消失，而不是留一个空串骗过 `note.body` 的判断
+    await store().updateNote(note!.id, { body: '   ' })
+    expect(store().notesByMessage[messageId][0].body).toBeUndefined()
+    expect((await getRepositories().notes.listByProject('p1'))[0].body).toBeUndefined()
+
+    await store().removeNote(note!.id)
+    expect(store().notesByMessage[messageId]).toBeUndefined()
+    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+  })
+
+  it('keeps a message’s notes ordered by their position in the text', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
+    const store = () => useWorkspaceStore.getState()
+
+    await store().addNote({ nodeId: root!.id, messageId, kind: 'highlight', quote: '后', start: 10, end: 11 })
+    await store().addNote({ nodeId: root!.id, messageId, kind: 'annotation', quote: '前', start: 2, end: 3 })
+
+    expect(store().notesByMessage[messageId].map((note) => note.quote)).toEqual(['前', '后'])
+  })
+
+  it('reloads notes with the project and drops them when the node goes away', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
+
+    await useWorkspaceStore.getState().addNote({
+      nodeId: root!.id,
+      messageId,
+      kind: 'highlight',
+      quote: '问题',
+      start: 0,
+      end: 2,
+    })
+
+    await useWorkspaceStore.getState().openProject('p1')
+    expect(useWorkspaceStore.getState().notesByMessage[messageId]).toHaveLength(1)
+
+    await useWorkspaceStore.getState().deleteNode(root!.id)
+    expect(useWorkspaceStore.getState().notesByMessage[messageId]).toBeUndefined()
+    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+  })
+})

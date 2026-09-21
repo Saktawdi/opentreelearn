@@ -72,6 +72,30 @@ export interface Message {
   meta?: MessageMeta
 }
 
+export type NoteKind = 'highlight' | 'annotation'
+
+/**
+ * 消息正文里的「笔记」：高亮标记与批注锚定到同一段被框选的原文。
+ *
+ * 锚点存的是**字符区间**而不是 DOM 引用 —— 消息正文是 Markdown 渲染出来的，
+ * 每次重渲染都会重建 DOM，只有「正文纯文本里的第 start 到 end 个字符」这种说法
+ * 能在重建后重新定位。`quote` 同时用于展示与锚点自愈（渲染结果变了就按原文找回）。
+ */
+export interface Note {
+  id: Id
+  projectId: Id
+  nodeId: Id
+  messageId: Id
+  kind: NoteKind
+  quote: string
+  start: number
+  end: number
+  /** 批注内容；纯高亮可以留空，留空时正文里只留一条划线。 */
+  body?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Asset {
   id: Id
   projectId: Id

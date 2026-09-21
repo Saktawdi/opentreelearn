@@ -2,10 +2,12 @@ import { createDefaultSettings, clampContextBudget } from './defaults'
 import type {
   GlobalSettings,
   ModelRef,
+  Note,
   ProviderConfig,
   ProviderKind,
   Project,
 } from './models'
+import { isNoteKind } from './notes'
 
 /**
  * 存储读回边界的数据归一化。
@@ -92,6 +94,43 @@ export function normalizeProject(value: unknown, now = Date.now()): Project | nu
     name: readString(value.name) ?? '未命名项目',
     description: readString(value.description),
     tags: readStringArray(value.tags),
+    createdAt,
+    updatedAt: readNumber(value.updatedAt, createdAt),
+  }
+}
+
+/**
+ * 笔记的读回归一化。
+ *
+ * `start` / `end` 决定这段笔记画在正文的哪一段上，坏值（负的、倒置的、非数值的）
+ * 会让渲染期的 Range 直接抛错，所以这里一律夹紧：起点不为负，终点不早于起点。
+ * 缺少 `projectId` / `nodeId` / `messageId` 的记录无法归属到任何消息，也就永远
+ * 渲染不出来，直接丢弃而不是留在库里越积越多。
+ */
+export function normalizeNote(value: unknown, now = Date.now()): Note | null {
+  if (!isRecord(value)) return null
+
+  const id = readString(value.id)
+  const projectId = readString(value.projectId)
+  const nodeId = readString(value.nodeId)
+  const messageId = readString(value.messageId)
+  if (!id || !projectId || !nodeId || !messageId) return null
+
+  const quote = readString(value.quote) ?? ''
+  const start = Math.max(0, Math.floor(readNumber(value.start, 0)))
+  const end = Math.max(start, Math.floor(readNumber(value.end, start + quote.length)))
+  const createdAt = readNumber(value.createdAt, now)
+
+  return {
+    id,
+    projectId,
+    nodeId,
+    messageId,
+    kind: isNoteKind(value.kind) ? value.kind : 'highlight',
+    quote,
+    start,
+    end,
+    body: readString(value.body),
     createdAt,
     updatedAt: readNumber(value.updatedAt, createdAt),
   }

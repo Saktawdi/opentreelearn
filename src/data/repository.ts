@@ -4,6 +4,7 @@ import type {
   Id,
   Message,
   Node,
+  Note,
   Project,
   ProjectSettings,
 } from '@/domain/models'
@@ -43,6 +44,19 @@ export interface MessageRepository {
   removeByProject(projectId: Id): Promise<void>
 }
 
+export interface NoteRepository {
+  listByProject(projectId: Id): Promise<Note[]>
+  /** 写入即整条覆盖（`put`）：批注被清空时要把 body 键真正去掉。 */
+  create(note: Note): Promise<void>
+  remove(id: Id): Promise<void>
+  remove(id: Id): Promise<void>
+  /** 节点（含子树）被删除时清理其下所有消息的笔记。 */
+  removeByNode(nodeId: Id): Promise<void>
+  /** 单条消息被重试/删除时清理它的笔记。 */
+  removeByMessage(messageId: Id): Promise<void>
+  removeByProject(projectId: Id): Promise<void>
+}
+
 export interface AssetRepository {
   get(id: Id): Promise<Asset | undefined>
   listByProject(projectId: Id): Promise<Asset[]>
@@ -62,5 +76,6 @@ export interface Repositories {
   nodes: NodeRepository
   messages: MessageRepository
   assets: AssetRepository
+  notes: NoteRepository
   settings: SettingsRepository
 }

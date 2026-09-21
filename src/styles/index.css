@@ -446,6 +446,29 @@
   animation: overlay-in 200ms var(--ease-out-expo);
 }
 
+/*
+ * 消息正文里的笔记标记（高亮 / 批注）。
+ *
+ * 用 CSS Custom Highlight API 的具名高亮来画：区间由 JS 登记（见 features/chat/note-anchor.ts），
+ * 这里只负责长什么样。刻意不往正文里包 <mark> —— 正文是 React 渲染的 Markdown，
+ * 凭空插节点会和 diff 打架。伪元素可用的属性有限：颜色、背景、text-decoration、
+ * text-shadow，改别的（比如 padding、border）不会生效。
+ */
+::highlight(otl-note-highlight) {
+  background-color: color-mix(in oklab, var(--color-accent) 30%, transparent);
+}
+
+::highlight(otl-note-annotation) {
+  background-color: color-mix(in oklab, var(--color-info) 20%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-info) 80%, transparent);
+}
+
+/* 点笔记条定位时闪一下，明度高于上面两种，一眼能看出「就是这段」 */
+::highlight(otl-note-focus) {
+  background-color: color-mix(in oklab, var(--color-accent) 58%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

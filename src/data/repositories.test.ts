@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Asset, Message, Node, Project } from '@/domain/models'
+import type { Asset, Message, Node, Note, Project } from '@/domain/models'
 import { AppDatabase } from './dexie/db'
 import { createDexieRepositories, purgeProject } from './dexie/repos'
 
@@ -33,6 +33,21 @@ function makeMessage(id: string, nodeId: string, projectId: string, createdAt: n
     role: 'user',
     parts: [{ type: 'text', text: id }],
     createdAt,
+  }
+}
+
+function makeNote(id: string, messageId: string, nodeId: string): Note {
+  return {
+    id,
+    projectId: 'p1',
+    nodeId,
+    messageId,
+    kind: 'highlight',
+    quote: id,
+    start: 0,
+    end: id.length,
+    createdAt: 1,
+    updatedAt: 1,
   }
 }
 
@@ -120,12 +135,59 @@ describe('settings repository', () => {
   })
 })
 
+describe('note repository', () => {
+  it('scopes notes to a project and cleans them up by message, node and project', async () => {
+    await repositories.notes.create(makeNote('note-1', 'm1', 'n1'))
+    await repositories.notes.create(makeNote('note-2', 'm1', 'n1'))
+    await repositories.notes.create(makeNote('note-3', 'm2', 'n2'))
+
+    expect((await repositories.notes.listByProject('p1')).map((note) => note.id).sort()).toEqual([
+      'note-1',
+      'note-2',
+      'note-3',
+    ])
+
+    // 消息重试 / 被删：挂在这条消息上的笔记一起走
+    await repositories.notes.removeByMessage('m1')
+    expect((await repositories.notes.listByProject('p1')).map((note) => note.id)).toEqual([
+      'note-3',
+    ])
+
+    // 删节点（含子树）：按 nodeId 清
+    await repositories.notes.removeByNode('n2')
+    expect(await repositories.notes.listByProject('p1')).toEqual([])
+  })
+
+  it('repairs malformed anchors on read and drops rows that belong to nothing', async () => {
+    // 刻意绕过仓储直接写库，模拟旧版本 / 手工导入留下的残缺记录
+    await db.notes.put({
+      id: 'broken',
+      projectId: 'p1',
+      nodeId: 'n1',
+      messageId: 'm1',
+      kind: '注解',
+      quote: 'x',
+      start: -5,
+      end: -1,
+      createdAt: 1,
+    } as unknown as Note)
+    await db.notes.put({ id: 'orphan', quote: 'x' } as unknown as Note)
+
+    const notes = await repositories.notes.listByProject('p1')
+    expect(notes.map((note) => note.id)).toEqual(['broken'])
+    expect(notes[0].kind).toBe('highlight')
+    expect(notes[0].start).toBe(0)
+    expect(notes[0].end).toBe(0)
+  })
+})
+
 describe('purgeProject', () => {
   it('removes every record belonging to the project', async () => {
     await repositories.projects.create(makeProject('p1', 1))
     await repositories.projectSettings.save({ projectId: 'p1', backgroundProfile: 'x' })
     await repositories.nodes.create(makeNode('n1', 'p1', null))
     await repositories.messages.create(makeMessage('m1', 'n1', 'p1', 1))
+    await repositories.notes.create(makeNote('note-1', 'm1', 'n1'))
 
     await purgeProject(db, 'p1')
 
@@ -133,5 +195,6 @@ describe('purgeProject', () => {
     expect(await repositories.projectSettings.get('p1')).toBeUndefined()
     expect(await repositories.nodes.listByProject('p1')).toEqual([])
     expect(await repositories.messages.listByProject('p1')).toEqual([])
+    expect(await repositories.notes.listByProject('p1')).toEqual([])
   })
 })

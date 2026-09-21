@@ -3,6 +3,7 @@ import { createDefaultSettings, DEFAULT_CONTEXT_BUDGET } from './defaults'
 import {
   normalizeGlobalSettings,
   normalizeModelRef,
+  normalizeNote,
   normalizeProject,
   normalizeProvider,
 } from './normalize'
@@ -120,5 +121,51 @@ describe('normalizeGlobalSettings', () => {
     expect(
       normalizeGlobalSettings({ defaultChatModelRef: { providerId: 'v1' } }).defaultChatModelRef,
     ).toBeNull()
+  })
+})
+
+describe('normalizeNote', () => {
+  const base = {
+    id: 'note-1',
+    projectId: 'p1',
+    nodeId: 'n1',
+    messageId: 'm1',
+    kind: 'annotation',
+    quote: '特征值',
+    start: 4,
+    end: 7,
+    body: '这里是重点',
+    createdAt: 10,
+    updatedAt: 11,
+  }
+
+  it('keeps well-formed records intact', () => {
+    expect(normalizeNote(base)).toEqual(base)
+  })
+
+  it('clamps broken anchors instead of letting them reach the renderer', () => {
+    // 负的起点、倒置的区间都会让渲染期的 Range 直接抛错
+    const negative = normalizeNote({ ...base, start: -5, end: -1 })
+    expect(negative?.start).toBe(0)
+    expect(negative?.end).toBe(0)
+
+    const inverted = normalizeNote({ ...base, start: 9, end: 2, quote: '特征值' })
+    expect(inverted?.start).toBe(9)
+    expect(inverted?.end).toBe(9)
+
+    const missing = normalizeNote({ ...base, start: undefined, end: undefined })
+    expect(missing?.start).toBe(0)
+    expect(missing?.end).toBe(3)
+  })
+
+  it('falls back to a highlight when the kind is unknown', () => {
+    expect(normalizeNote({ ...base, kind: '书签' })?.kind).toBe('highlight')
+  })
+
+  it('drops records that cannot be attached to a message', () => {
+    expect(normalizeNote({ ...base, messageId: '' })).toBeNull()
+    expect(normalizeNote({ ...base, nodeId: undefined })).toBeNull()
+    expect(normalizeNote({ ...base, projectId: null })).toBeNull()
+    expect(normalizeNote(null)).toBeNull()
   })
 })

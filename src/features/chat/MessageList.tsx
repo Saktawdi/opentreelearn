@@ -8,7 +8,10 @@ import { formatClock } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { MessageNotes } from './MessageNotes'
+import { bodyProps } from './note-anchor'
 import { useAssetUrls } from './useAssetUrls'
+import { useNoteHighlights } from './useNoteHighlights'
 import { useThrottledValue } from './useThrottledValue'
 
 const MessageImages = memo(function MessageImages({ urls }: { urls: string[] }) {
@@ -43,6 +46,12 @@ const MessageBubble = memo(function MessageBubble({
   const quotes = messageQuotes(message)
   const body = messageBodyText(message)
   const retryLast = useWorkspaceStore((state) => state.retryLast)
+  const notes = useWorkspaceStore((state) => state.notesByMessage[message.id]) ?? []
+
+  // 正文容器的 ref 同时是笔记锚点的基准：`data-message-body` 标出「正文是哪一段文本」，
+  // 框选时按它数下标，渲染笔记时按它还原区间（见 note-anchor.ts）
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useNoteHighlights(bodyRef, message.id, notes)
 
   return (
     <div
@@ -58,7 +67,7 @@ const MessageBubble = memo(function MessageBubble({
         )}
       >
         {isUser ? (
-          <div className="flex flex-col gap-2">
+          <div ref={bodyRef} {...bodyProps(message.id)} className="flex flex-col gap-2">
             {quotes.map((quote, index) => (
               <blockquote
                 key={index}
@@ -72,10 +81,14 @@ const MessageBubble = memo(function MessageBubble({
             ) : null}
           </div>
         ) : (
-          <MarkdownView content={text} />
+          <div ref={bodyRef} {...bodyProps(message.id)}>
+            <MarkdownView content={text} />
+          </div>
         )}
         <MessageImages urls={assetUrls} />
       </div>
+
+      <MessageNotes notes={notes} align={isUser ? 'end' : 'start'} />
 
       {message.meta?.error ? (
         <div className="flex flex-col gap-1 px-1 text-2xs text-danger">

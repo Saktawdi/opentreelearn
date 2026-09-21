@@ -6,6 +6,7 @@ export type {
   AssetRepository,
   MessageRepository,
   NodeRepository,
+  NoteRepository,
   ProjectRepository,
   ProjectSettingsRepository,
   Repositories,

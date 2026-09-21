@@ -3,7 +3,17 @@ import { immer } from 'zustand/middleware/immer'
 import { getRepositories } from '@/data'
 import { assembleContext, collectHistorySegments } from '@/domain/context/assemble'
 import { deriveTitle, messageImageIds } from '@/domain/messages'
-import type { Id, Message, MessagePart, Node, Project, ProjectSettings } from '@/domain/models'
+import type {
+  Id,
+  Message,
+  MessagePart,
+  Node,
+  Note,
+  NoteKind,
+  Project,
+  ProjectSettings,
+} from '@/domain/models'
+import { sortNotes } from '@/domain/notes'
 import {
   createNodeFromAction,
   nodeActionRequiresMessage,
@@ -29,12 +39,24 @@ export interface StreamingState {
   error?: string
 }
 
+/** 新建笔记的入参：锚点是「正文纯文本里的字符区间」，由框选那一刻算好传进来。 */
+export interface NewNoteInput {
+  nodeId: Id
+  messageId: Id
+  kind: NoteKind
+  quote: string
+  start: number
+  end: number
+  body?: string
+}
+
 interface WorkspaceState {
   projectId: Id | null
   project: Project | null
   projectSettings: ProjectSettings | null
   nodes: Node[]
   messagesByNode: Record<Id, Message[]>
+  notesByMessage: Record<Id, Note[]>
   selectedNodeId: Id | null
   viewMode: WorkspaceViewMode
   loading: boolean
@@ -63,6 +85,9 @@ interface WorkspaceState {
   archiveNode: (id: Id) => Promise<void>
   deleteNode: (id: Id) => Promise<void>
   updateProjectSettings: (patch: Partial<ProjectSettings>) => Promise<void>
+  addNote: (input: NewNoteInput) => Promise<Note | null>
+  updateNote: (id: Id, patch: { body?: string }) => Promise<void>
+  removeNote: (id: Id) => Promise<void>
   sendMessage: (nodeId: Id, parts: MessagePart[]) => Promise<void>
   stopStreaming: () => void
   retryLast: (nodeId: Id) => Promise<void>
@@ -85,6 +110,35 @@ function groupMessages(messages: Message[]): Record<Id, Message[]> {
   return grouped
 }
 
+/** 笔记按消息分组存放，改一条笔记要先知道它挂在哪条消息上。 */
+function findNoteEntry(
+  notesByMessage: Record<Id, Note[]>,
+  id: Id,
+): { messageId: Id; note: Note } | null {
+  for (const [messageId, bucket] of Object.entries(notesByMessage)) {
+    const note = bucket.find((item) => item.id === id)
+    if (note) return { messageId, note }
+  }
+  return null
+}
+
+/** 按消息分组并按出现位置排序，气泡里的笔记条读起来就是顺着正文的。 */
+function groupNotes(notes: Note[]): Record<Id, Note[]> {
+  const grouped: Record<Id, Note[]> = {}
+  for (const note of notes) {
+    const bucket = grouped[note.messageId]
+    if (bucket) {
+      bucket.push(note)
+    } else {
+      grouped[note.messageId] = [note]
+    }
+  }
+  for (const [messageId, bucket] of Object.entries(grouped)) {
+    grouped[messageId] = sortNotes(bucket)
+  }
+  return grouped
+}
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   immer((set, get) => ({
     projectId: null,
@@ -92,6 +146,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     projectSettings: null,
     nodes: [],
     messagesByNode: {},
+    notesByMessage: {},
     selectedNodeId: null,
     viewMode: 'chat',
     loading: false,
@@ -105,16 +160,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.projectId = projectId
         state.nodes = []
         state.messagesByNode = {}
+        state.notesByMessage = {}
         state.selectedNodeId = null
         state.streaming = null
       })
 
       const repositories = getRepositories()
-      const [project, projectSettings, nodes, messages] = await Promise.all([
+      const [project, projectSettings, nodes, messages, notes] = await Promise.all([
         repositories.projects.get(projectId),
         repositories.projectSettings.get(projectId),
         repositories.nodes.listByProject(projectId),
         repositories.messages.listByProject(projectId),
+        repositories.notes.listByProject(projectId),
       ])
 
       if (!project) {
@@ -134,6 +191,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.projectSettings = projectSettings ?? { projectId }
         state.nodes = nodes
         state.messagesByNode = groupMessages(messages)
+        state.notesByMessage = groupNotes(notes)
         state.selectedNodeId = latestNode?.id ?? null
         state.viewMode = latestNode ? 'chat' : 'canvas'
         state.loading = false
@@ -149,6 +207,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.projectSettings = null
         state.nodes = []
         state.messagesByNode = {}
+        state.notesByMessage = {}
         state.selectedNodeId = null
         state.viewMode = 'chat'
         state.streaming = null
@@ -317,6 +376,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           const messages = messagesByNode[nodeId] ?? []
           return [
             ...messages.map((message) => repositories.messages.remove(message.id)),
+            repositories.notes.removeByNode(nodeId),
             repositories.nodes.remove(nodeId),
           ]
         }),
@@ -330,6 +390,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.nodes = reparented
         for (const nodeId of targetSet) {
           delete state.messagesByNode[nodeId]
+        }
+        // 笔记挂在消息上，删节点时要连带把子树里每条消息的笔记一起摘掉
+        for (const [messageId, bucket] of Object.entries(state.notesByMessage)) {
+          if (bucket.some((note) => targetSet.has(note.nodeId))) delete state.notesByMessage[messageId]
         }
         if (state.selectedNodeId && targetSet.has(state.selectedNodeId)) {
           state.selectedNodeId = null
@@ -346,6 +410,78 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       await getRepositories().projectSettings.save(next)
       set((state) => {
         state.projectSettings = next
+      })
+    },
+
+    addNote: async (input) => {
+      const projectId = get().projectId
+      if (!projectId) return null
+      const quote = input.quote.trim()
+      if (!quote) return null
+
+      const body = input.body?.trim()
+      const now = Date.now()
+      const note: Note = {
+        id: newId(),
+        projectId,
+        nodeId: input.nodeId,
+        messageId: input.messageId,
+        kind: input.kind,
+        quote,
+        start: input.start,
+        end: input.end,
+        ...(body ? { body } : {}),
+        createdAt: now,
+        updatedAt: now,
+      }
+
+      await getRepositories().notes.create(note)
+      set((draft) => {
+        const bucket = draft.notesByMessage[note.messageId] ?? []
+        bucket.push(note)
+        draft.notesByMessage[note.messageId] = sortNotes(bucket)
+      })
+      return note
+    },
+
+    updateNote: async (id, patch) => {
+      const found = findNoteEntry(get().notesByMessage, id)
+      if (!found) return
+
+      const body = patch.body?.trim()
+      const updated: Note = { ...found.note, updatedAt: Date.now() }
+      if (body) {
+        updated.body = body
+      } else {
+        delete updated.body
+      }
+
+      // 整条覆盖而不是 patch：清空批注时 body 键必须真的消失，否则「这条笔记还带批注」
+      // 会被空字符串骗过去（`note.body` 有值但内容是空）。
+      await getRepositories().notes.create(updated)
+      set((draft) => {
+        const bucket = draft.notesByMessage[found.messageId]
+        if (!bucket) return
+        draft.notesByMessage[found.messageId] = sortNotes(
+          bucket.map((note) => (note.id === id ? updated : note)),
+        )
+      })
+    },
+
+    removeNote: async (id) => {
+      const found = findNoteEntry(get().notesByMessage, id)
+      if (!found) return
+
+      await getRepositories().notes.remove(id)
+      set((draft) => {
+        const bucket = draft.notesByMessage[found.messageId]
+        if (!bucket) return
+        const remaining = bucket.filter((note) => note.id !== id)
+        if (remaining.length > 0) {
+          draft.notesByMessage[found.messageId] = remaining
+        } else {
+          delete draft.notesByMessage[found.messageId]
+        }
       })
     },
 
@@ -404,10 +540,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       if (!last.meta?.error && !last.meta?.incomplete) return
 
       await getRepositories().messages.remove(last.id)
+      // 消息没了，挂在它身上的高亮与批注也就无从定位，一并清掉
+      await getRepositories().notes.removeByMessage(last.id)
       set((draft) => {
         draft.messagesByNode[nodeId] = (draft.messagesByNode[nodeId] ?? []).filter(
           (message) => message.id !== last.id,
         )
+        delete draft.notesByMessage[last.id]
       })
 
       await streamAssistant(nodeId)
