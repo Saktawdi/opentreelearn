@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { GitBranch, MessageSquare, Waypoints } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { LearnFlowNode } from './graph'
@@ -29,14 +30,21 @@ export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
         <h3 className="line-clamp-2 text-sm font-medium leading-snug text-ink">{data.title}</h3>
       </div>
 
-      <p
-        className={cn(
-          'mt-1.5 line-clamp-2 flex-1 text-xs leading-relaxed',
-          hasExcerpt ? 'text-muted' : 'text-faint',
-        )}
-      >
-        {data.excerpt ?? '还没有对话'}
-      </p>
+      {data.summarizing ? (
+        <div className="mt-1.5 flex flex-1 flex-col gap-1.5" aria-label="正在生成摘要">
+          <Skeleton className="h-2.5 w-full" />
+          <Skeleton className="h-2.5 w-3/5" />
+        </div>
+      ) : (
+        <p
+          className={cn(
+            'mt-1.5 line-clamp-2 flex-1 text-xs leading-relaxed',
+            hasExcerpt ? 'text-muted' : 'text-faint',
+          )}
+        >
+          {data.excerpt ?? '还没有对话'}
+        </p>
+      )}
 
       <div className="mt-2 flex items-center gap-2.5 text-2xs text-muted">
         <span className="inline-flex items-center gap-1">

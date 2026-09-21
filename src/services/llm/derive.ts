@@ -9,9 +9,11 @@ const TITLE_SYSTEM = [
 ].join('\n')
 
 const SUMMARY_SYSTEM = [
-  '你是学习助理，负责把一段师生对话压缩成进展摘要。',
-  '用 2 到 4 句话说明：已澄清的概念、得到的结论、仍待解决的问题。',
-  '不要寒暄，不要 Markdown 标题，不要罗列原文。',
+  '你是学习进展评估助理，负责根据师生对话评估并总结学习者的掌握程度。',
+  '要求：',
+  '1. 必须且只能输出严格的【一句话总结】（不超过 40 个字）。',
+  '2. 核心只总结学习者对当前节点知识的【掌握/理解程度】与状态（如：已基本掌握核心概念、已理清公式推导但在边界条件上仍有疑惑、仅作了初步了解等）。',
+  '3. 不要罗列教学过程或原文，不要分点，不要换行，不要任何问候与解释。',
 ].join('\n')
 
 const WRAPPER_CHARS = '「『【"\'[]」』】'
@@ -60,7 +62,7 @@ export async function generateSummary(
     prompt: `节点标题：${params.title}\n\n对话记录：\n${transcript.slice(-6000)}`,
   })
 
-  return cleanGenerated(text, 240)
+  return cleanGenerated(text, 60)
 }
 
 export function buildTranscript(messages: Message[], limit = 40): string {

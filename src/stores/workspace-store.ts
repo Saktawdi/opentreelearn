@@ -39,6 +39,16 @@ export interface StreamingState {
   error?: string
 }
 
+/**
+ * 某个节点是否正在生成。
+ *
+ * 带上 `error` 的那一轮其实已经结束了：失败且一个字都没吐出来时不会有消息落库，
+ * 错误只能挂在这一轮上，此时输入框不该再锁着、重新生成也该可用。
+ */
+export function isStreamingIn(streaming: StreamingState | null, nodeId: Id): boolean {
+  return streaming?.nodeId === nodeId && !streaming.error
+}
+
 /** 新建笔记的入参：锚点是「正文纯文本里的字符区间」，由框选那一刻算好传进来。 */
 export interface NewNoteInput {
   nodeId: Id
@@ -62,6 +72,8 @@ interface WorkspaceState {
   loading: boolean
   error: string | null
   streaming: StreamingState | null
+  /** 正在手动生成摘要的节点，用于在节点卡片上渲染骨架屏 */
+  summarizingNodeIds: Id[]
 
   openProject: (projectId: Id) => Promise<void>
   reset: () => void
@@ -90,7 +102,7 @@ interface WorkspaceState {
   removeNote: (id: Id) => Promise<void>
   sendMessage: (nodeId: Id, parts: MessagePart[]) => Promise<void>
   stopStreaming: () => void
-  retryLast: (nodeId: Id) => Promise<void>
+  regenerate: (nodeId: Id, messageId?: Id) => Promise<void>
   refreshSummary: (nodeId: Id) => Promise<void>
   clearError: () => void
 }
@@ -152,6 +164,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     loading: false,
     error: null,
     streaming: null,
+    summarizingNodeIds: [],
 
     openProject: async (projectId) => {
       set((state) => {
@@ -163,6 +176,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.notesByMessage = {}
         state.selectedNodeId = null
         state.streaming = null
+        state.summarizingNodeIds = []
       })
 
       const repositories = getRepositories()
@@ -212,6 +226,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.viewMode = 'chat'
         state.streaming = null
         state.error = null
+        state.summarizingNodeIds = []
       })
     },
 
@@ -533,20 +548,30 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       activeAbort = null
     },
 
-    retryLast: async (nodeId) => {
-      const messages = get().messagesByNode[nodeId] ?? []
-      const last = messages.at(-1)
-      if (!last || last.role !== 'assistant') return
-      if (!last.meta?.error && !last.meta?.incomplete) return
+    regenerate: async (nodeId, messageId) => {
+      const state = get()
+      const messages = state.messagesByNode[nodeId] ?? []
+      const target = messageId
+        ? messages.find((message) => message.id === messageId)
+        : messages.at(-1)
 
-      await getRepositories().messages.remove(last.id)
+      // 只有最后一条回答能重生成：中间那条回答后面还压着别的话，删掉它等于悄悄丢历史，
+      // 想换答案应该从那里开分支/发散。用户消息也没有可重生成的对象。
+      if (!target || target.role !== 'assistant') return
+      if (messages.at(-1)?.id !== target.id) return
+      // 正在生成时不允许插入第二轮；已经失败收场的那一轮不算「正在生成」
+      if (isStreamingIn(state.streaming, nodeId)) return
+
+      await getRepositories().messages.remove(target.id)
       // 消息没了，挂在它身上的高亮与批注也就无从定位，一并清掉
-      await getRepositories().notes.removeByMessage(last.id)
+      await getRepositories().notes.removeByMessage(target.id)
       set((draft) => {
         draft.messagesByNode[nodeId] = (draft.messagesByNode[nodeId] ?? []).filter(
-          (message) => message.id !== last.id,
+          (message) => message.id !== target.id,
         )
-        delete draft.notesByMessage[last.id]
+        delete draft.notesByMessage[target.id]
+        // 上一轮留下的错误提示要收掉，否则它会和新的这一轮并存
+        if (draft.streaming?.nodeId === nodeId) draft.streaming = null
       })
 
       await streamAssistant(nodeId)
@@ -563,12 +588,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const model = await resolveModel(settings, settings.summaryModelRef)
       if (!model) return
 
-      const summary = await generateSummary(model, {
-        title: node.title,
-        transcript: buildTranscript(messages),
-      }).catch(() => null)
+      set((state) => {
+        if (!state.summarizingNodeIds.includes(nodeId)) state.summarizingNodeIds.push(nodeId)
+      })
+      try {
+        const summary = await generateSummary(model, {
+          title: node.title,
+          transcript: buildTranscript(messages),
+        }).catch(() => null)
 
-      if (summary) await get().setNodeSummary(nodeId, summary)
+        if (summary) await get().setNodeSummary(nodeId, summary)
+      } finally {
+        set((state) => {
+          state.summarizingNodeIds = state.summarizingNodeIds.filter((id) => id !== nodeId)
+        })
+      }
     },
 
     clearError: () => {
@@ -678,7 +712,6 @@ async function streamAssistant(nodeId: Id): Promise<void> {
     })
 
     touchProject(projectId)
-    void store.getState().refreshSummary(nodeId)
   } catch (error) {
     const partial = store.getState().streaming?.text ?? ''
     const info = describeLlmError(error)

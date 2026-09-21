@@ -32,6 +32,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { messagePreview } from '@/domain/messages'
 import type { Id } from '@/domain/models'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
+import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -58,6 +59,9 @@ export function FocusChatView({
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
+  const isSummarizing = useWorkspaceStore((state) =>
+    state.summarizingNodeIds.includes(nodeId),
+  )
   const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
 
@@ -175,11 +179,11 @@ export function FocusChatView({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                disabled={!hasSummaryModel}
+                disabled={!hasSummaryModel || isSummarizing}
                 onSelect={() => void refreshSummary(node.id)}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                重新生成摘要
+                <RefreshCw className={cn('h-3.5 w-3.5', isSummarizing && 'animate-spin')} />
+                {isSummarizing ? '正在生成摘要…' : '生成学习摘要'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void archiveNode(node.id)}>
@@ -203,6 +207,7 @@ export function FocusChatView({
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label={isMapCollapsed ? '展开地图' : '收起地图'}
               onClick={onToggleMap}
               className="text-muted hover:text-ink"
             >

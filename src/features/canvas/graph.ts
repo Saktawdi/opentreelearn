@@ -9,6 +9,8 @@ export interface LearnNodeData extends Record<string, unknown> {
   title: string
   summary?: string
   excerpt?: string
+  /** 摘要正在手动生成中，卡片展示骨架屏而不是旧内容 */
+  summarizing: boolean
   messageCount: number
   childCount: number
   forkFromTitle?: string
@@ -24,6 +26,7 @@ export interface GraphResult {
 
 export interface GraphOptions {
   miniMapMode?: boolean
+  summarizingNodeIds?: Id[]
 }
 
 export function buildGraph(
@@ -33,6 +36,7 @@ export function buildGraph(
   options?: GraphOptions,
 ): GraphResult {
   const isMini = Boolean(options?.miniMapMode)
+  const summarizing = new Set(options?.summarizingNodeIds ?? [])
   const active = nodes.filter((node) => node.status === 'active')
   const byId = new Map(active.map((node) => [node.id, node]))
   const index = buildTreeIndex(active)
@@ -71,6 +75,7 @@ export function buildGraph(
         summary: node.summary,
         excerpt:
           node.summary ?? (lastAssistant ? messagePreview(lastAssistant, 108) : undefined),
+        summarizing: summarizing.has(node.id),
         messageCount: messages.length,
         childCount: (index.children.get(node.id) ?? []).length,
         forkFromTitle: forkSource?.title,

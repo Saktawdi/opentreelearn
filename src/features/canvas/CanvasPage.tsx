@@ -91,6 +91,7 @@ function CanvasWorkspace() {
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
+  const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
 
   const providers = useSettingsStore((state) => state.settings.providers)
   const summaryModelRef = useSettingsStore((state) => state.settings.summaryModelRef)
@@ -110,18 +111,6 @@ function CanvasWorkspace() {
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
-  // 全局快捷键 Ctrl/Cmd + M 切换右侧地图展开/收起
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
-        e.preventDefault()
-        setIsMapCollapsed((v) => !v)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
   // 新建根节点对话框状态
   const [createRootDialog, setCreateRootDialog] = useState<{
     open: boolean
@@ -135,6 +124,23 @@ function CanvasWorkspace() {
 
   // 删除确认对话框
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null)
+
+  // 全局快捷键：Ctrl/Cmd + M 切换右侧地图展开/收起；详情画布展开时 Esc 退回对话
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault()
+        setIsMapCollapsed((v) => !v)
+        return
+      }
+      // 对话框与右键菜单各自响应 Esc（关闭自己），此时不要再把整层画布一起收掉
+      if (e.key === 'Escape' && !contextMenu && !createRootDialog.open && !nodeToDelete) {
+        setIsDetailCanvasOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [contextMenu, createRootDialog.open, nodeToDelete])
 
   useEffect(() => {
     if (projectId) void openProject(projectId)
@@ -153,9 +159,12 @@ function CanvasWorkspace() {
   const detailGraph = useMemo(
     () =>
       isDetailCanvasOpen
-        ? buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: false })
+        ? buildGraph(nodes, messagesByNode, selectedNodeId, {
+            miniMapMode: false,
+            summarizingNodeIds,
+          })
         : null,
-    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen],
+    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds],
   )
   const detailGeometry = detailGraph ?? EMPTY_GRAPH
 
@@ -187,6 +196,16 @@ function CanvasWorkspace() {
   const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
     selectNode(node.id)
+  }
+
+  /**
+   * 详情画布里双击节点 = 对该节点按下「返回对话」：选中它并收起画布，
+   * 落点直接就是该节点的对话，省掉「先点节点、再点返回对话」两步。
+   */
+  const handleNodeDoubleClick = (_: ReactMouseEvent, node: { id: string }) => {
+    setContextMenu(null)
+    selectNode(node.id)
+    setIsDetailCanvasOpen(false)
   }
 
   const handleNodeDragStop = (
@@ -327,6 +346,7 @@ function CanvasWorkspace() {
             <Tooltip label="重新居中">
               <button
                 type="button"
+                aria-label="重新居中"
                 onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
                 className="ml-1 rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
@@ -336,6 +356,7 @@ function CanvasWorkspace() {
             <Tooltip label="展开画布">
               <button
                 type="button"
+                aria-label="展开画布"
                 onClick={() => {
                   setIsDetailCanvasOpen(true)
                   // 等详情画布自己的实例挂载并同步完节点后，再由它自己居中
@@ -368,6 +389,7 @@ function CanvasWorkspace() {
           menu={contextMenu}
           onClose={() => setContextMenu(null)}
           hasSummaryModel={hasSummaryModel}
+          summarizingNodeIds={summarizingNodeIds}
           onNodeAction={(kind, nodeId) => {
             selectNode(nodeId)
             void applyAction(kind, nodeId)
@@ -475,6 +497,7 @@ function CanvasWorkspace() {
               onNodeDragStop={handleNodeDragStop}
               nodeTypes={nodeTypes}
               onNodeClick={handleNodeClick}
+              onNodeDoubleClick={handleNodeDoubleClick}
               onNodeContextMenu={handleNodeContextMenu}
               onPaneContextMenu={handlePaneContextMenu}
               onPaneClick={() => {
@@ -497,6 +520,8 @@ function CanvasWorkspace() {
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-line bg-surface/90 px-3 py-1.5 backdrop-blur">
               <span className="text-sm text-ink-soft">画布</span>
               <span className="text-xs text-muted">{activeCount} 个节点</span>
+              <span className="h-3.5 w-px bg-line/60" />
+              <span className="text-xs text-faint">双击节点进入对话</span>
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5">
@@ -526,6 +551,9 @@ function CanvasWorkspace() {
               >
                 <X className="h-3.5 w-3.5" />
                 返回对话
+                <kbd className="rounded border border-line/70 px-1 font-mono text-2xs leading-4 text-muted">
+                  Esc
+                </kbd>
               </Button>
             </div>
           </div>
