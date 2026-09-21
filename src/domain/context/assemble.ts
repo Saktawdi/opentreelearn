@@ -1,6 +1,7 @@
 import { DEFAULT_CONTEXT_BUDGET, DEFAULT_RECENT_MESSAGES } from '@/domain/defaults'
 import { messageText, quoteBlock } from '@/domain/messages'
 import type { Id, Message, Node } from '@/domain/models'
+import { resolveThread } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex, pathTo } from '@/domain/tree/tree'
 import { normalizeWhitespace, truncate } from '@/lib/text'
 import { estimateTokens } from './tokens'
@@ -55,16 +56,20 @@ interface Segment {
   messages: Message[]
 }
 
-function sortByTime(messages: Message[]): Message[] {
-  return [...messages].sort((a, b) => a.createdAt - b.createdAt)
-}
-
 function cutAt(messages: Message[], messageId: Id): Message[] {
   const index = messages.findIndex((message) => message.id === messageId)
+  // fork 点已不在显示路径里（被切走/淘汰）⇒ 退化为整条显示路径，至少不丢上下文
   if (index < 0) return messages
   return messages.slice(0, index + 1)
 }
 
+/**
+ * 前置脉络 + 本节点：**只认显示路径**。
+ *
+ * 节点内的历史版本（编辑重发/重新生成）不参与上下文，否则会把没在屏幕上出现的
+ * 旧回答也喂给模型；fork 源节点按 fork 时冻结的版本选择解析，之后源节点切版本
+ * 不会改写已有子节点的上下文。
+ */
 export function collectHistorySegments(
   node: Node,
   nodes: Node[],
@@ -76,8 +81,12 @@ export function collectHistorySegments(
     const index = buildTreeIndex(nodes)
     const path = pathTo(index, node.forkFrom.nodeId)
     for (const pathNode of path) {
-      const messages = sortByTime(messagesByNode.get(pathNode.id) ?? [])
       const isForkNode = pathNode.id === node.forkFrom.nodeId
+      const messages = resolveThread(
+        pathNode,
+        messagesByNode.get(pathNode.id) ?? [],
+        isForkNode ? node.forkFrom.selection : undefined,
+      ).path
       segments.push({
         node: pathNode,
         messages: isForkNode ? cutAt(messages, node.forkFrom.messageId) : messages,
@@ -85,7 +94,10 @@ export function collectHistorySegments(
     }
   }
 
-  segments.push({ node, messages: sortByTime(messagesByNode.get(node.id) ?? []) })
+  segments.push({
+    node,
+    messages: resolveThread(node, messagesByNode.get(node.id) ?? []).path,
+  })
   return segments
 }
 

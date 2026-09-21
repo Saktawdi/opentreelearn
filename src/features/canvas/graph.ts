@@ -1,6 +1,7 @@
 import type { Edge, Node as FlowNode } from '@xyflow/react'
 import { messagePreview } from '@/domain/messages'
 import type { Id, Message, Node } from '@/domain/models'
+import { resolveThread } from '@/domain/thread/resolve'
 import { DEFAULT_LAYOUT_OPTIONS, computeTreeLayout } from '@/domain/tree/layout'
 import { buildTreeIndex } from '@/domain/tree/tree'
 
@@ -54,8 +55,9 @@ export function buildGraph(
   const layout = computeTreeLayout(active, layoutOptions)
 
   const flowNodes: LearnFlowNode[] = active.map((node) => {
-    const messages = messagesByNode[node.id] ?? []
-    const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
+    // 卡片摘录与消息数都按显示路径算：历史版本不该出现在卡片上
+    const path = resolveThread(node, messagesByNode[node.id] ?? []).path
+    const lastAssistant = [...path].reverse().find((message) => message.role === 'assistant')
     const forkSource = node.forkFrom ? byId.get(node.forkFrom.nodeId) : undefined
 
     return {
@@ -76,7 +78,7 @@ export function buildGraph(
         excerpt:
           node.summary ?? (lastAssistant ? messagePreview(lastAssistant, 108) : undefined),
         summarizing: summarizing.has(node.id),
-        messageCount: messages.length,
+        messageCount: path.length,
         childCount: (index.children.get(node.id) ?? []).length,
         forkFromTitle: forkSource?.title,
         selected: node.id === selectedNodeId,

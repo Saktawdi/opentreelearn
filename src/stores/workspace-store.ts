@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { getRepositories } from '@/data'
 import { assembleContext, collectHistorySegments } from '@/domain/context/assemble'
-import { deriveTitle, messageImageIds } from '@/domain/messages'
+import {
+  deriveTitle,
+  messageImageIds,
+  sameMessageParts,
+} from '@/domain/messages'
 import type {
   Id,
   Message,
@@ -13,6 +17,16 @@ import type {
   Project,
   ProjectSettings,
 } from '@/domain/models'
+import {
+  appendEntry,
+  createEditVersion,
+  openAnswerVersion,
+  pruneEntry,
+  pruneMissingEntries,
+  setSlotVersion as applySlotVersion,
+  type ThreadChange,
+} from '@/domain/thread/mutations'
+import { resolveThread } from '@/domain/thread/resolve'
 import { sortNotes } from '@/domain/notes'
 import {
   createNodeFromAction,
@@ -47,6 +61,11 @@ export interface StreamingState {
  */
 export function isStreamingIn(streaming: StreamingState | null, nodeId: Id): boolean {
   return streaming?.nodeId === nodeId && !streaming.error
+}
+
+/** 写了一次版本结构之后的结果：是否触发了 3 版上限淘汰（UI 据此 toast）。 */
+export interface VersionWriteResult {
+  pruned: boolean
 }
 
 /** 新建笔记的入参：锚点是「正文纯文本里的字符区间」，由框选那一刻算好传进来。 */
@@ -102,7 +121,15 @@ interface WorkspaceState {
   removeNote: (id: Id) => Promise<void>
   sendMessage: (nodeId: Id, parts: MessagePart[]) => Promise<void>
   stopStreaming: () => void
-  regenerate: (nodeId: Id, messageId?: Id) => Promise<void>
+  regenerate: (nodeId: Id, messageId?: Id) => Promise<VersionWriteResult | null>
+  /** 编辑用户消息并重发：从这条提问起整段换一版，旧的一段落成历史版本 */
+  editUserMessage: (
+    nodeId: Id,
+    messageId: Id,
+    parts: MessagePart[],
+  ) => Promise<VersionWriteResult | null>
+  /** 在历史版本间切换：只改 selection，一次节点更新 */
+  setSlotVersion: (nodeId: Id, slotId: Id, version: number) => Promise<void>
   refreshSummary: (nodeId: Id) => Promise<void>
   clearError: () => void
 }
@@ -296,9 +323,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const sourceNode = state.nodes.find((node) => node.id === sourceNodeId)
       if (!sourceNode) return null
 
-      const messages = state.messagesByNode[sourceNodeId] ?? []
+      // fork 点只能落在显示路径上：隐藏的历史版本不参与上下文
+      const visible = resolveThread(sourceNode, state.messagesByNode[sourceNodeId] ?? []).path
       const effectiveMessageId =
-        sourceMessageId ?? (nodeActionRequiresMessage(kind) ? messages.at(-1)?.id : undefined)
+        sourceMessageId ?? (nodeActionRequiresMessage(kind) ? visible.at(-1)?.id : undefined)
 
       const node = createNodeFromAction({
         projectId,
@@ -507,7 +535,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     sendMessage: async (nodeId, parts) => {
       const state = get()
       const projectId = state.projectId
-      if (!projectId) return
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!projectId || !node) return
 
       const hasContent = parts.some(
         (part) =>
@@ -526,6 +555,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         createdAt: Date.now(),
         updatedAt: Date.now(),
       }
+      // 回答 id 预生成：新消息与回答一起占进 entries，落库顺序就不影响路径顺序
+      const answerMessageId = newId()
+
+      if (node.thread) {
+        const thread = appendEntry(node.thread, [userMessage.id, answerMessageId])
+        await repositories.nodes.update(nodeId, { thread })
+        set((draft) => {
+          const target = draft.nodes.find((item) => item.id === nodeId)
+          if (target) target.thread = thread
+        })
+      }
 
       await repositories.messages.create(userMessage)
       set((draft) => {
@@ -534,18 +574,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         draft.messagesByNode[nodeId] = bucket
       })
 
-      const node = get().nodes.find((item) => item.id === nodeId)
-      if (!node) return
-
-      const ownMessages = get().messagesByNode[nodeId] ?? []
-      const isFirstUserMessage =
-        ownMessages.filter((message) => message.role === 'user').length === 1
-      if (isFirstUserMessage) {
-        await get().setNodeTitle(nodeId, deriveTitle(userMessage))
-        void refineTitle(nodeId, userMessage)
+      const fresh = get().nodes.find((item) => item.id === nodeId)
+      if (fresh) {
+        const visible = resolveThread(fresh, get().messagesByNode[nodeId] ?? []).path
+        const userMessages = visible.filter((message) => message.role === 'user')
+        if (userMessages.length === 1 && userMessages[0].id === userMessage.id) {
+          await get().setNodeTitle(nodeId, deriveTitle(userMessage))
+          void refineTitle(nodeId, userMessage)
+        }
       }
 
-      await streamAssistant(nodeId)
+      await streamAssistant(nodeId, answerMessageId)
     },
 
     stopStreaming: () => {
@@ -555,38 +594,133 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
     regenerate: async (nodeId, messageId) => {
       const state = get()
-      const messages = state.messagesByNode[nodeId] ?? []
-      const target = messageId
-        ? messages.find((message) => message.id === messageId)
-        : messages.at(-1)
-
-      // 只有最后一条回答能重生成：中间那条回答后面还压着别的话，删掉它等于悄悄丢历史，
-      // 想换答案应该从那里开分支/发散。用户消息也没有可重生成的对象。
-      if (!target || target.role !== 'assistant') return
-      if (messages.at(-1)?.id !== target.id) return
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!node) return null
       // 正在生成时不允许插入第二轮；已经失败收场的那一轮不算「正在生成」
-      if (isStreamingIn(state.streaming, nodeId)) return
+      if (isStreamingIn(state.streaming, nodeId)) return null
 
-      await getRepositories().messages.remove(target.id)
-      // 消息没了，挂在它身上的高亮与批注也就无从定位，一并清掉
-      await getRepositories().notes.removeByMessage(target.id)
+      const messages = state.messagesByNode[nodeId] ?? []
+      const path = resolveThread(node, messages).path
+      const last = path.at(-1)
+      const target = messageId
+        ? path.find((message) => message.id === messageId)
+        : last
+
+      // 只有显示路径末条回答能换一版：中间那条回答后面还压着别的话，删掉它等于悄悄丢历史，
+      // 想换答案应该从那里开分支/发散。用户消息也没有可重生成的对象。
+      if (target?.role === 'assistant') {
+        if (last?.id !== target.id) return null
+        const newAnswerMessageId = newId()
+        const change = openAnswerVersion({
+          node,
+          messages,
+          messageId: target.id,
+          newAnswerMessageId,
+        })
+        if (!change) return null
+        await persistThreadChange(nodeId, change)
+        await streamAssistant(nodeId, newAnswerMessageId)
+        return { pruned: change.removedMessageIds.length > 0 }
+      }
+
+      if (messageId) return null
+      // 末条不是回答：这一轮失败到没落库，把悬空 id 摘干净后原样重试，不新开版本
+      const newAnswerMessageId = newId()
+      if (node.thread) {
+        const existing = new Set(messages.map((message) => message.id))
+        const thread = appendEntry(pruneMissingEntries(node.thread, existing), [newAnswerMessageId])
+        await persistThreadChange(nodeId, {
+          thread,
+          removedMessageIds: [],
+          removedSlotIds: [],
+        })
+      }
+      await streamAssistant(nodeId, newAnswerMessageId)
+      return { pruned: false }
+    },
+
+    editUserMessage: async (nodeId, messageId, parts) => {
+      const state = get()
+      const projectId = state.projectId
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!projectId || !node) return null
+      if (isStreamingIn(state.streaming, nodeId)) return null
+
+      const messages = state.messagesByNode[nodeId] ?? []
+      // 只能编辑显示路径上的消息：历史版本里的消息在屏幕上根本不存在
+      const path = resolveThread(node, messages).path
+      const original = path.find((message) => message.id === messageId)
+      if (!original || original.role !== 'user') return null
+
+      const hasContent = parts.some(
+        (part) =>
+          part.type === 'image' ||
+          ((part.type === 'text' || part.type === 'quote') && part.text.trim().length > 0),
+      )
+      // 内容没改动或编辑成空 ⇒ 不建版本（UI 已禁用发送，这里兜底）
+      if (!hasContent || sameMessageParts(original, { ...original, parts })) return null
+
+      const newUserMessageId = newId()
+      const newAnswerMessageId = newId()
+      const change = createEditVersion({
+        node,
+        messages,
+        messageId,
+        newUserMessageId,
+        newAnswerMessageId,
+      })
+      if (!change) return null
+
+      const repositories = getRepositories()
+      const newMessage: Message = {
+        id: newUserMessageId,
+        nodeId,
+        projectId,
+        role: 'user',
+        parts,
+        createdAt: Date.now(),
+      }
+      await repositories.messages.create(newMessage)
+      await persistThreadChange(nodeId, change)
       set((draft) => {
-        draft.messagesByNode[nodeId] = (draft.messagesByNode[nodeId] ?? []).filter(
-          (message) => message.id !== target.id,
-        )
-        delete draft.notesByMessage[target.id]
-        // 上一轮留下的错误提示要收掉，否则它会和新的这一轮并存
-        if (draft.streaming?.nodeId === nodeId) draft.streaming = null
+        const bucket = draft.messagesByNode[nodeId] ?? []
+        bucket.push(newMessage)
+        draft.messagesByNode[nodeId] = bucket
       })
 
-      await streamAssistant(nodeId)
+      // 编辑的是首条提问、且标题仍是它的自动标题 ⇒ 跟着更新并精修；
+      // 手动改名或已被 AI 精修过就不动
+      const isFirstQuestion = path.find((message) => message.role === 'user')?.id === messageId
+      if (isFirstQuestion && node.title === deriveTitle(original)) {
+        await get().setNodeTitle(nodeId, deriveTitle(newMessage))
+        void refineTitle(nodeId, newMessage)
+      }
+
+      await streamAssistant(nodeId, newAnswerMessageId)
+      return { pruned: change.removedMessageIds.length > 0 }
+    },
+
+    setSlotVersion: async (nodeId, slotId, version) => {
+      const state = get()
+      if (isStreamingIn(state.streaming, nodeId)) return
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!node?.thread) return
+
+      const thread = applySlotVersion(node.thread, slotId, version)
+      if (thread === node.thread) return
+      await getRepositories().nodes.update(nodeId, { thread })
+      set((draft) => {
+        const target = draft.nodes.find((item) => item.id === nodeId)
+        if (target) target.thread = thread
+      })
     },
 
     refreshSummary: async (nodeId) => {
       const node = get().nodes.find((item) => item.id === nodeId)
       if (!node) return
 
-      const messages = get().messagesByNode[nodeId] ?? []
+      // 摘要只总结当前显示的这一版（切版本后旧摘要描述的是另一版，等用户手动刷新）
+      const messages = resolveThread(node, get().messagesByNode[nodeId] ?? []).path
       if (messages.length < 2) return
 
       const settings = useSettingsStore.getState().settings
@@ -627,7 +761,49 @@ async function refineTitle(nodeId: Id, message: Message): Promise<void> {
   if (title) await useWorkspaceStore.getState().setNodeTitle(nodeId, title)
 }
 
-async function streamAssistant(nodeId: Id): Promise<void> {
+/**
+ * 把 thread 变更落库：节点更新 + 淘汰版本的消息与笔记级联清理，再同步内存状态。
+ */
+async function persistThreadChange(nodeId: Id, change: ThreadChange): Promise<void> {
+  const repositories = getRepositories()
+  await repositories.nodes.update(nodeId, { thread: change.thread })
+  if (change.removedMessageIds.length > 0) {
+    await Promise.all(
+      change.removedMessageIds.flatMap((messageId) => [
+        repositories.messages.remove(messageId),
+        repositories.notes.removeByMessage(messageId),
+      ]),
+    )
+  }
+  useWorkspaceStore.setState((draft) => {
+    const node = draft.nodes.find((item) => item.id === nodeId)
+    if (node) node.thread = change.thread
+    if (change.removedMessageIds.length > 0) {
+      const removed = new Set(change.removedMessageIds)
+      draft.messagesByNode[nodeId] = (draft.messagesByNode[nodeId] ?? []).filter(
+        (message) => !removed.has(message.id),
+      )
+      for (const messageId of change.removedMessageIds) delete draft.notesByMessage[messageId]
+    }
+  })
+}
+
+/** 这一轮失败到回答没落库时，把预生成的悬空 id 从 entries 里摘掉。 */
+async function pruneDanglingMessage(nodeId: Id, messageId: Id): Promise<void> {
+  const state = useWorkspaceStore.getState()
+  const node = state.nodes.find((item) => item.id === nodeId)
+  if (!node?.thread) return
+  if (state.messagesByNode[nodeId]?.some((message) => message.id === messageId)) return
+
+  const thread = pruneEntry(node.thread, messageId)
+  await getRepositories().nodes.update(nodeId, { thread })
+  useWorkspaceStore.setState((draft) => {
+    const target = draft.nodes.find((item) => item.id === nodeId)
+    if (target) target.thread = thread
+  })
+}
+
+async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<void> {
   const store = useWorkspaceStore
   const state = store.getState()
   const projectId = state.projectId
@@ -638,7 +814,6 @@ async function streamAssistant(nodeId: Id): Promise<void> {
   const projectSettings = state.projectSettings
   const modelRef = projectSettings?.chatModelRef ?? settings.defaultChatModelRef
 
-  const messageId = newId()
   store.setState((draft) => {
     draft.streaming = { nodeId, messageId, text: '', startedAt: Date.now() }
   })
@@ -651,6 +826,7 @@ async function streamAssistant(nodeId: Id): Promise<void> {
     store.setState((draft) => {
       if (draft.streaming) draft.streaming.error = formatErrorMessage(info)
     })
+    await pruneDanglingMessage(nodeId, messageId)
     return
   }
 
@@ -754,6 +930,8 @@ async function streamAssistant(nodeId: Id): Promise<void> {
       store.setState((draft) => {
         if (draft.streaming) draft.streaming.error = formatErrorMessage(info)
       })
+      // 回答没落库，留给这一版的那个 id 就成了悬空占位，摘掉
+      await pruneDanglingMessage(nodeId, messageId)
     }
   } finally {
     activeAbort = null

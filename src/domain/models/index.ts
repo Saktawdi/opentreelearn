@@ -28,6 +28,40 @@ export interface ProjectSettings {
 export interface ForkRef {
   nodeId: Id
   messageId: Id
+  /**
+   * fork 那一刻源节点 thread 的版本选择快照。
+   *
+   * 冻结下来，源节点之后切版本才不会悄悄改写已有子节点的上下文；
+   * 快照里的版号若已被 3 版上限淘汰，解析时回退到该槽最新版。
+   */
+  selection?: Record<Id, number>
+}
+
+/**
+ * 节点内对话版本结构。**全部挂在 Node 上，消息表一个字段都不加**：
+ * 老数据与导入的 .tree 没有 `thread`，按 createdAt 线性解析，行为不变。
+ *
+ * - `entries`：顶层顺序，消息 id 与版本槽标记混排
+ * - `slots[slotId]`：一个版本槽，`slotId = 该槽锚点消息 id`（同一槽的历次版本共享提问/前缀）
+ * - `selection[slotId]`：选中版号；缺省 = 最新版
+ */
+export type ThreadEntry = Id | { slot: Id }
+
+export interface ThreadVersion {
+  /** 单调递增、不压缩：淘汰旧版后编号保持原值，冻结的选择才不会指向别的版本 */
+  version: number
+  entries: ThreadEntry[]
+}
+
+export interface ThreadSlot {
+  /** 按创建顺序，最多 3 版 */
+  versions: ThreadVersion[]
+}
+
+export interface NodeThread {
+  entries: ThreadEntry[]
+  slots: Record<Id, ThreadSlot>
+  selection?: Record<Id, number>
 }
 
 export type NodeStatus = 'active' | 'archived'
@@ -42,6 +76,8 @@ export interface Node {
   contextSeed?: string[]
   position: { x: number; y: number } | null
   status: NodeStatus
+  /** 节点内「编辑重发 + 重新生成」的历史版本；缺省 = 线性对话 */
+  thread?: NodeThread
   createdAt: number
   updatedAt: number
 }

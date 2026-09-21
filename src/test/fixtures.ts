@@ -36,6 +36,21 @@ export function longText(prefix: string, length: number): string {
   return `${prefix}${'学'.repeat(length)}`
 }
 
+/**
+ * 线性对话 u1 a1 u2 a2 …：消息 id 与角色固定，版本测试里按名字引用最省事。
+ * 首条用户消息 id 从 `u1` 起。
+ */
+export function linearMessages(rounds: number, nodeId = 'n1'): Message[] {
+  const messages: Message[] = []
+  for (let i = 1; i <= rounds; i += 1) {
+    messages.push(
+      makeMessage({ id: `u${i}`, nodeId, role: 'user', createdAt: i * 2 - 1 }),
+      makeMessage({ id: `a${i}`, nodeId, role: 'assistant', createdAt: i * 2 }),
+    )
+  }
+  return messages
+}
+
 export function messagesByNode(entries: Array<[Id, Message[]]>): Map<Id, Message[]> {
   return new Map(entries)
 }

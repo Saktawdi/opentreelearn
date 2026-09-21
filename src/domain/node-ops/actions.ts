@@ -38,7 +38,13 @@ export function resolveForkFrom(
 ): ForkRef | null {
   if (kind === 'child') return null
   if (!sourceMessageId) return null
-  return { nodeId: sourceNode.id, messageId: sourceMessageId }
+  // 冻结源节点 fork 时的版本选择：源节点之后切版本不会悄悄改写这个子节点的上下文
+  const selection = sourceNode.thread?.selection
+  return {
+    nodeId: sourceNode.id,
+    messageId: sourceMessageId,
+    ...(selection && Object.keys(selection).length > 0 ? { selection: { ...selection } } : {}),
+  }
 }
 
 export function createNodeFromAction(params: CreateNodeParams): Node {

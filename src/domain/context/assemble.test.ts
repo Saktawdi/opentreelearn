@@ -142,6 +142,94 @@ describe('assembleContext', () => {
     ])
   })
 
+  it('only feeds the displayed version into the model context', () => {
+    const node = makeNode({
+      id: 'n1',
+      createdAt: 1,
+      thread: {
+        entries: [{ slot: 'u1' }],
+        slots: {
+          u1: {
+            versions: [
+              { version: 1, entries: ['u1', 'a1'] },
+              { version: 2, entries: ['u2', 'a2'] },
+            ],
+          },
+        },
+        selection: { u1: 2 },
+      },
+    })
+
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([
+        ['n1', [
+          makeMessage({ id: 'u1', nodeId: 'n1', parts: [{ type: 'text', text: '旧提问' }] }),
+          makeMessage({
+            id: 'a1',
+            nodeId: 'n1',
+            role: 'assistant',
+            parts: [{ type: 'text', text: '旧回答不该进上下文' }],
+          }),
+          makeMessage({ id: 'u2', nodeId: 'n1', parts: [{ type: 'text', text: '新提问' }] }),
+          makeMessage({
+            id: 'a2',
+            nodeId: 'n1',
+            role: 'assistant',
+            parts: [{ type: 'text', text: '新回答' }],
+          }),
+        ]],
+      ]),
+    })
+
+    expect(result.messages.map((message) => message.parts[0])).toEqual([
+      { type: 'text', text: '新提问' },
+      { type: 'text', text: '新回答' },
+    ])
+  })
+
+  it('resolves the fork source with the frozen version selection', () => {
+    const thread = {
+      entries: [{ slot: 'u1' }],
+      slots: {
+        u1: {
+          versions: [
+            { version: 1, entries: ['u1', 'a1'] },
+            { version: 2, entries: ['u2', 'a2'] },
+          ],
+        },
+      },
+      selection: { u1: 2 },
+    }
+    const source = makeNode({ id: 'a', createdAt: 1, thread })
+    const forked = makeNode({
+      id: 'b',
+      parentId: 'a',
+      forkFrom: { nodeId: 'a', messageId: 'a1', selection: { u1: 1 } },
+      createdAt: 2,
+    })
+
+    const result = assembleContext({
+      node: forked,
+      nodes: [source, forked],
+      messagesByNode: messagesByNode([
+        ['a', [
+          makeMessage({ id: 'u1', nodeId: 'a', parts: [{ type: 'text', text: 'v1 提问' }] }),
+          makeMessage({ id: 'a1', nodeId: 'a', role: 'assistant', parts: [{ type: 'text', text: 'v1 回答' }] }),
+          makeMessage({ id: 'u2', nodeId: 'a', parts: [{ type: 'text', text: 'v2 提问' }] }),
+          makeMessage({ id: 'a2', nodeId: 'a', role: 'assistant', parts: [{ type: 'text', text: 'v2 回答' }] }),
+        ]],
+        ['b', []],
+      ]),
+    })
+
+    expect(result.messages.map((message) => message.parts[0])).toEqual([
+      { type: 'text', text: 'v1 提问' },
+      { type: 'text', text: 'v1 回答' },
+    ])
+  })
+
   it('compacts the farthest history node first when over budget', () => {
     const a = makeNode({ id: 'a', title: '第一层', createdAt: 1 })
     const b = makeNode({

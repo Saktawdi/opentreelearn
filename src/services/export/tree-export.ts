@@ -1,5 +1,6 @@
 import type { Message, Node, Project } from '@/domain/models'
 import { messageText } from '@/domain/messages'
+import { resolveThread } from '@/domain/thread/resolve'
 import { buildTreeIndex, depthOf } from '@/domain/tree/tree'
 
 export interface RawTreeExportMessage {
@@ -58,7 +59,8 @@ export function buildTreeExportData(
 
   // 映射 cards
   const cards: RawTreeExportCard[] = activeOnly.map((node) => {
-    const nodeMsgs = messagesByNode.get(node.id) ?? []
+    // .tree 没有版本概念：只导出显示路径（有损导出，历史版本留在应用里）
+    const nodeMsgs = resolveThread(node, messagesByNode.get(node.id) ?? []).path
     const depth = depthOf(index, node.id)
     const childIds = (index.children.get(node.id) ?? []).map((child) => child.id)
 
