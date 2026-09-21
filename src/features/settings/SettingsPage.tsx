@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Section } from '@/components/ui/section'
 import type { ModelRef, ProviderConfig } from '@/domain/models'
-import { clampContextBudget } from '@/domain/defaults'
+import { clampContextBudget, MAX_CONTEXT_BUDGET, MIN_CONTEXT_BUDGET } from '@/domain/defaults'
 import { errorMessage } from '@/lib/utils'
 import { PROVIDER_KIND_LABEL, describeProviderModels } from '@/services/llm/catalog'
 import { testProviderConnection } from '@/services/llm/providers'
@@ -38,6 +38,13 @@ function maskKey(key: string): string {
   return `${key.slice(0, 5)}····${key.slice(-4)}`
 }
 
+/** 预算这种大数字按 k 显示更好读：20000 → 20k，1000000 → 1M。 */
+function formatBudget(value: number): string {
+  if (value >= 1_000_000) return `${value / 1_000_000}M`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
+  return String(value)
+}
+
 export function SettingsPage() {
   const settings = useSettingsStore((state) => state.settings)
   const patch = useSettingsStore((state) => state.patch)
@@ -53,10 +60,18 @@ export function SettingsPage() {
 
   const saveBudget = async () => {
     const parsed = Number.parseInt(budget, 10)
-    await patch({
-      contextBudget: Number.isFinite(parsed) ? clampContextBudget(parsed) : settings.contextBudget,
-    })
-    toast.success('已保存')
+    // 先把输入框回填成真正落库的值：超出区间时用户能立刻看见被夹到了哪，
+    // 而不是「保存成功」之后输入框里还留着 10000000、下次刷新才变。
+    const next = Number.isFinite(parsed)
+      ? clampContextBudget(parsed)
+      : settings.contextBudget
+    setBudget(String(next))
+    await patch({ contextBudget: next })
+    toast.success(
+      Number.isFinite(parsed) && parsed !== next
+        ? `已保存（超出 ${formatBudget(MIN_CONTEXT_BUDGET)}–${formatBudget(MAX_CONTEXT_BUDGET)}，按 ${formatBudget(next)} 保存）`
+        : '已保存',
+    )
   }
 
   const testProvider = async (provider: ProviderConfig) => {
@@ -89,7 +104,10 @@ export function SettingsPage() {
                 onChange={(event) => setBudget(event.target.value)}
                 className="w-[150px] font-mono text-xs"
               />
-              <span className="mt-1 block text-xs text-muted">超出后自动压缩更早的父链对话。</span>
+              <span className="mt-1 block text-xs text-muted">
+                超出后自动压缩更早的父链对话。可填 {formatBudget(MIN_CONTEXT_BUDGET)}–
+                {formatBudget(MAX_CONTEXT_BUDGET)}，超出部分会按边界保存。
+              </span>
             </label>
 
             <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>

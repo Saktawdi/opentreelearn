@@ -114,7 +114,9 @@ describe('normalizeGlobalSettings', () => {
 
   it('clamps out-of-range budgets and nulls malformed model refs', () => {
     expect(normalizeGlobalSettings({ contextBudget: 10 }).contextBudget).toBe(2_000)
-    expect(normalizeGlobalSettings({ contextBudget: 10_000_000 }).contextBudget).toBe(200_000)
+    expect(normalizeGlobalSettings({ contextBudget: 10_000_000 }).contextBudget).toBe(1_000_000)
+    // 1M 是最大模型窗口的上限值，必须原样留下（不要被当成越界截断）
+    expect(normalizeGlobalSettings({ contextBudget: 1_000_000 }).contextBudget).toBe(1_000_000)
     expect(normalizeGlobalSettings({ contextBudget: '24000' }).contextBudget).toBe(
       DEFAULT_CONTEXT_BUDGET,
     )

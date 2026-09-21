@@ -8,7 +8,12 @@ export const DEFAULT_RECENT_MESSAGES = 8
  * 避免两处各写一套魔数后漂移。
  */
 export const MIN_CONTEXT_BUDGET = 2_000
-export const MAX_CONTEXT_BUDGET = 200_000
+/**
+ * 上限按当前最大的模型上下文给（Gemini 1.5/2.x 的 1M）；上限的作用只是挡住
+ * 明显无意义的输入（手滑多按几个 0），不是替用户判断模型能吃多少 ——
+ * 预算超出模型窗口时由模型侧报错，比在这里静默截断更容易被理解。
+ */
+export const MAX_CONTEXT_BUDGET = 1_000_000
 
 export function clampContextBudget(value: number): number {
   return Math.min(Math.max(value, MIN_CONTEXT_BUDGET), MAX_CONTEXT_BUDGET)
