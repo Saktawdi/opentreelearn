@@ -7,10 +7,12 @@ import type { LearnFlowNode } from './graph'
 
 export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<LearnFlowNode>) {
   const isSelected = data.selected
+  const isReviewCenter = data.reviewCenter
   // 微缩地图也吃热力图：保持率低到阈值时点阵变色，一眼看出哪块快忘了
   const heat = data.reviewCard ? cardHeat(data.reviewCard, data.now) : 'none'
-  const tooltipText =
-    heat === 'none'
+  const tooltipText = isReviewCenter
+    ? `${data.title || '复习中心'} · 复习中心`
+    : heat === 'none'
       ? data.title || '未命名节点'
       : `${data.title || '未命名节点'} · ${heat === 'hot' ? '快忘了' : '该复习'}`
 
@@ -19,7 +21,11 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
       <div
         className={cn(
           'group relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full transition-transform duration-150',
-          isSelected ? 'ring-2 ring-accent ring-offset-2 ring-offset-canvas' : 'hover:scale-110',
+          isSelected
+            ? isReviewCenter
+              ? 'ring-2 ring-info ring-offset-2 ring-offset-canvas'
+              : 'ring-2 ring-accent ring-offset-2 ring-offset-canvas'
+            : 'hover:scale-110',
         )}
       >
         <Handle type="target" position={Position.Top} className="opacity-0" isConnectable={false} />
@@ -30,12 +36,16 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
           className={cn(
             'flex h-6 w-6 items-center justify-center rounded-full border transition-colors',
             isSelected
-              ? 'border-accent bg-accent/15'
-              : heat === 'hot'
-                ? 'border-danger/60 bg-danger-soft'
-                : heat === 'warm'
-                  ? 'border-accent/50 bg-accent-soft'
-                  : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
+              ? isReviewCenter
+                ? 'border-info bg-info/20'
+                : 'border-accent bg-accent/15'
+              : isReviewCenter
+                ? 'border-info/50 bg-info/10 hover:border-info hover:bg-info/15'
+                : heat === 'hot'
+                  ? 'border-danger/60 bg-danger-soft'
+                  : heat === 'warm'
+                    ? 'border-accent/50 bg-accent-soft'
+                    : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
           )}
         >
           {/* 内芯圆点 */}
@@ -43,14 +53,18 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
             className={cn(
               'h-2.5 w-2.5 rounded-full transition-colors',
               isSelected
-                ? 'bg-accent'
-                : heat === 'hot'
-                  ? 'bg-danger'
-                  : heat === 'warm'
-                    ? 'bg-accent'
-                    : data.childCount > 0
-                      ? 'bg-ink-soft group-hover:bg-accent'
-                      : 'bg-faint group-hover:bg-ink-soft',
+                ? isReviewCenter
+                  ? 'bg-info'
+                  : 'bg-accent'
+                : isReviewCenter
+                  ? 'bg-info'
+                  : heat === 'hot'
+                    ? 'bg-danger'
+                    : heat === 'warm'
+                      ? 'bg-accent'
+                      : data.childCount > 0
+                        ? 'bg-ink-soft group-hover:bg-accent'
+                        : 'bg-faint group-hover:bg-ink-soft',
             )}
           />
         </div>
