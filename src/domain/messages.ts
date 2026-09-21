@@ -1,4 +1,4 @@
-import type { Id, Message } from '@/domain/models'
+import type { Id, Message, MessagePart } from '@/domain/models'
 import { firstLine, truncate } from '@/lib/text'
 
 /** 引用片段以 Markdown 引用行进入模型上下文与导出，让「这段是引用」的语义不丢失。 */
@@ -48,6 +48,37 @@ export function messageImageIds(message: Message): Id[] {
 
 export function hasImage(message: Message): boolean {
   return message.parts.some((part) => part.type === 'image')
+}
+
+/** 引用/图片原样保留、只改文字时用：判断编辑后的 parts 有没有实际改动。 */
+export function sameMessageParts(a: Message, b: Message): boolean {
+  if (a.parts.length !== b.parts.length) return false
+  return a.parts.every((part, index) => {
+    const other = b.parts[index]
+    if (part.type !== other.type) return false
+    if (part.type === 'image' && other.type === 'image') return part.assetId === other.assetId
+    if (part.type === 'text' && other.type === 'text') return part.text === other.text
+    if (part.type === 'quote' && other.type === 'quote') return part.text === other.text
+    return false
+  })
+}
+
+/** 编辑用户消息：替换正文（text part），引用与图片原样沿用。 */
+export function replaceMessageText(message: Message, text: string): MessagePart[] {
+  const parts: MessagePart[] = []
+  let replaced = false
+  for (const part of message.parts) {
+    if (part.type !== 'text') {
+      parts.push(part)
+      continue
+    }
+    if (!replaced) {
+      parts.push({ type: 'text', text })
+      replaced = true
+    }
+  }
+  if (!replaced) parts.push({ type: 'text', text })
+  return parts
 }
 
 export function messagePreview(message: Message, max = 120): string {

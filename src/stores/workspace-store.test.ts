@@ -1,8 +1,10 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Project } from '@/domain/models'
+import type { Message, Project } from '@/domain/models'
 import { getDatabase, getRepositories } from '@/data'
 import { createDefaultSettings } from '@/domain/defaults'
+import { messageBodyText } from '@/domain/messages'
+import { resolveThread } from '@/domain/thread/resolve'
 import { useSettingsStore } from './settings-store'
 import { isStreamingIn, useWorkspaceStore } from './workspace-store'
 
@@ -223,13 +225,11 @@ describe('summary generation', () => {
 })
 
 describe('regenerate', () => {
-  it('only regenerates the last answer, taking its notes with it', async () => {
+  async function seedAnsweredNode(): Promise<{ nodeId: string; userMessage: Message }> {
     await seedProject()
     const root = await useWorkspaceStore.getState().startRootNode('什么是特征值？')
     const nodeId = root!.id
-    const store = () => useWorkspaceStore.getState()
-    const userMessage = (store().messagesByNode[nodeId] ?? [])[0]
-
+    const userMessage = (useWorkspaceStore.getState().messagesByNode[nodeId] ?? [])[0]
     await getRepositories().messages.create({
       id: 'm-answer',
       nodeId,
@@ -238,7 +238,14 @@ describe('regenerate', () => {
       parts: [{ type: 'text', text: '特征值就是那个 λ。' }],
       createdAt: userMessage.createdAt + 1,
     })
-    await store().openProject('p1')
+    await useWorkspaceStore.getState().openProject('p1')
+    return { nodeId, userMessage }
+  }
+
+  it('opens a version for the last answer and keeps the old one with its notes', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
     await store().addNote({
       nodeId,
       messageId: 'm-answer',
@@ -255,14 +262,62 @@ describe('regenerate', () => {
       true,
     )
 
-    await store().regenerate(nodeId, 'm-answer')
+    const result = await store().regenerate(nodeId, 'm-answer')
+    expect(result).toEqual({ pruned: false })
 
-    expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'm-answer')).toBe(false)
-    expect(await getRepositories().messages.get('m-answer')).toBeUndefined()
-    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
-    // 删掉之后立刻重发这一轮（测试环境没配模型，停在错误提示上）
-    expect(store().streaming?.nodeId).toBe(nodeId)
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    expect(node.thread?.entries).toEqual([userMessage.id, { slot: 'm-answer' }])
+    // 提问不进版本；旧回答留在 v1
+    expect(node.thread?.slots['m-answer'].versions[0]).toEqual({
+      version: 1,
+      entries: ['m-answer'],
+    })
+    // 这一轮没配模型：新回答没落库，悬空 id 已被摘掉
+    expect(node.thread?.slots['m-answer'].versions[1].entries).toEqual([])
+    expect(node.thread?.selection).toEqual({ 'm-answer': 2 })
     expect(store().streaming?.error).toContain('尚未配置')
+
+    // 旧回答、笔记都没丢，只是暂时不在显示路径上
+    expect(await getRepositories().messages.get('m-answer')).toBeDefined()
+    expect(await getRepositories().notes.listByProject('p1')).toHaveLength(1)
+    const messages = store().messagesByNode[nodeId] ?? []
+    expect(resolveThread(node, messages).path.map((message) => message.id)).toEqual([
+      userMessage.id,
+    ])
+  })
+
+  it('switches back to the old answer without losing history', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
+    await store().regenerate(nodeId, 'm-answer')
+    await store().setSlotVersion(nodeId, 'm-answer', 1)
+
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    expect(node.thread?.selection).toEqual({ 'm-answer': 1 })
+    const messages = store().messagesByNode[nodeId] ?? []
+    expect(resolveThread(node, messages).path.map((message) => message.id)).toEqual([
+      userMessage.id,
+      'm-answer',
+    ])
+    expect(await getRepositories().nodes.get(nodeId)).toMatchObject({
+      thread: { selection: { 'm-answer': 1 } },
+    })
+  })
+
+  it('keeps versions and selection across a project reload', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
+    await store().regenerate(nodeId, 'm-answer')
+    await store().setSlotVersion(nodeId, 'm-answer', 1)
+    await store().openProject('p1')
+
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    expect(node.thread?.selection).toEqual({ 'm-answer': 1 })
+    expect(
+      resolveThread(node, store().messagesByNode[nodeId] ?? []).path.map((message) => message.id),
+    ).toEqual([userMessage.id, 'm-answer'])
   })
 
   it('leaves a middle answer alone', async () => {
@@ -296,6 +351,139 @@ describe('regenerate', () => {
 
     expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'a1')).toBe(true)
     expect(store().streaming).toBeNull()
+  })
+})
+
+describe('editUserMessage', () => {
+  async function seedAnsweredNode(): Promise<{ nodeId: string; userMessage: Message }> {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('旧问题')
+    const nodeId = root!.id
+    const userMessage = (useWorkspaceStore.getState().messagesByNode[nodeId] ?? [])[0]
+    await getRepositories().messages.create({
+      id: 'm-answer',
+      nodeId,
+      projectId: 'p1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '旧回答' }],
+      createdAt: userMessage.createdAt + 1,
+    })
+    await useWorkspaceStore.getState().openProject('p1')
+    return { nodeId, userMessage }
+  }
+
+  it('splits the thread at the edited question and updates the auto title', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
+    const result = await store().editUserMessage(nodeId, userMessage.id, [
+      { type: 'text', text: '新问题' },
+    ])
+    expect(result).toEqual({ pruned: false })
+
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    expect(node.title).toBe('新问题')
+    expect(node.thread?.entries).toEqual([{ slot: userMessage.id }])
+    // 旧提问与旧回答整体落进 v1
+    expect(node.thread?.slots[userMessage.id].versions[0]).toEqual({
+      version: 1,
+      entries: [userMessage.id, 'm-answer'],
+    })
+
+    const newVersion = node.thread!.slots[userMessage.id].versions[1]
+    const newMessage = (store().messagesByNode[nodeId] ?? []).find(
+      (message) => message.id === newVersion.entries[0],
+    )!
+    expect(messageBodyText(newMessage)).toBe('新问题')
+    // 新回答这一轮失败到没落库，悬空 id 被摘掉；显示路径只剩新提问
+    expect(newVersion.entries).toHaveLength(1)
+    expect(
+      resolveThread(node, store().messagesByNode[nodeId] ?? []).path.map((message) => message.id),
+    ).toEqual(newVersion.entries)
+
+    // 旧消息仍在历史版本里
+    expect(await getRepositories().messages.get(userMessage.id)).toBeDefined()
+    expect(await getRepositories().messages.get('m-answer')).toBeDefined()
+  })
+
+  it('rejects unchanged or emptied content and rewrites only the text part', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
+    expect(
+      await store().editUserMessage(nodeId, userMessage.id, [{ type: 'text', text: '旧问题' }]),
+    ).toBeNull()
+    expect(await store().editUserMessage(nodeId, userMessage.id, [])).toBeNull()
+    expect(store().nodes.find((item) => item.id === nodeId)?.thread).toBeUndefined()
+
+    // 引用与图片沿用原消息，只换文字
+    await getRepositories().messages.update(userMessage.id, {
+      parts: [
+        { type: 'quote', text: '被引用的原文' },
+        { type: 'text', text: '旧问题' },
+        { type: 'image', assetId: 'asset-1' },
+      ],
+    })
+    await store().openProject('p1')
+    await store().editUserMessage(nodeId, userMessage.id, [
+      { type: 'quote', text: '被引用的原文' },
+      { type: 'text', text: '改过的问题' },
+      { type: 'image', assetId: 'asset-1' },
+    ])
+
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    const newId = node.thread!.slots[userMessage.id].versions[1].entries[0]
+    const newMessage = (store().messagesByNode[nodeId] ?? []).find(
+      (message) => message.id === newId,
+    )!
+    expect(newMessage.parts).toEqual([
+      { type: 'quote', text: '被引用的原文' },
+      { type: 'text', text: '改过的问题' },
+      { type: 'image', assetId: 'asset-1' },
+    ])
+  })
+
+  it('prunes the oldest version with its messages and notes at the fourth edit', async () => {
+    const { nodeId, userMessage } = await seedAnsweredNode()
+    const store = () => useWorkspaceStore.getState()
+
+    await store().addNote({
+      nodeId,
+      messageId: 'm-answer',
+      kind: 'annotation',
+      quote: '旧回答',
+      start: 0,
+      end: 3,
+      body: '留一笔',
+    })
+
+    // 每次都编辑当前显示路径里的那条提问：同一槽依次拿到 2、3、4 版
+    const edit = async (messageId: string, text: string) =>
+      store().editUserMessage(nodeId, messageId, [{ type: 'text', text }])
+    const firstEntryId = (versionIndex: number): string => {
+      const entry = store().nodes
+        .find((item) => item.id === nodeId)!
+        .thread!.slots[userMessage.id].versions[versionIndex].entries[0]
+      return typeof entry === 'string' ? entry : entry.slot
+    }
+    const first = (await store().editUserMessage(nodeId, userMessage.id, [
+      { type: 'text', text: '第二版' },
+    ]))!
+    expect(first.pruned).toBe(false)
+    expect((await edit(firstEntryId(1), '第三版'))!.pruned).toBe(false)
+    const fourth = (await edit(firstEntryId(2), '第四版'))!
+
+    expect(fourth.pruned).toBe(true)
+    const node = store().nodes.find((item) => item.id === nodeId)!
+    expect(node.thread!.slots[userMessage.id].versions.map((version) => version.version)).toEqual([
+      2, 3, 4,
+    ])
+    // 最早的版本（旧提问 + 旧回答）连同笔记一起被淘汰
+    expect(await getRepositories().messages.get(userMessage.id)).toBeUndefined()
+    expect(await getRepositories().messages.get('m-answer')).toBeUndefined()
+    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+    expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'm-answer')).toBe(false)
+    expect(node.title).toBe('第四版')
   })
 })
 

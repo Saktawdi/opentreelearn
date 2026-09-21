@@ -111,4 +111,48 @@ describe('tree-export', () => {
     expect(reparsedChild.parentSourceId).toBe('n-root')
     expect(reparsedChild.contextSeed).toEqual(['引用前文极限知识'])
   })
+
+  it('exports only the displayed version (lossy by design)', () => {
+    const project: Project = {
+      id: 'p-1',
+      name: '版本项目',
+      tags: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    const node: Node = {
+      id: 'n-root',
+      projectId: 'p-1',
+      parentId: null,
+      forkFrom: null,
+      title: '版本节点',
+      position: null,
+      status: 'active',
+      createdAt: 1,
+      updatedAt: 1,
+      thread: {
+        entries: [{ slot: 'u1' }],
+        slots: {
+          u1: {
+            versions: [
+              { version: 1, entries: ['u1', 'a1'] },
+              { version: 2, entries: ['u2', 'a2'] },
+            ],
+          },
+        },
+        selection: { u1: 2 },
+      },
+    }
+    const messages: Message[] = ['u1', 'a1', 'u2', 'a2'].map((id, index) => ({
+      id,
+      nodeId: 'n-root',
+      projectId: 'p-1',
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      parts: [{ type: 'text', text: id }],
+      createdAt: index,
+    }))
+
+    const exported = buildTreeExportData(project, [node], messages)
+    expect(exported.data.cards[0].messages.map((message) => message.id)).toEqual(['u2', 'a2'])
+  })
 })

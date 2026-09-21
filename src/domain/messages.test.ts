@@ -6,6 +6,8 @@ import {
   messagePreview,
   messageQuotes,
   messageText,
+  replaceMessageText,
+  sameMessageParts,
 } from '@/domain/messages'
 import { makeMessage } from '@/test/fixtures'
 
@@ -63,6 +65,46 @@ describe('messageBodyText / messageQuotes', () => {
     })
     expect(messageBodyText(message)).toBe('我的问题')
     expect(messageQuotes(message)).toEqual(['引用A', '引用B'])
+  })
+})
+
+describe('编辑用户消息时的 parts 处理', () => {
+  const message = makeMessage({
+    id: 'm1',
+    nodeId: 'n1',
+    parts: [
+      { type: 'quote', text: '被引用的原文' },
+      { type: 'text', text: '旧问题' },
+      { type: 'image', assetId: 'a1' },
+    ],
+  })
+
+  it('只换 text part，引用与图片原样沿用', () => {
+    expect(replaceMessageText(message, '新问题')).toEqual([
+      { type: 'quote', text: '被引用的原文' },
+      { type: 'text', text: '新问题' },
+      { type: 'image', assetId: 'a1' },
+    ])
+  })
+
+  it('原本没有 text part 时把文字补进去', () => {
+    const quoted = makeMessage({
+      id: 'm2',
+      nodeId: 'n1',
+      parts: [{ type: 'quote', text: '只引用' }],
+    })
+    expect(replaceMessageText(quoted, '补一句')).toEqual([
+      { type: 'quote', text: '只引用' },
+      { type: 'text', text: '补一句' },
+    ])
+  })
+
+  it('sameMessageParts 认得出没改动的编辑', () => {
+    const edited = { ...message, parts: replaceMessageText(message, '旧问题') }
+    expect(sameMessageParts(message, edited)).toBe(true)
+    expect(
+      sameMessageParts(message, { ...message, parts: replaceMessageText(message, '新问题') }),
+    ).toBe(false)
   })
 })
 

@@ -1,6 +1,9 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseTreeFileText, parseTreeJson, TreeParseError } from './tree-file'
+
+// 真实样例是本地工件（.gate/chat-files 不在仓库里），缺失时跳过而不是让整套测试红掉
+const REAL_TREE_FILE = '.gate/chat-files/20260920-192723-byrgemf6k-_______.tree'
 
 const SYNTHETIC_TREE = {
   type: 'project',
@@ -78,11 +81,8 @@ describe('parseTreeJson', () => {
     expect(() => parseTreeJson({})).toThrow(TreeParseError)
   })
 
-  it('parses the real .gate file faithfully', () => {
-    const text = readFileSync(
-      '.gate/chat-files/20260920-192723-byrgemf6k-_______.tree',
-      'utf-8',
-    )
+  it.skipIf(!existsSync(REAL_TREE_FILE))('parses the real .gate file faithfully', () => {
+    const text = readFileSync(REAL_TREE_FILE, 'utf-8')
     const parsed = parseTreeFileText(text)
     expect(parsed.name).toBe('考研数学二章节')
     expect(parsed.stats.cards).toBe(11)

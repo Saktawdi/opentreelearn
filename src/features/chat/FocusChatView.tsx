@@ -31,6 +31,7 @@ import {
 import { Tooltip } from '@/components/ui/tooltip'
 import { messagePreview } from '@/domain/messages'
 import type { Id } from '@/domain/models'
+import { resolveThread, staleSelectionSlots } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
@@ -85,13 +86,23 @@ export function FocusChatView({
   const forkInfo = useMemo(() => {
     if (!node?.forkFrom) return null
     const sourceNode = nodes.find((item) => item.id === node.forkFrom?.nodeId)
-    const sourceMessage = (messagesByNode[node.forkFrom.nodeId] ?? []).find(
-      (message) => message.id === node.forkFrom?.messageId,
-    )
+    // 按 fork 时冻结的版本选择解析源节点：源节点之后切版本不改写这个子节点的继承内容
+    const visible = sourceNode
+      ? resolveThread(sourceNode, messagesByNode[node.forkFrom.nodeId] ?? [], node.forkFrom.selection)
+          .path
+      : []
+    const sourceMessage = visible.find((message) => message.id === node.forkFrom?.messageId)
     const title = sourceNode?.title ?? '已删除的节点'
     const preview = sourceMessage ? messagePreview(sourceMessage, 96) : null
+    const stale = sourceNode ? staleSelectionSlots(sourceNode, node.forkFrom.selection).length > 0 : false
+    // 找不到 fork 点与被淘汰的固定版本都要在提示条上说清楚：继承内容与源节点当前显示的不一样
+    const note = !sourceMessage
+      ? '原分支点已不在当前版本中，按整条对话继承'
+      : stale
+        ? '分支时固定的旧版本已被淘汰，按最新版本继承'
+        : null
     // 源消息文本常常就是源节点标题，此时再展示一次只会读成重复
-    return { title, preview: preview && preview !== title ? preview : null }
+    return { title, preview: preview && preview !== title ? preview : null, note }
   }, [node, nodes, messagesByNode])
 
   if (!node || !projectId) return null
@@ -228,6 +239,9 @@ export function FocusChatView({
           <span className="shrink-0">继承自 {forkInfo.title}</span>
           {forkInfo.preview ? (
             <span className="truncate text-faint">“{forkInfo.preview}”</span>
+          ) : null}
+          {forkInfo.note ? (
+            <span className="shrink-0 text-faint">（{forkInfo.note}）</span>
           ) : null}
         </div>
       ) : null}

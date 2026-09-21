@@ -25,6 +25,27 @@ describe('node actions', () => {
     expect(resolveForkFrom('branch', child, 'm1')).toEqual({ nodeId: 'child', messageId: 'm1' })
   })
 
+  it('freezes the source node’s version selection when forking', () => {
+    const source = makeNode({
+      id: 's',
+      thread: {
+        entries: [{ slot: 'u1' }],
+        slots: { u1: { versions: [{ version: 1, entries: ['u1'] }] } },
+        selection: { u1: 1 },
+      },
+    })
+    expect(resolveForkFrom('branch', source, 'm1')).toEqual({
+      nodeId: 's',
+      messageId: 'm1',
+      selection: { u1: 1 },
+    })
+    // 没有版本结构的节点不多出一个空 selection 键
+    expect(resolveForkFrom('branch', makeNode({ id: 'plain' }), 'm1')).toEqual({
+      nodeId: 'plain',
+      messageId: 'm1',
+    })
+  })
+
   it('builds a node with placeholder title and no manual position', () => {
     const node = createNodeFromAction({
       projectId: 'p1',
