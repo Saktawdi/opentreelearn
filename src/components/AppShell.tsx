@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
-import { FolderKanban, Settings } from 'lucide-react'
+import { FolderKanban, Settings, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BootstrapError } from '@/components/BootstrapError'
@@ -9,6 +9,7 @@ import { useBootstrap } from '@/stores/bootstrap'
 
 const NAV_ITEMS = [
   { to: '/', label: '项目', icon: FolderKanban, end: true },
+  { to: '/me', label: '我的', icon: UserRound, end: false },
   { to: '/settings', label: '配置', icon: Settings, end: false },
 ]
 
@@ -85,7 +86,7 @@ export function AppShell() {
   return (
     <TooltipProvider>
       <div className="relative flex h-screen flex-col overflow-hidden bg-canvas">
-        {/* 非工作区页面（/ 与 /settings）保留顶部通透全宽 Header */}
+        {/* 非工作区页面（/ 、/me 与 /settings）保留顶部通透全宽 Header */}
         {!isCanvasRoute ? (
           <header className="z-30 flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-6">
             <NavLink to="/" className="flex items-center gap-2 text-ink transition-opacity hover:opacity-85">
@@ -109,6 +110,7 @@ export function AppShell() {
                     <NavLink
                       to={item.to}
                       end={item.end}
+                      aria-label={item.label}
                       className="group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150"
                     >
                       {({ isActive }) => (
@@ -161,6 +163,7 @@ export function AppShell() {
                     <NavLink
                       to={item.to}
                       end={item.end}
+                      aria-label={item.label}
                       className="group relative flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150"
                     >
                       {({ isActive }) => (

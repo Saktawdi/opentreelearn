@@ -175,7 +175,8 @@ interface GlobalSettings {
 | --- | --- |
 | `/` | 项目列表（卡片、标签筛选、新建项目） |
 | `/p/:projectId` | 画布工作台（主视图） |
-| `/settings` | 配置（BYOK、个人背景、模型分配） |
+| `/me` | 我的（账号登录/注册、个人背景） |
+| `/settings` | 配置（BYOK、模型分配、上下文预算） |
 
 ### 画布工作台
 
@@ -200,7 +201,14 @@ interface GlobalSettings {
 
 - Provider 管理：增删改（kind / apiKey / baseURL / 模型列表），连通性测试。
 - 模型分配：默认对话模型、标题模型、摘要模型。
-- 个人背景：全局文本框（说明"每次新开空白节点都会注入"）。
+- 上下文预算：`contextBudget`，超出后压缩更早的父链对话。
+- 个人背景已迁至「我的」页，这里只留一句指路。
+
+### 我的页
+
+- 账号：登录 / 注册（邮箱验证码，注册成功后自动登录）；已登录时展示头像、昵称、登录账号与邮箱，可退出登录。
+- 个人背景：全局文本框（说明"每次新开空白节点都会注入"），由配置页迁来。
+- 账号是同步功能的身份基础设施（见第 13 节）：云端同步本身尚未接入。
 
 ## 7. 架构分层
 
@@ -212,7 +220,7 @@ src/
     context/   上下文组装 + token 预算
     node-ops/  三种节点动作 → 节点对象（纯函数）
   data/        Repository 接口 + Dexie 实现（未来可加 Supabase 实现）
-  services/    LLM provider 适配（Vercel AI SDK）、标题/摘要、图片
+  services/    LLM provider 适配（Vercel AI SDK）、标题/摘要、图片、账号系统客户端
   stores/      Zustand + Immer（只做状态编排，不写业务规则）
   features/    projects / canvas / chat / settings（UI）
   components/  通用 UI 组件
@@ -221,7 +229,7 @@ src/
 
 **约束**：`domain` 不得 import `data`/`services`/`react`；`data` 只依赖 `domain` 类型；UI 通过 stores 调用 data/services。
 
-**Store 划分（实现）**：`settings-store`（全局配置）、`projects-store`（项目列表）、`workspace-store`（当前打开项目的节点 / 消息 / 流式对话 / 选中态）。打开项目的全部状态放在同一个 store，避免「画布要读消息、对话要读节点」造成的跨 store 环形依赖。
+**Store 划分（实现）**：`settings-store`（全局配置）、`projects-store`（项目列表）、`account-store`（账号登录态）、`workspace-store`（当前打开项目的节点 / 消息 / 流式对话 / 选中态）。打开项目的全部状态放在同一个 store，避免「画布要读消息、对话要读节点」造成的跨 store 环形依赖。
 
 **LLM 服务拆分（实现）**：`services/llm/catalog.ts` 只放纯元数据（协议标签、默认地址、模型描述、`hasModel`），不引用任何厂商 SDK；`services/llm/providers.ts` 负责创建 `LanguageModel`，内部**动态 import** 四个厂商适配包。效果：设置页与模型选择器不会把厂商 SDK 打进首屏，只有真正发消息时才按需下载对应适配包。
 
@@ -272,9 +280,36 @@ src/
 | 上下文预算 | 降级顺序：远→近压缩为「脉络」→ 远→近丢弃 → 截断旧消息 → 仅保留最近两条并截断 |
 | 节点动作边界 | 发散/分支在没有可用消息（空节点）时降级为空白节点，不报错 |
 | 删除语义 | 删除/归档均级联整棵子树；删除同时清理消息与资产引用 |
+| 账号接入 | 浏览器直连账号系统（其 CORS 允许 `token` 自定义头），因此不复用 LLM 的 `/api-proxy`；token 存 `localStorage`；会话恢复 401 时先 refresh 再取用户 |
+| 页面小节 | `Section` 提到 `components/ui/section.tsx`，配置页与我的页共用同一份标题/说明/间距 |
 
 ## 12. 后续（P2 候选）
 
-- 账号 + 云同步：新增 `data/supabase` 实现即可接入（Repository 接口已就位）
+- 账号：已接入若依账号系统（登录 / 注册 / 退出，见第 13 节）。
+- 云同步：待做，范围是**全部设置 + 学习项目数据**（落地清单见 13.2）。
 - 项目导出（Markdown / JSON）、全局检索、节点合并与引用
 - 首屏进一步瘦身：Markdown 渲染栈按需加载、KaTeX 字体子集化
+
+## 13. 账号与同步
+
+### 13.1 账号（已接入）
+
+- 服务：若依账号系统 `https://api.sakta.top`，前端**浏览器直连**——该服务对预检已返回 `Access-Control-Allow-Origin` 与 `Access-Control-Allow-Headers: token, content-type`，受保护接口的自定义 `token` 头能通过预检，所以不需要像 LLM 那样走 `/api-proxy`。
+- 已接接口：`POST /v1/user/pub/login`（form-urlencoded）、`POST /v1/user/pub/sendCode`、`POST /v1/user/pub/register?emailCode=…`（JSON 体 + 查询参数）、`GET /v1/user/pri/getInfo`、`POST /v1/user/pri/refreshToken`、`POST /v1/user/pri/logout`。文档里的 `updateInfo` / `updatePassword` / `updateAvatar` 尚未接。
+- 会话：token 存 `localStorage['sakta-token']`；进「我的」页时恢复会话，取用户遇到 401 先用 `refreshToken` 换新 token 再取，仍失败才清掉本地 token；网络类失败保留 token 并给「重试」。
+- 当前只读展示昵称 / 登录账号 / 邮箱 / 头像；头像相对路径用账号服务地址补全。
+
+### 13.2 同步（待做）
+
+范围：**全部设置 + 学习项目数据**——`GlobalSettings`（providers、模型分配、上下文预算、个人背景）、`Project` / `ProjectSettings` / `Node` / `Message` / `Note` / `Asset`。
+
+数据模型目前是按「本地单端」设计的，直接同步会丢数据，需先补齐：
+
+| 缺口 | 影响 | 处理方向 |
+| --- | --- | --- |
+| 删除是硬删（`remove` 直接删行） | 删除无法传播，另一端的旧数据会被当成新数据推回来 | 加 tombstone（`deletedAt`）或依赖服务端版本水位 |
+| `Message` / `Asset` 只有 `createdAt` | 无法做 last-write-wins | 补 `updatedAt`（`Project` / `Node` / `Note` 已有） |
+| `Asset.blob` 是二进制 | 不能塞进 JSON 同步体，图片体积也大 | 对象存储上传/下载，同步体只传引用 |
+| `providers[].apiKey` 是明文密钥 | 上传即等于把 BYOK 密钥交给服务端 | 要么密钥不上云（只同步非敏感字段），要么服务端加密存储需单独确认 |
+| 账号系统只有身份、没有数据接口 | 同步没有落点 | 需要一套数据 API（可参照 Blog 的 BFF 形态）并定义冲突合并策略 |
+| id 由 `crypto.randomUUID()` 生成 | 多端离线生成不会撞号 | 保留客户端生成 id，服务端不重编号 |

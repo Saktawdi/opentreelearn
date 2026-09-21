@@ -1,0 +1,232 @@
+import { errorMessage } from '@/lib/utils'
+
+/**
+ * 若依账号系统客户端。
+ *
+ * 浏览器直连 `https://api.sakta.top`：该服务已对预检返回
+ * `Access-Control-Allow-Origin` 与 `Access-Control-Allow-Headers: token, content-type`，
+ * 受保护接口的自定义 `token` 头能通过预检，所以这里不像 LLM 那样需要走 `/api-proxy`。
+ */
+export const ACCOUNT_BASE_URL = 'https://api.sakta.top'
+
+/** token 存 localStorage，键名沿用生态里既有的 `sakta-token`。 */
+export const ACCOUNT_TOKEN_KEY = 'sakta-token'
+
+export interface AccountRole {
+  roleId?: number
+  roleName?: string
+  roleKey?: string
+}
+
+/** 账号系统返回的用户信息；字段全部可选，页面只读它认得的那些。 */
+export interface AccountUser {
+  userId?: number
+  deptId?: number
+  loginName?: string
+  userName?: string
+  email?: string
+  phonenumber?: string
+  sex?: string
+  avatar?: string
+  status?: string
+  loginDate?: string
+  dept?: { deptId?: number; deptName?: string }
+  roles?: AccountRole[]
+  createTime?: string
+}
+
+export interface AccountEnvelope<T> {
+  code: number
+  msg?: string
+  data?: T
+  /** 登录与刷新 token 时位于响应根对象。 */
+  token?: string
+}
+
+export interface LoginInput {
+  username: string
+  password: string
+}
+
+export interface RegisterInput {
+  loginName: string
+  password: string
+  email: string
+  userName?: string
+  phonenumber?: string
+  sex?: string
+}
+
+/** 账号系统把 HTTP 状态与业务码分开表达，两者都出现时以业务码为准。 */
+export class AccountApiError extends Error {
+  readonly code: number
+
+  constructor(message: string, code: number) {
+    super(message)
+    this.name = 'AccountApiError'
+    this.code = code
+  }
+}
+
+export interface AccountRequestOptions {
+  method?: 'GET' | 'POST' | 'PUT'
+  /** 表单体：login / sendCode / updatePassword 走 x-www-form-urlencoded。 */
+  form?: Record<string, string>
+  /** JSON 体：register / updateInfo 走 application/json。 */
+  json?: unknown
+  query?: Record<string, string | undefined>
+  token?: string | null
+}
+
+export function buildAccountRequest(
+  path: string,
+  options: AccountRequestOptions = {},
+): { url: string; init: RequestInit } {
+  // URL 拼接用 URL 对象：path 里带查询串（如 ?emailCode=）也能正确合并 searchParams。
+  const url = new URL(`${ACCOUNT_BASE_URL}${path}`)
+  for (const [key, value] of Object.entries(options.query ?? {})) {
+    if (value !== undefined) url.searchParams.set(key, value)
+  }
+
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (options.token) headers.token = options.token
+
+  let body: string | undefined
+  if (options.form) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+    body = new URLSearchParams(options.form).toString()
+  } else if (options.json !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify(options.json)
+  }
+
+  return { url: url.toString(), init: { method: options.method ?? 'GET', headers, body } }
+}
+
+/** 解析信封：非 0 业务码一律转成带原始 `msg` 的错误，让页面能直接展示上游文案。 */
+export function interpretEnvelope<T>(
+  payload: unknown,
+  httpStatus: number,
+): AccountEnvelope<T> {
+  if (!payload || typeof payload !== 'object') {
+    throw new AccountApiError(`账号服务返回了无法解析的响应（HTTP ${httpStatus}）`, httpStatus)
+  }
+
+  const envelope = payload as AccountEnvelope<T>
+  const code = typeof envelope.code === 'number' ? envelope.code : httpStatus
+  if (code !== 0) {
+    throw new AccountApiError(
+      envelope.msg?.trim() || `账号服务返回错误（code ${code}）`,
+      code,
+    )
+  }
+  return envelope
+}
+
+async function request<T>(
+  path: string,
+  options: AccountRequestOptions = {},
+): Promise<AccountEnvelope<T>> {
+  const { url, init } = buildAccountRequest(path, options)
+
+  let response: Response
+  try {
+    response = await fetch(url, init)
+  } catch (error) {
+    // 网络层失败（离线、DNS、证书、被拦截）不会有响应体，单独给一句能行动的提示。
+    throw new AccountApiError(`无法连接账号服务：${errorMessage(error)}`, 0)
+  }
+
+  const raw = await response.text()
+  let payload: unknown = null
+  try {
+    if (raw) payload = JSON.parse(raw)
+  } catch {
+    // 非 JSON 响应体（网关错误页等）保持 null，交给 interpretEnvelope 报出 HTTP 状态。
+  }
+
+  return interpretEnvelope<T>(payload, response.status)
+}
+
+/** 登录并返回 token。 */
+export async function login(input: LoginInput): Promise<string> {
+  const envelope = await request<never>('/v1/user/pub/login', {
+    method: 'POST',
+    form: { username: input.username, password: input.password },
+  })
+  if (!envelope.token) throw new AccountApiError('登录成功但账号服务没有返回 token', 0)
+  return envelope.token
+}
+
+/** 发送 6 位注册邮箱验证码。 */
+export async function sendRegisterCode(email: string): Promise<void> {
+  await request<never>('/v1/user/pub/sendCode', { method: 'POST', form: { email } })
+}
+
+/** 注册：`emailCode` 走查询参数，其余字段走 JSON 体。 */
+export async function register(input: RegisterInput, emailCode: string): Promise<void> {
+  await request<never>('/v1/user/pub/register', {
+    method: 'POST',
+    query: { emailCode },
+    json: {
+      loginName: input.loginName,
+      password: input.password,
+      userName: input.userName?.trim() || input.loginName,
+      email: input.email,
+      ...(input.phonenumber ? { phonenumber: input.phonenumber } : {}),
+      ...(input.sex ? { sex: input.sex } : {}),
+    },
+  })
+}
+
+export async function fetchAccountUser(token: string): Promise<AccountUser> {
+  const envelope = await request<AccountUser>('/v1/user/pri/getInfo', { token })
+  return envelope.data ?? {}
+}
+
+/** 用当前（仍有效的）token 换一个新 token。 */
+export async function refreshAccountToken(token: string): Promise<string> {
+  const envelope = await request<never>('/v1/user/pri/refreshToken', {
+    method: 'POST',
+    token,
+  })
+  if (!envelope.token) throw new AccountApiError('刷新成功但账号服务没有返回 token', 0)
+  return envelope.token
+}
+
+export async function logout(token: string): Promise<void> {
+  await request<never>('/v1/user/pri/logout', { method: 'POST', token })
+}
+
+/** 头像可能是相对路径（`/profile/avatar/x.png`），补全为账号服务上的绝对地址。 */
+export function resolveAvatarUrl(avatar?: string): string | null {
+  const value = avatar?.trim()
+  if (!value) return null
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:')) return value
+  return `${ACCOUNT_BASE_URL}${value.startsWith('/') ? '' : '/'}${value}`
+}
+
+/** localStorage 在隐私模式/被禁用时会抛错，读不到就当作未登录。 */
+export function readAccountToken(): string | null {
+  try {
+    return window.localStorage.getItem(ACCOUNT_TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function saveAccountToken(token: string): void {
+  try {
+    window.localStorage.setItem(ACCOUNT_TOKEN_KEY, token)
+  } catch {
+    // 存不下也只是这次会话结束后要重新登录，不影响本次使用。
+  }
+}
+
+export function clearAccountToken(): void {
+  try {
+    window.localStorage.removeItem(ACCOUNT_TOKEN_KEY)
+  } catch {
+    // 同上：清不掉不影响内存里的退出。
+  }
+}

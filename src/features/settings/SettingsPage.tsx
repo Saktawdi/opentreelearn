@@ -1,10 +1,11 @@
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Section } from '@/components/ui/section'
 import type { ModelRef, ProviderConfig } from '@/domain/models'
 import { clampContextBudget } from '@/domain/defaults'
 import { errorMessage } from '@/lib/utils'
@@ -28,25 +29,9 @@ const MODEL_SLOTS: { slot: ModelSlot; label: string; hint: string }[] = [
   {
     slot: 'summaryModelRef',
     label: '摘要模型',
-    hint: '同时用于长上下文压缩；留空则不自动摘要。',
+    hint: '用于手动生成节点学习摘要；留空则该功能不可用。',
   },
 ]
-
-function Section({ title, description, children }: {
-  title: string
-  description?: string
-  children: ReactNode
-}) {
-  return (
-    <section className="border-t border-line pt-5">
-      <h2 className="text-base font-medium text-ink">{title}</h2>
-      {description ? (
-        <p className="mt-1 text-xs leading-relaxed text-muted">{description}</p>
-      ) : null}
-      <div className="mt-4">{children}</div>
-    </section>
-  )
-}
 
 function maskKey(key: string): string {
   if (!key) return '未填写'
@@ -60,19 +45,16 @@ export function SettingsPage() {
   const setModelRef = useSettingsStore((state) => state.setModelRef)
   const removeProvider = useSettingsStore((state) => state.removeProvider)
 
-  const [profile, setProfile] = useState(() => settings.backgroundProfile)
   const [budget, setBudget] = useState(() => String(settings.contextBudget))
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
-  const profileDirty =
-    profile !== settings.backgroundProfile || budget !== String(settings.contextBudget)
+  const budgetDirty = budget !== String(settings.contextBudget)
 
-  const saveProfile = async () => {
+  const saveBudget = async () => {
     const parsed = Number.parseInt(budget, 10)
     await patch({
-      backgroundProfile: profile,
       contextBudget: Number.isFinite(parsed) ? clampContextBudget(parsed) : settings.contextBudget,
     })
     toast.success('已保存')
@@ -99,17 +81,18 @@ export function SettingsPage() {
         </div>
 
         <Section
-          title="个人背景"
-          description="新建空白节点时，这段内容会作为上下文注入。"
+          title="上下文"
+          description={
+            <>
+              个人背景已移至
+              <Link to="/me" className="text-accent hover:underline">
+                「我的」
+              </Link>
+              ，这里只保留上下文预算。
+            </>
+          }
         >
-          <Textarea
-            value={profile}
-            rows={5}
-            onChange={(event) => setProfile(event.target.value)}
-            placeholder="例如：计算机专业大三学生，正在准备考研数学；希望解释尽量给推导和反例，不要跳过中间步骤。"
-          />
-
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <label className="block">
               <span className="mb-1.5 block text-sm text-ink-soft">上下文预算（tokens）</span>
               <Input
@@ -121,7 +104,7 @@ export function SettingsPage() {
               <span className="mt-1 block text-xs text-muted">超出后自动压缩更早的父链对话。</span>
             </label>
 
-            <Button variant="primary" size="sm" onClick={() => void saveProfile()} disabled={!profileDirty}>
+            <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>
               保存
             </Button>
           </div>

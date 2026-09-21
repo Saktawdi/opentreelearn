@@ -14,6 +14,10 @@ const SettingsPage = lazy(() =>
   })),
 )
 
+const MePage = lazy(() =>
+  import('@/features/me/MePage').then((module) => ({ default: module.MePage })),
+)
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -22,6 +26,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <ProjectsPage /> },
       { path: 'p/:projectId', element: <CanvasPage /> },
+      { path: 'me', element: <MePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },
