@@ -8,7 +8,7 @@ import type { Asset, Id, MessagePart, ModelRef } from '@/domain/models'
 import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
-import { useWorkspaceStore } from '@/stores/workspace-store'
+import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { ModelPicker } from '@/features/settings/ModelPicker'
 
 interface PendingImage {
@@ -35,7 +35,7 @@ export function Composer({
   onChatModelChange?: (ref: ModelRef | null) => void
 }) {
   const sendMessage = useWorkspaceStore((state) => state.sendMessage)
-  const isStreaming = useWorkspaceStore((state) => state.streaming?.nodeId === nodeId)
+  const isStreaming = useWorkspaceStore((state) => isStreamingIn(state.streaming, nodeId))
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
 
   const [text, setText] = useState('')

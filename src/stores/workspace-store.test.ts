@@ -4,7 +4,7 @@ import type { Project } from '@/domain/models'
 import { getDatabase, getRepositories } from '@/data'
 import { createDefaultSettings } from '@/domain/defaults'
 import { useSettingsStore } from './settings-store'
-import { useWorkspaceStore } from './workspace-store'
+import { isStreamingIn, useWorkspaceStore } from './workspace-store'
 
 const llm = vi.hoisted(() => ({
   summaryCalls: 0,
@@ -219,6 +219,95 @@ describe('summary generation', () => {
 
     expect(store().summarizingNodeIds).not.toContain(root!.id)
     expect(store().nodes.find((node) => node.id === root!.id)?.summary).toBeUndefined()
+  })
+})
+
+describe('regenerate', () => {
+  it('only regenerates the last answer, taking its notes with it', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('什么是特征值？')
+    const nodeId = root!.id
+    const store = () => useWorkspaceStore.getState()
+    const userMessage = (store().messagesByNode[nodeId] ?? [])[0]
+
+    await getRepositories().messages.create({
+      id: 'm-answer',
+      nodeId,
+      projectId: 'p1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '特征值就是那个 λ。' }],
+      createdAt: userMessage.createdAt + 1,
+    })
+    await store().openProject('p1')
+    await store().addNote({
+      nodeId,
+      messageId: 'm-answer',
+      kind: 'annotation',
+      quote: 'λ',
+      start: 8,
+      end: 9,
+      body: '抄下来',
+    })
+
+    // 用户消息没有可重生成的对象
+    await store().regenerate(nodeId, userMessage.id)
+    expect(store().messagesByNode[nodeId]?.some((message) => message.id === userMessage.id)).toBe(
+      true,
+    )
+
+    await store().regenerate(nodeId, 'm-answer')
+
+    expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'm-answer')).toBe(false)
+    expect(await getRepositories().messages.get('m-answer')).toBeUndefined()
+    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+    // 删掉之后立刻重发这一轮（测试环境没配模型，停在错误提示上）
+    expect(store().streaming?.nodeId).toBe(nodeId)
+    expect(store().streaming?.error).toContain('尚未配置')
+  })
+
+  it('leaves a middle answer alone', async () => {
+    await seedProject()
+    const root = await useWorkspaceStore.getState().startRootNode('问题')
+    const nodeId = root!.id
+    const store = () => useWorkspaceStore.getState()
+    const first = (store().messagesByNode[nodeId] ?? [])[0]
+
+    await getRepositories().messages.createMany([
+      {
+        id: 'a1',
+        nodeId,
+        projectId: 'p1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '第一轮回答' }],
+        createdAt: first.createdAt + 1,
+      },
+      {
+        id: 'u2',
+        nodeId,
+        projectId: 'p1',
+        role: 'user',
+        parts: [{ type: 'text', text: '再问一句' }],
+        createdAt: first.createdAt + 2,
+      },
+    ])
+    await store().openProject('p1')
+
+    await store().regenerate(nodeId, 'a1')
+
+    expect(store().messagesByNode[nodeId]?.some((message) => message.id === 'a1')).toBe(true)
+    expect(store().streaming).toBeNull()
+  })
+})
+
+describe('isStreamingIn', () => {
+  const round = { nodeId: 'n1', messageId: 'm1', text: '', startedAt: 0 }
+
+  it('counts only the node’s own unfinished round', () => {
+    expect(isStreamingIn(round, 'n1')).toBe(true)
+    expect(isStreamingIn(round, 'n2')).toBe(false)
+    expect(isStreamingIn(null, 'n1')).toBe(false)
+    // 失败收场的那一轮已经把控制权交回给用户，不该继续锁着输入框
+    expect(isStreamingIn({ ...round, error: '连接被拒绝' }, 'n1')).toBe(false)
   })
 })
 
