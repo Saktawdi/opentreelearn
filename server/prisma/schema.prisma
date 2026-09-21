@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 账号映射：若依账号（loginName / userId）到本地同步账号行。
+/// 一个账号下挂全部同步记录；revCounter 是该账号的单调修订号计数器，
+/// 每次写入自增，pull 用它当游标（比时间戳可靠：客户端时钟不可信，也会回拨）。
+model Account {
+  id         Int      @id @default(autoincrement())
+  loginName  String   @unique
+  userId     Int
+  revCounter Int      @default(0)
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @updatedAt
+  records    SyncRecord[]
+
+  @@map("accounts")
+}
+
+/// 单表多态：所有同步记录都放在这里，实体名 + 客户端 id 唯一。
+/// 用 JSON 载荷而不是每实体一张表：客户端模型还在变（笔记、引用片段都是近期加的），
+/// 协议与实体解耦后，加字段不需要动服务端迁移。
+model SyncRecord {
+  id        Int    @id @default(autoincrement())
+  accountId Int
+  entity    String
+  localId   String
+  /// 服务端分配的单调修订号（账号内递增），客户端靠它增量拉取
+  rev       Int
+  /// 客户端时钟（epoch ms）：LWW 的比较依据
+  clientUpdatedAt Float
+  /// 非空即 tombstone（删除标记），客户端据此删除本地记录
+  deletedAt       Float?
+  /// 实体 JSON；tombstone 固定为 "{}"
+  data String
+
+  receivedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, entity, localId])
+  @@index([accountId, rev])
+  @@map("records")
+}

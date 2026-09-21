@@ -5,7 +5,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage'] },
+  { ignores: ['dist', 'node_modules', 'coverage', 'server/dist'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -28,6 +28,11 @@ export default tseslint.config(
   },
   {
     files: ['vite.config.ts'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // 同步服务（server/）跑在 Node 上：浏览器全局之外补 node 全局，避免 process/Buffer 误报
+    files: ['server/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
   {

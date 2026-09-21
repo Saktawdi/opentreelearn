@@ -224,12 +224,13 @@ src/
   data/        Repository 接口 + Dexie 实现（未来可加 Supabase 实现）
   services/    LLM provider 适配（Vercel AI SDK）、标题/摘要、图片、账号系统客户端
   stores/      Zustand + Immer（只做状态编排，不写业务规则）
-  features/    projects / canvas / chat / settings（UI）
+  features/    projects / canvas / chat / settings / me（UI）
   components/  通用 UI 组件
   lib/         markdown 渲染（含 shiki 高亮）、工具函数
+server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 pull/push，独立部署
 ```
 
-**约束**：`domain` 不得 import `data`/`services`/`react`；`data` 只依赖 `domain` 类型；UI 通过 stores 调用 data/services。
+**约束**：`domain` 不得 import `data`/`services`/`react`；`data` 只依赖 `domain` 类型；UI 通过 stores 调用 data/services。`server/` 是独立包（自己的 `package.json` / tsconfig / 测试），只通过 HTTP 契约与前端耦合，前端不 import 它的任何代码。
 
 **Store 划分（实现）**：`settings-store`（全局配置）、`projects-store`（项目列表）、`account-store`（账号登录态）、`workspace-store`（当前打开项目的节点 / 消息 / 流式对话 / 选中态）。打开项目的全部状态放在同一个 store，避免「画布要读消息、对话要读节点」造成的跨 store 环形依赖。
 
@@ -290,7 +291,7 @@ src/
 ## 12. 后续（P2 候选）
 
 - 账号：已接入若依账号系统（登录 / 注册 / 退出，见第 13 节）。
-- 云同步：待做，范围是**全部设置 + 学习项目数据**（落地清单见 13.2）。
+- 云同步：服务端 P1 已就绪（`server/`），客户端接入见 13.3。
 - 项目导出（Markdown / JSON）、全局检索、节点合并与引用
 - 首屏进一步瘦身：Markdown 渲染栈按需加载、KaTeX 字体子集化
 
@@ -303,17 +304,39 @@ src/
 - 会话：token 存 `localStorage['sakta-token']`；进「我的」页时恢复会话，取用户遇到 401 先用 `refreshToken` 换新 token 再取，仍失败才清掉本地 token；网络类失败保留 token 并给「重试」。
 - 当前只读展示昵称 / 登录账号 / 邮箱 / 头像；头像相对路径用账号服务地址补全。
 
-### 13.2 同步（待做）
+### 13.2 同步服务端（已实现，P1）
 
-范围：**全部设置 + 学习项目数据**——`GlobalSettings`（providers、模型分配、上下文预算、个人背景）、`Project` / `ProjectSettings` / `Node` / `Message` / `Note` / `Asset`。
+后端在 `server/`：NestJS 10 + Prisma + SQLite，与 Blog 的 `sakta-bff` 同一范式（账号系统只管身份，数据落在这里）。运行与部署细节见 `server/README.md`，接口文档在 `/api/docs`。
 
-数据模型目前是按「本地单端」设计的，直接同步会丢数据，需先补齐：
+- **鉴权**：守卫从 `token` 或 `Authorization: Bearer` 取 token，转发账号系统 `getInfo` 校验（**不共享 JWT 密钥**），结果按 token 缓存 60s；`accounts` 表用 `loginName` 做映射键。
+- **存储**：单表多态 `records(accountId, entity, localId, rev, clientUpdatedAt, deletedAt, data JSON)`；`accounts.revCounter` 是账号内单调递增的修订号，pull 用它当游标——**不信任客户端时钟**（会回拨）。JSON 载荷让协议与实体解耦，客户端加字段不必动服务端迁移。
+- **接口**：
+  - `GET /api/sync/pull?cursor&limit` → `{ cursor, hasMore, changes[] }`（含 tombstone，`data` 为 `{}`）
+  - `POST /api/sync/push` → 逐条 last-write-wins；判旧的回 `stale` 并带回服务端版本（`updatedAt` 相等也判旧，所以重推幂等）
+  - `GET /api/sync/status` → 当前账号、有效记录数、最新游标
+- **协议上限**：单条 JSON ≤ 256KB，单批 ≤ 200 条，pull 单页 ≤ 1000 条（超出即 400，不静默截断）。
+- **开发联调**：`ALLOW_DEV_TOKEN=true`（仅非生产环境）时 `POST /api/auth/dev-token` 签发 `dev-<账号名>` token，可绕过账号系统在本机跑通全链路。
+- **前端接入**：开发由 Vite 把 `/lern-api` 反代到 `localhost:3901`（生产同样反代即可，不必依赖 CORS）。
+
+两个坑记在这里，避免重复踩：
+
+- `cors` 包把**函数**形式的 `origin` 当异步回调 `(origin, callback)` 用。同步返回布尔的函数永远不调用 callback，结果是**所有请求挂死**（连接建立、零字节响应）。`createCorsOrigin()` 因此返回字符串/正则数组，并有单测锁住「不能是函数」。
+- 守卫对外统一回「Token 无效或已过期」，但服务端会 `warn` 记录真实原因——否则 `RUIYI_API_URL` 配错、账号系统不可用都会被误读成用户 token 过期。
+
+### 13.3 客户端接入（待做，P1 剩余部分）
+
+范围：**全部设置 + 学习项目数据**——`GlobalSettings`（providers、模型分配、上下文预算、个人背景）、`Project` / `ProjectSettings` / `Node` / `Message` / `Note` / `Asset`。`providers[].apiKey` 默认不上云，各设备自填。
+
+客户端要先补齐：
 
 | 缺口 | 影响 | 处理方向 |
 | --- | --- | --- |
-| 删除是硬删（`remove` 直接删行） | 删除无法传播，另一端的旧数据会被当成新数据推回来 | 加 tombstone（`deletedAt`）或依赖服务端版本水位 |
-| `Message` / `Asset` 只有 `createdAt` | 无法做 last-write-wins | 补 `updatedAt`（`Project` / `Node` / `Note` 已有） |
-| `Asset.blob` 是二进制 | 不能塞进 JSON 同步体，图片体积也大 | 对象存储上传/下载，同步体只传引用 |
-| `providers[].apiKey` 是明文密钥 | 上传即等于把 BYOK 密钥交给服务端 | 要么密钥不上云（只同步非敏感字段），要么服务端加密存储需单独确认 |
-| 账号系统只有身份、没有数据接口 | 同步没有落点 | 需要一套数据 API（可参照 Blog 的 BFF 形态）并定义冲突合并策略 |
-| id 由 `crypto.randomUUID()` 生成 | 多端离线生成不会撞号 | 保留客户端生成 id，服务端不重编号 |
+| 删除是硬删（`remove` 直接删行） | 删除传不出去，另一端的旧数据会被当成新数据推回来 | Dexie 加 outbox 记删除；收到远端 tombstone 时本地硬删 |
+| `Message` / `Asset` / `GlobalSettings` 缺 `updatedAt` | 无法做 last-write-wins | 补 `updatedAt`（`Project` / `Node` / `Note` 已有） |
+| 本地写操作没有变更台账 | 不知道要 push 什么 | Dexie 加 outbox 表，所有写操作记账，push 成功后清账 |
+| 记录没有服务端 `rev`、账号维度没有游标 | 无法增量 pull | 记录里存 `rev`，按账号存 `lastPulledRev` |
+| 一个 IndexedDB 装所有账号 | 换账号会串数据 | 按账号分库（`opentreelearn:<loginName>`），游客继续用默认库 |
+| `Asset.blob` 是二进制 | 塞不进 JSON 同步体 | P2：对象存储上传/下载 + 本地缓存，同步体只传引用 |
+| 首次登录时本机已有数据 | 直接合并会与云端撞车 | 弹窗三选一：上传本机数据（合并）/ 以云端为准 / 暂不同步 |
+
+**下一步（P1 剩余）**：Dexie outbox + 模型补 `updatedAt` + 同步引擎（push/pull + LWW + stale 覆盖）+ 首登策略弹窗 + 按账号分库。之后 P2 做图片资产，P3 做同步状态可见与触发时机（启动、写后节流、手动按钮）。

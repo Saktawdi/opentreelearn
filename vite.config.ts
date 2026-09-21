@@ -109,9 +109,25 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), apiProxyPlugin()],
   server: {
     port: 6174,
+    proxy: {
+      // 同步服务（server/，默认 3901）。走同源代理，开发时不必依赖 CORS。
+      // 生产部署同样把 /lern-api 反代到该服务即可（见 docs/design.md 第 13 节）。
+      '/lern-api': {
+        target: 'http://localhost:3901',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/lern-api/, '/api'),
+      },
+    },
   },
   preview: {
     port: 6174,
+    proxy: {
+      '/lern-api': {
+        target: 'http://localhost:3901',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/lern-api/, '/api'),
+      },
+    },
   },
   resolve: {
     alias: {

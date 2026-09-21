@@ -1,0 +1,9 @@
+# pnpm 10+ 把「允许运行安装脚本的依赖」放在这里（package.json 的 pnpm 字段已不再读取）。
+# Prisma 需要 postinstall 下载查询引擎并生成 client，esbuild（vitest 的 TS 转换）需要落平台二进制。
+# @nestjs/core 的安装脚本只是打印捐赠信息，不需要执行。
+allowBuilds:
+  '@nestjs/core': false
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
