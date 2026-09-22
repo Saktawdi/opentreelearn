@@ -80,20 +80,22 @@ describe('tree-export', () => {
     const exported = buildTreeExportData(project, nodes, messages)
 
     expect(exported.type).toBe('project')
-    expect(exported.version).toBe(1)
+    expect(exported.version).toBe(2)
     expect(exported.data.name).toBe('测试导出项目')
-    // 归档节点不包含
-    expect(exported.data.cards.length).toBe(2)
+    // v2 包含归档节点（带 archived: true，不静默丢子树）
+    expect(exported.data.cards.length).toBe(3)
 
     const rootCard = exported.data.cards.find((c) => c.id === 'n-root')!
     const childCard = exported.data.cards.find((c) => c.id === 'n-child1')!
+    const archivedCard = exported.data.cards.find((c) => c.id === 'n-archived')!
 
     expect(rootCard.title).toBe('极限与连续')
-    expect(rootCard.children).toEqual(['n-child1'])
+    expect(rootCard.children).toEqual(['n-child1', 'n-archived'])
     expect(rootCard.position).toEqual([100, 200, 0])
     expect(rootCard.messages.length).toBe(2)
     expect(rootCard.messages[0].role).toBe('user')
     expect(rootCard.messages[1].role).toBe('ai')
+    expect(archivedCard.archived).toBe(true)
 
     expect(childCard.messages[0].context).toEqual(['引用前文极限知识'])
 
@@ -102,7 +104,7 @@ describe('tree-export', () => {
     const reparsed = parseTreeJson(JSON.parse(jsonStr))
 
     expect(reparsed.name).toBe('测试导出项目')
-    expect(reparsed.stats.cards).toBe(2)
+    expect(reparsed.stats.cards).toBe(3)
     expect(reparsed.stats.roots).toBe(1)
     expect(reparsed.stats.messages).toBe(3)
     expect(reparsed.stats.contextSeeds).toBe(1)
@@ -110,6 +112,7 @@ describe('tree-export', () => {
     const reparsedChild = reparsed.cards.find((c) => c.sourceId === 'n-child1')!
     expect(reparsedChild.parentSourceId).toBe('n-root')
     expect(reparsedChild.contextSeed).toEqual(['引用前文极限知识'])
+    expect(reparsed.cards.find((c) => c.sourceId === 'n-archived')?.status).toBe('archived')
   })
 
   it('carries mastery and the review-center mark, without the rating markers', () => {
@@ -159,17 +162,25 @@ describe('tree-export', () => {
     const topicCard = exported.data.cards.find((card) => card.id === 'n-topic')!
     const centerCard = exported.data.cards.find((card) => card.id === 'n-center')!
 
-    expect(topicCard.mastery).toEqual({ score: 72, weakPoints: ['边界条件', '符号'] })
+    expect(topicCard.mastery).toEqual({
+      score: 72,
+      weakPoints: ['边界条件', '符号'],
+      updatedAt: 5,
+    })
     expect(centerCard.kind).toBe('review')
     expect(centerCard.mastery).toBeUndefined()
     // 评分标记是应用内协议，不进导出文件
     expect(topicCard.messages[0].content).toBe('先复述定义。')
 
-    // 再导入时掌握度与复习中心标记都还在
+    // 再导入时掌握度与复习中心标记都还在，且快照时间被保留
     const reparsed = parseTreeJson(JSON.parse(stringifyTreeExport(exported)))
     const reparsedTopic = reparsed.cards.find((card) => card.sourceId === 'n-topic')!
     const reparsedCenter = reparsed.cards.find((card) => card.sourceId === 'n-center')!
-    expect(reparsedTopic.mastery).toEqual({ score: 72, weakPoints: ['边界条件', '符号'] })
+    expect(reparsedTopic.mastery).toEqual({
+      score: 72,
+      weakPoints: ['边界条件', '符号'],
+      updatedAt: 5,
+    })
     expect(reparsedCenter.kind).toBe('review')
   })
 

@@ -81,6 +81,78 @@ describe('parseTreeJson', () => {
     expect(() => parseTreeJson({})).toThrow(TreeParseError)
   })
 
+  it('parses v2 extensions: position, archived, forkFrom, notes, image counts', () => {
+    const v2Tree = {
+      type: 'project',
+      version: 2,
+      data: {
+        name: 'v2 完整项目',
+        cards: [
+          {
+            id: 'c-root',
+            title: '根卡片',
+            position: [120, 240, 0],
+            messages: [
+              { id: 'm1', role: 'user', content: '一问', timestamp: 100 },
+              { id: 'm2', role: 'assistant', content: '一答', timestamp: 110, images: 2 },
+            ],
+            children: ['c-child'],
+            archived: false,
+          },
+          {
+            id: 'c-child',
+            title: '分支卡片',
+            messages: [{ id: 'm3', role: 'user', content: '二问', timestamp: 200 }],
+            children: [],
+            archived: true,
+            forkFrom: { nodeId: 'c-root', messageId: 'm2' },
+            reviewEnrollment: 'enabled',
+            mastery: { score: 90, weakPoints: ['易错点'], updatedAt: 1500, gradedAt: 1600 },
+            assessmentMeta: { assessedAt: 1500, basedOnStudiedAt: 110, source: 'ai' },
+          },
+        ],
+        notes: [
+          {
+            id: 'n1',
+            messageId: 'm2',
+            kind: 'annotation',
+            quote: '答',
+            start: 1,
+            end: 2,
+            body: '笔记内容',
+            createdAt: 300,
+            updatedAt: 310,
+          },
+        ],
+      },
+    }
+
+    const parsed = parseTreeJson(v2Tree)
+    expect(parsed.stats.cards).toBe(2)
+    expect(parsed.stats.notes).toBe(1)
+    expect(parsed.stats.images).toBe(2)
+    expect(parsed.stats.forks).toBe(1)
+
+    const root = parsed.cards.find((c) => c.sourceId === 'c-root')!
+    const child = parsed.cards.find((c) => c.sourceId === 'c-child')!
+
+    expect(root.position).toEqual({ x: 120, y: 240 })
+    expect(root.status).toBe('active')
+    expect(child.status).toBe('archived')
+    expect(child.forkFrom).toEqual({ nodeSourceId: 'c-root', messageSourceId: 'm2' })
+    expect(child.reviewEnrollment).toBe('enabled')
+    expect(child.mastery?.updatedAt).toBe(1500)
+    expect(child.mastery?.gradedAt).toBe(1600)
+    expect(child.assessmentMeta?.source).toBe('ai')
+
+    expect(parsed.notes[0]).toMatchObject({
+      messageSourceId: 'm2',
+      kind: 'annotation',
+      quote: '答',
+      body: '笔记内容',
+    })
+  })
+
   it.skipIf(!existsSync(REAL_TREE_FILE))('parses the real .gate file faithfully', () => {
     const text = readFileSync(REAL_TREE_FILE, 'utf-8')
     const parsed = parseTreeFileText(text)

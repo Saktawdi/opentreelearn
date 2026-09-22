@@ -16,8 +16,14 @@ export function useImportProject() {
     try {
       const result = await importTreeFile(file)
       await loadProjects()
+      const extra: string[] = []
+      if (result.stats.notes > 0) extra.push(`${result.stats.notes} 条笔记`)
+      if (result.stats.images > 0) extra.push(`${result.stats.images} 张图片未包含`)
+
+      const description = extra.length > 0 ? extra.join(' · ') : undefined
       toast.success(
         `已导入「${result.project.name}」：${result.stats.cards} 个节点，${result.stats.messages} 条对话`,
+        description ? { description } : undefined,
       )
       navigate(`/p/${result.project.id}`)
     } catch (error) {
