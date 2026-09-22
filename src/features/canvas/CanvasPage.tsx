@@ -22,6 +22,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
 import { FocusChatView } from '@/features/chat/FocusChatView'
+import { isBlankCanvasOpen } from '@/lib/blank-canvas'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
@@ -85,6 +86,7 @@ function CanvasWorkspace() {
   const openProject = useWorkspaceStore((state) => state.openProject)
   const reset = useWorkspaceStore((state) => state.reset)
   const project = useWorkspaceStore((state) => state.project)
+  const workspaceProjectId = useWorkspaceStore((state) => state.projectId)
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
   const selectedNodeId = useWorkspaceStore((state) => state.selectedNodeId)
@@ -116,10 +118,12 @@ function CanvasWorkspace() {
 
   // 全局视图模式：'split' (沉浸对话+右侧点树导航) | 'full-canvas' (全屏展开节点详情画布，支持自由拖动节点)
   const [isDetailCanvasOpen, setIsDetailCanvasOpen] = useState(false)
+  // 手动收起过空白画布的项目 id：空白项目的自动展开只做一次，不跟用户较劲（见 isBlankCanvas）
+  const [blankCanvasClosedFor, setBlankCanvasClosedFor] = useState<string | null>(null)
 
   // 当前生效的画布实例：详情画布展开时用它自己的，否则用微缩导航地图的
   const activeApi = () =>
-    isDetailCanvasOpen && detailApiRef.current ? detailApiRef.current : miniApi
+    isCanvasOpen && detailApiRef.current ? detailApiRef.current : miniApi
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
@@ -148,11 +152,13 @@ function CanvasWorkspace() {
       // 对话框与右键菜单各自响应 Esc（关闭自己），此时不要再把整层画布一起收掉
       if (e.key === 'Escape' && !contextMenu && !createRootDialog.open && !nodeToDelete) {
         setIsDetailCanvasOpen(false)
+        // 与「返回对话」同义：空白画布收起后不要再被派生出来，否则会像关不掉
+        setBlankCanvasClosedFor(projectId ?? null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [contextMenu, createRootDialog.open, nodeToDelete])
+  }, [contextMenu, createRootDialog.open, nodeToDelete, projectId])
 
   /**
    * 首页「今日复习」带 openReviewCenter 进来时，一次性转换为新复习模式：
@@ -199,10 +205,46 @@ function CanvasWorkspace() {
     [visibleNodes, messagesByNode, selectedNodeId, showHeatMap, heatNow],
   )
 
+  const activeCount = miniGraph.nodes.length
+  const isEmpty = activeCount === 0
+
+  /**
+   * 空白项目（一个节点都没有）的落地体验：**进来直接就是展开画布** ——
+   * 空项目没有对话可看，分栏布局里左边只剩一句「未选中节点」，不如把整块画布给出来，
+   * 「第一个问题」的入口就摆在画布正中间（见下面的 StarterPanel）。
+   *
+   * 判断是纯派生的、不是进入后 setState 的 effect：第一个节点一出现
+   * （例如刚在画布上问出根节点）isEmpty 即为假，画布随之收起，回答直接在左边
+   * 流式呈现 —— 不需要额外同步，也不会先闪一帧空态。
+   * 收起画布会记下「用户不要空白画布占场」（closeDetailCanvas），已有节点的项目不受影响。
+   */
+  const isBlankCanvas = isBlankCanvasOpen({
+    loading,
+    projectId,
+    workspaceProjectId,
+    isEmpty,
+    dismissedFor: blankCanvasClosedFor,
+  })
+  const isCanvasOpen = isDetailCanvasOpen || isBlankCanvas
+
+  /** 展开详情画布：等它自己的实例挂载并同步完节点后，由它自己居中。 */
+  const openDetailCanvas = () => {
+    setIsDetailCanvasOpen(true)
+    window.setTimeout(() => {
+      void detailApiRef.current?.fitView({ padding: 0.22, duration: 350, maxZoom: 1.2 })
+    }, 80)
+  }
+
+  /** 收起画布：同时记下「用户不要空白画布占场」，免得刚收起又被派生出来。 */
+  const closeDetailCanvas = () => {
+    setIsDetailCanvasOpen(false)
+    setBlankCanvasClosedFor(projectId ?? null)
+  }
+
   // 展开详情画布：卡片形态、复用持久化的节点坐标；未展开时不计算
   const detailGraph = useMemo(
     () =>
-      isDetailCanvasOpen
+      isCanvasOpen
         ? buildGraph(visibleNodes, messagesByNode, selectedNodeId, {
             miniMapMode: false,
             summarizingNodeIds,
@@ -210,7 +252,7 @@ function CanvasWorkspace() {
             now: heatNow,
           })
         : null,
-    [visibleNodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds, showHeatMap, heatNow],
+    [visibleNodes, messagesByNode, selectedNodeId, isCanvasOpen, summarizingNodeIds, showHeatMap, heatNow],
   )
   const detailGeometry = detailGraph ?? EMPTY_GRAPH
 
@@ -227,9 +269,6 @@ function CanvasWorkspace() {
   useEffect(() => {
     setDetailNodes(detailGeometry.nodes)
   }, [detailGeometry, setDetailNodes])
-
-  const activeCount = miniGraph.nodes.length
-  const isEmpty = activeCount === 0
 
   useEffect(() => {
     if (isEmpty) return
@@ -251,14 +290,14 @@ function CanvasWorkspace() {
   const handleNodeDoubleClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
     selectNode(node.id)
-    setIsDetailCanvasOpen(false)
+    closeDetailCanvas()
   }
 
   const handleNodeDragStop = (
     _event: unknown,
     node: { id: string; position: { x: number; y: number } },
   ) => {
-    if (isDetailCanvasOpen) {
+    if (isCanvasOpen) {
       void setNodePosition(node.id, node.position)
     }
   }
@@ -340,13 +379,23 @@ function CanvasWorkspace() {
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <p className="text-sm text-ink-soft">未选中节点</p>
             <p className="max-w-xs text-xs leading-relaxed text-muted">
-              在右侧地图里点一个节点，或右键空白处新建根节点。
+              {isEmpty
+                ? '还没有节点：在右边地图里问出第一个问题，或右键空白处新建根节点。'
+                : '在右侧地图里点一个节点，或右键空白处新建根节点。'}
             </p>
-            {isMapCollapsed ? (
-              <Button variant="secondary" size="sm" onClick={() => setIsMapCollapsed(false)}>
-                展开地图
-              </Button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {isEmpty ? (
+                <Button variant="secondary" size="sm" onClick={openDetailCanvas}>
+                  <Network className="h-3.5 w-3.5" />
+                  展开画布
+                </Button>
+              ) : null}
+              {isMapCollapsed ? (
+                <Button variant="secondary" size="sm" onClick={() => setIsMapCollapsed(false)}>
+                  展开地图
+                </Button>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
@@ -461,13 +510,7 @@ function CanvasWorkspace() {
               <button
                 type="button"
                 aria-label="展开画布"
-                onClick={() => {
-                  setIsDetailCanvasOpen(true)
-                  // 等详情画布自己的实例挂载并同步完节点后，再由它自己居中
-                  window.setTimeout(() => {
-                    void detailApiRef.current?.fitView({ padding: 0.2, duration: 350, maxZoom: 1 })
-                  }, 80)
-                }}
+                onClick={openDetailCanvas}
                 className="rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
                 <Network className="h-3 w-3" />
@@ -482,7 +525,11 @@ function CanvasWorkspace() {
           </div>
         ) : null}
 
-        {isEmpty && !loading ? (
+        {/*
+          空白项目的第一个问题入口：展开画布在时由画布正中间那份负责（见下面的弹层），
+          这里只兜底分栏视图 —— 两份同时挂着只会让同一句话被读两遍。
+        */}
+        {isEmpty && !loading && !isCanvasOpen ? (
           <StarterPanel
             projectName={project?.name ?? '新项目'}
             onSubmit={(question) => startRootNode(question)}
@@ -587,7 +634,7 @@ function CanvasWorkspace() {
 
       {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式）
           必须独占一个 ReactFlowProvider：与导航地图共享 store 时，本层卸载会 reset 掉地图的节点查找表 */}
-      {isDetailCanvasOpen ? (
+      {isCanvasOpen ? (
         <div className="reveal-layer absolute inset-0 z-40 flex flex-col bg-canvas">
           <ReactFlowProvider>
             <FlowApiBridge apiRef={detailApiRef} />
@@ -619,58 +666,77 @@ function CanvasWorkspace() {
             </ReactFlow>
           </ReactFlowProvider>
 
+          {/* 空白画布：第一个问题的入口就摆在画布正中间，不必先摸到右键菜单 */}
+          {isEmpty && !loading ? (
+            <StarterPanel
+              projectName={project?.name ?? '新项目'}
+              onSubmit={(question) => startRootNode(question)}
+            />
+          ) : null}
+
           {/* 顶部浮动条：状态与返回主舞台按钮 */}
           <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-line bg-surface/90 px-3 py-1.5 backdrop-blur">
               <span className="text-sm text-ink-soft">画布</span>
-              <span className="text-xs text-muted">{activeCount} 个节点</span>
+              <span className="text-xs text-muted">
+                {isEmpty ? '还没有节点' : `${activeCount} 个节点`}
+              </span>
               <span className="h-3.5 w-px bg-line/60" />
-              <span className="text-xs text-faint">双击节点进入对话</span>
+              <span className="text-xs text-faint">
+                {isEmpty ? '输入第一个问题开始' : '双击节点进入对话'}
+              </span>
             </div>
 
             <div className="pointer-events-auto flex items-center gap-1.5">
+              {/* 一个节点都没有时，复习/重新布局/居中都没有对象，只留返回对话 */}
+              {isEmpty ? null : (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      closeDetailCanvas()
+                      setSearchParams((prev) => {
+                        prev.set('view', 'review')
+                        return prev
+                      })
+                    }}
+                    className="gap-1.5 bg-surface/90 backdrop-blur"
+                  >
+                    <Brain className="h-3.5 w-3.5 text-accent" />
+                    复习工作区
+                    {dueSummary.due > 0 ? (
+                      <span className="rounded bg-accent-soft px-1 text-accent text-2xs tabular-nums">
+                        {dueSummary.due}
+                      </span>
+                    ) : null}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void relayout()}
+                    className="gap-1.5 bg-surface/90 backdrop-blur"
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5 text-muted" />
+                    重新布局
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      void detailApiRef.current?.fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })
+                    }
+                    className="gap-1.5 bg-surface/90 backdrop-blur"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5 text-muted" />
+                    居中
+                  </Button>
+                </>
+              )}
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  setIsDetailCanvasOpen(false)
-                  setSearchParams((prev) => {
-                    prev.set('view', 'review')
-                    return prev
-                  })
-                }}
-                className="gap-1.5 bg-surface/90 backdrop-blur"
-              >
-                <Brain className="h-3.5 w-3.5 text-accent" />
-                复习工作区
-                {dueSummary.due > 0 ? (
-                  <span className="rounded bg-accent-soft px-1 text-accent text-2xs tabular-nums">
-                    {dueSummary.due}
-                  </span>
-                ) : null}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void relayout()}
-                className="gap-1.5 bg-surface/90 backdrop-blur"
-              >
-                <LayoutGrid className="h-3.5 w-3.5 text-muted" />
-                重新布局
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void detailApiRef.current?.fitView({ padding: 0.22, duration: 400, maxZoom: 1.2 })}
-                className="gap-1.5 bg-surface/90 backdrop-blur"
-              >
-                <Maximize2 className="h-3.5 w-3.5 text-muted" />
-                居中
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsDetailCanvasOpen(false)}
+                onClick={closeDetailCanvas}
                 className="gap-1.5 bg-surface/90 backdrop-blur"
               >
                 <X className="h-3.5 w-3.5" />
