@@ -4,8 +4,10 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BootstrapError } from '@/components/BootstrapError'
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip'
+import { FirstLoginDialog } from '@/features/me/FirstLoginDialog'
 import { cn } from '@/lib/utils'
 import { useBootstrap } from '@/stores/bootstrap'
+import { useSyncRuntime } from '@/stores/sync-runtime'
 
 const NAV_ITEMS = [
   { to: '/', label: '项目', icon: FolderKanban, end: true },
@@ -46,6 +48,9 @@ export function AppShell() {
   const { phase } = bootstrap
   const location = useLocation()
   const isCanvasRoute = location.pathname.startsWith('/p/')
+
+  // 账号与同步的运行期接线挂在这里而不是「我的」页：进不进那一页都要持续同步。
+  useSyncRuntime(phase === 'ready')
 
   // 方案 B：中央独立微型悬浮胶囊状态
   const [capsuleHovered, setCapsuleHovered] = useState(false)
@@ -198,6 +203,9 @@ export function AppShell() {
             <SplashScreen />
           )}
         </main>
+
+        {/* 首次在某台设备登录时的「本机数据怎么办」：挂在壳上，用户在哪一页都能看到 */}
+        <FirstLoginDialog />
 
         <Toaster
           theme="dark"

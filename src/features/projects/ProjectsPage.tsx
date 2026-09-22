@@ -51,7 +51,10 @@ export function ProjectsPage() {
     setExportingId(project.id)
     try {
       await exportProjectAsTreeFile(project)
-      toast.success(`已导出「${project.name}」`)
+      // 说明清楚导出的是学习树：本机复习会话（未做完的那一批）不参与导出，也不是完整备份
+      toast.success(`已导出「${project.name}」`, {
+        description: '学习树与对话；本机复习记录不包含在内',
+      })
     } catch (error) {
       toast.error(`导出失败：${errorMessage(error)}`)
     } finally {

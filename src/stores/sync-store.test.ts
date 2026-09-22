@@ -253,3 +253,64 @@ describe('会话与首次登录', () => {
     expect(await getSyncLocal().outboxCount()).toBe(1)
   })
 })
+
+describe('自动同步', () => {
+  /** 让节流窗口失效：模拟「距离上次尝试已经过去很久」。 */
+  async function passThrottleWindow() {
+    await getSyncLocal().writeState({ lastSyncedAt: 0 })
+    useSyncStore.setState({ lastAttemptAt: 0 })
+  }
+
+  it('登录且已决策过时，聚焦就同步——不必进「我的」页', async () => {
+    await getSyncLocal().writeState({ initialized: true })
+    await getRepositories().projects.create(makeProject('p1', '本机项目'))
+
+    const result = await useSyncStore.getState().autoSync('focus')
+
+    expect(result).toMatchObject({ ok: true, pushed: 1 })
+    expect(server.records.get('project|p1')).toBeDefined()
+  })
+
+  it('没有待推变更时，巡检不发请求（只读本机台账）', async () => {
+    await getSyncLocal().writeState({ initialized: true })
+    server.calls.length = 0
+
+    const result = await useSyncStore.getState().autoSync('pending')
+
+    expect(result).toBeNull()
+    expect(server.calls).toHaveLength(0)
+  })
+
+  it('有待推变更时巡检会推上去', async () => {
+    await getSyncLocal().writeState({ initialized: true })
+    await getRepositories().projects.create(makeProject('p1'))
+
+    const result = await useSyncStore.getState().autoSync('pending')
+
+    expect(result).toMatchObject({ ok: true, pushed: 1 })
+  })
+
+  it('节流：窗口内连续触发只同步一次，窗口过了才再同步', async () => {
+    await getSyncLocal().writeState({ initialized: true })
+    await getRepositories().projects.create(makeProject('p1'))
+
+    expect(await useSyncStore.getState().autoSync('focus')).toMatchObject({ ok: true })
+    // 紧接着的聚焦 / 巡检都被节流挡掉（失败也进窗口，避免连续重试）
+    expect(await useSyncStore.getState().autoSync('focus')).toBeNull()
+    expect(await useSyncStore.getState().autoSync('pending')).toBeNull()
+
+    await passThrottleWindow()
+    expect(await useSyncStore.getState().autoSync('focus')).toMatchObject({ ok: true })
+  })
+
+  it('没决策过首次登录策略时不替用户同步，切换账号后也不动', async () => {
+    server.calls.length = 0
+    expect(await useSyncStore.getState().autoSync('focus')).toBeNull()
+    expect(server.calls).toHaveLength(0)
+
+    await getSyncLocal().writeState({ initialized: true })
+    useAccountStore.setState({ token: null })
+    expect(await useSyncStore.getState().autoSync('focus')).toBeNull()
+    expect(server.calls).toHaveLength(0)
+  })
+})

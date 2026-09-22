@@ -15,11 +15,27 @@ import {
 } from '@/services/sync/client'
 import { useAccountStore } from './account-store'
 import { reloadStores } from './data-session'
+import { useReviewSessionStore } from './review-session-store'
 
 /** 单次同步最多拉多少页（防御：服务端游标异常时别无限循环）。 */
 const MAX_PULL_PAGES = 50
 /** 单次同步最多推多少批。 */
 const MAX_PUSH_BATCHES = 20
+
+/**
+ * 两次**自动**同步之间的最小间隔。
+ *
+ * 聚焦、切回标签页、待推巡检都可能连续触发同一件事：把它们各自当成一次同步，
+ * 用户点几下窗口就会打出一串请求。手动「立即同步」不受这个间隔限制。
+ */
+export const AUTO_SYNC_MIN_INTERVAL_MS = 120_000
+
+/** 自动同步的触发原因，只影响要不要先看本机待推变更。 */
+export type AutoSyncReason =
+  /** 窗口重新聚焦 / 切回标签页：主要为拉云端变更 */
+  | 'focus'
+  /** 巡检本机待推变更：有东西才推，替代「每次写入都发请求」 */
+  | 'pending'
 
 export interface SyncOutcome {
   ok: boolean
@@ -32,6 +48,8 @@ interface SyncState {
   phase: 'idle' | 'syncing' | 'error'
   error: string | null
   lastSyncedAt: number | null
+  /** 最近一次**尝试**同步的时间（含失败）：自动同步用它做节流，避免失败后疯狂重试 */
+  lastAttemptAt: number
   /** 待推送的本地变更条数 */
   pending: number
   /** 云端概况（首次登录弹窗里用来说明「云端已有多少数据」） */
@@ -41,6 +59,8 @@ interface SyncState {
   initialize: () => Promise<void>
   refreshPending: () => Promise<void>
   syncNow: () => Promise<SyncOutcome>
+  /** 自动同步（启动后、窗口聚焦、待推巡检）；节流不通过时返回 null，表示这次跳过 */
+  autoSync: (reason: AutoSyncReason) => Promise<SyncOutcome | null>
   applyFirstLoginPolicy: (policy: FirstLoginPolicy) => Promise<SyncOutcome>
   reset: () => void
 }
@@ -164,6 +184,7 @@ export const useSyncStore = create<SyncState>()(
     phase: 'idle',
     error: null,
     lastSyncedAt: null,
+    lastAttemptAt: 0,
     pending: 0,
     remote: null,
     needsPolicy: false,
@@ -209,6 +230,8 @@ export const useSyncStore = create<SyncState>()(
       set((draft) => {
         draft.phase = 'syncing'
         draft.error = null
+        // 记「尝试」而不是「成功」：失败也要进节流窗口，否则聚焦一次就重试一次
+        draft.lastAttemptAt = Date.now()
       })
 
       try {
@@ -238,6 +261,34 @@ export const useSyncStore = create<SyncState>()(
       }
     },
 
+    /**
+     * 自动同步：登录后不必再进「我的」页才同步。
+     *
+     * 四道闸门，任一不满足就安静跳过（返回 null，不报错也不打扰用户）：
+     * 1. 没有凭据 —— 未登录（或 token 已被 401 清掉）时无从同步；
+     * 2. 正在同步 / 还没决定首次登录策略 —— 前者防重入，后者等用户选完再动数据；
+     * 3. 库里还没落过决策（`initialized` 为 false）—— 同上，别偷偷替用户选；
+     * 4. 距上次尝试不足 `AUTO_SYNC_MIN_INTERVAL_MS` —— 聚焦与巡检会连续触发；
+     *    `pending` 这一路还要先看到本机确实有待推变更，否则连请求都不发。
+     */
+    autoSync: async (reason) => {
+      if (!useAccountStore.getState().token) return null
+
+      const state = get()
+      if (state.phase === 'syncing' || state.needsPolicy) return null
+
+      const local = getSyncLocal()
+      const stored = await local.readState()
+      if (!stored.initialized) return null
+
+      if (reason === 'pending' && (await local.outboxCount()) === 0) return null
+
+      const since = Math.max(stored.lastSyncedAt ?? 0, state.lastAttemptAt)
+      if (Date.now() - since < AUTO_SYNC_MIN_INTERVAL_MS) return null
+
+      return get().syncNow()
+    },
+
     applyFirstLoginPolicy: async (policy) => {
       const local = getSyncLocal()
       // 先落决策再同步：中途失败不该反复弹同一个问题，未推完的变更还在 outbox 里
@@ -253,6 +304,9 @@ export const useSyncStore = create<SyncState>()(
 
       if (policy === 'cloud') {
         await local.clearLocalData()
+        // 库里连会话一起清空了，内存里那份（属于刚被清掉的库）也必须丢弃，
+        // 否则下一次草稿保存会把它写回去，留下一份引用不到节点的幽灵会话
+        useReviewSessionStore.getState().reset()
         await reloadStores()
       } else {
         // 合并：先登录后活动库已经是账号库，游客库里的记录要搬进来才算「本机数据」
@@ -278,6 +332,7 @@ export const useSyncStore = create<SyncState>()(
         draft.phase = 'idle'
         draft.error = null
         draft.lastSyncedAt = null
+        draft.lastAttemptAt = 0
         draft.pending = 0
         draft.remote = null
         draft.needsPolicy = false

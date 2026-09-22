@@ -340,7 +340,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 - 服务：若依账号系统 `https://api.sakta.top`，前端**浏览器直连**——该服务对预检已返回 `Access-Control-Allow-Origin` 与 `Access-Control-Allow-Headers: token, content-type`，受保护接口的自定义 `token` 头能通过预检，所以不需要像 LLM 那样走 `/api-proxy`。
 - 已接接口：`POST /v1/user/pub/login`（form-urlencoded）、`POST /v1/user/pub/sendCode`、`POST /v1/user/pub/register?emailCode=…`（JSON 体 + 查询参数）、`GET /v1/user/pri/getInfo`、`POST /v1/user/pri/refreshToken`、`POST /v1/user/pri/logout`。文档里的 `updateInfo` / `updatePassword` / `updateAvatar` 尚未接。
-- 会话：token 存 `localStorage['sakta-token']`；进「我的」页时恢复会话，取用户遇到 401 先用 `refreshToken` 换新 token 再取，仍失败才清掉本地 token；网络类失败保留 token 并给「重试」。
+- 会话：token 存 `localStorage['sakta-token']`，登录账号名存 `localStorage['sakta-account']`；**启动阶段**就用这两项把本地库绑对（纯本地读取，不联网）再载入数据 —— 登录用户刷新首页看到的就是账号库，期间的写入也落在账号库。token 是否还有效在首屏就绪后后台校验（401 先 `refreshToken` 换新 token 再取，仍失败才清掉本地 token）；网络类失败保留 token 并给「重试」，此时库仍按账号名绑着，网络恢复后自动同步照样有凭据可用。只有「本机有 token 却没记住账号名」（旧版本升上来）才需要联网确认一次，且有 1.5s 上限，离线不会卡在载入页。
 - 当前只读展示昵称 / 登录账号 / 邮箱 / 头像；头像相对路径用账号服务地址补全。
 
 ### 13.2 同步服务端（已实现，P1）
@@ -373,22 +373,27 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 | 本地同步层 | `data/sync-local.ts` | 载荷映射（设置抹掉 apiKey）、`applyRemote`（不记账，避免回环）、游标与状态、首次登录搬运游客数据 |
 | 协议类型 | `domain/sync.ts` | 与服务端 `server/src/entities.ts` 对齐的实体名与线上形状（放 domain 是因为 data 层也要用，而 data 只能依赖 domain） |
 | 网络层 | `services/sync/client.ts` | `/lern-api` 下的 pull/push/status；信封解析与账号客户端共用 `services/api/envelope.ts` |
-| 编排 | `stores/sync-store.ts` | 推增量 → 拉增量 → 落游标；token 过期先刷新再重试一次；首次登录策略 |
-| 分库 | `stores/data-session.ts` | 登录/退出/恢复会话时切库并重载 store（`opentreelearn:<loginName>`，游客用默认库） |
-| 界面 | `features/me/SyncPanel.tsx`、`FirstLoginDialog.tsx` | 状态（待同步 N 项 / 上次同步 / 失败原因）+ 立即同步；首次登录三选一 |
+| 编排 | `stores/sync-store.ts` | 推增量 → 拉增量 → 落游标；token 过期先刷新再重试一次；首次登录策略；`autoSync` 自动同步（四道闸门 + 节流） |
+| 运行期接线 | `stores/sync-runtime.ts` | 挂一次：登录态变化驱动同步初始化 / 清理；窗口聚焦补一次；待推变更巡检（默认 60s，只在有变更时发请求） |
+| 分库 | `stores/data-session.ts` | 登录/退出/恢复会话时切库并重载 store（`opentreelearn:<loginName>`，游客用默认库）；`bindStoredAccountDatabase()` 供启动阶段纯本地绑库；换库时丢弃内存里的复习会话 |
+| 界面 | `features/me/SyncPanel.tsx`、`FirstLoginDialog.tsx` | 状态（待同步 N 项 / 上次同步 / 失败原因）+ 立即同步；首次登录三选一（挂在 `AppShell` 上，哪一页登录都能看到） |
 
 **合并的语义**：登录后活动库就是账号库（空的），所以「上传本机数据（合并）」会先把**游客库**的记录搬进账号库（`importRecordsInto`），再记账上传；同一条记录云端更新时仍以云端为准。游客库原样保留，退出登录后还是那份内容。设置行只在账号库还没有设置时导入，图片资产没有同步通道但会一起搬（本机要能继续看图）。
 
+**复习会话不在同步范围内**（T-128）：它是本机、按账号的数据（Dexie v4 的 `reviewSessions` 表），不新增同步实体，也不承诺跨设备接着做；随节点同步的是掌握度、排期与计划开关。四条路径都要正确处理这张表：首次登录合并时一起搬（同项目出现两份未完成会话则只留最近的一份 open，其余转 `ended` 但内容保留）、项目删除（本地与远端 tombstone）级联清理、「以云端为准」清空。会话只在换库 / 清库时从内存丢弃，普通同步刷新不 reset 正在做的那一批。
+
 **首次登录策略**（每台设备问一次，决策记在账号库的 `syncState.initialized`）：
 - 上传本机数据（合并）：搬 + 推 + 拉，推荐
-- 以云端为准：清空本机实体与台账（**保留设置行**，否则本机 BYOK 密钥再也回不来），游标归零后整库重拉
+- 以云端为准：清空本机实体、台账与会话（**保留设置行**，否则本机 BYOK 密钥再也回不来），游标归零后整库重拉
 - 暂不同步：只落决策，变更仍留在 outbox，之后手动同步照样推
 
-**测试**：`data/sync-local.test.ts`（记账/合并/载荷/级联/密钥保留）与 `stores/sync-store.test.ts`（用服务端替身跑推送、增量拉取、判旧覆盖、tombstone、401 重试、三种首登策略），共 22 个用例。
+**自动同步的触发时机**（`useSyncRuntime`，挂在 `AppShell` 上）：启动完成且已决策过 → 静默同步一次；窗口重新聚焦 / 切回标签页 → 补一次；每 60s 巡检本机待推变更，有才推。两次自动同步之间有 120s 最小间隔（失败也进窗口，避免聚焦一次就重试一次），手动「立即同步」不受此限制；未决策首次登录策略时不自动动手，等用户选。以前同步只在进「我的」页时触发，首页放一天也不会拉一次云端变更。
+
+**测试**：`data/sync-local.test.ts`（记账/合并/载荷/级联/密钥保留/复习会话的合并去重与清理）、`stores/sync-store.test.ts`（用服务端替身跑推送、增量拉取、判旧覆盖、tombstone、401 重试、三种首登策略、自动同步的闸门与节流）、`stores/review-session-store.test.ts`（切账号丢弃内存会话、普通重载保留）、`stores/data-session.test.ts`（冷启动绑库的三种情形）。
 
 **待办**：
 - P2：图片资产 —— `Asset.blob` 走对象存储，同步体只传引用，`asset` 记录现在会被 `applyRemote` 跳过。
-- P3：写后节流自动同步、冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口）。
+- P3：冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口 —— 冷启动绑库修好之前，被误写进游客库的数据只能靠它救回来）。
 
 ### 13.4 Docker 部署（已实现）
 

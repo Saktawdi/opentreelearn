@@ -9,7 +9,8 @@ import { useSyncStore } from '@/stores/sync-store'
 /**
  * 账号下的同步状态与手动触发。
  *
- * P1 只做「手动同步 + 进页面自动同步一次」；写后节流、冲突提示属于 P3。
+ * 自动同步（进首页、窗口聚焦、待推变更巡检）在 `useSyncRuntime` 里；这里只是状态展示
+ * 与手动入口 —— 需要立刻推上去时不用等节流窗口。
  */
 export function SyncPanel() {
   const phase = useSyncStore((state) => state.phase)
@@ -52,7 +53,8 @@ export function SyncPanel() {
             ) : null}
           </div>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">
-            设置与学习项目同步到账号；BYOK 的 API Key 只留在本机。
+            设置与学习项目同步到账号；BYOK 的 API Key 与本机复习会话（未做完的那一批）
+            只留在这台设备。
           </p>
         </div>
 
