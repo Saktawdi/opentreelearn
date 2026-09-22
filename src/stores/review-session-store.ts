@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
 import { getRepositories } from '@/data'
 import type { Id, Node, ReviewGrade } from '@/domain/models'
 import {
@@ -12,6 +11,7 @@ import {
   patchItem,
   pauseSession,
   recoverSession,
+  resumeSession,
   seedsFromQueue,
   settlePendingItems,
   undoableItem,
@@ -98,6 +98,8 @@ interface ReviewSessionStoreState {
   skipCurrent: (reason?: string) => Promise<void>
   /** 撤销最近一次评分 */
   undoLastConfirmed: () => Promise<boolean>
+  /** 恢复暂停中的会话 */
+  resumeSession: () => Promise<void>
   /** 稍后继续：保存当前进度并回到学习 */
   pauseAndLeave: () => Promise<void>
   /** 结束本次：保留已确认结果，剩余项记为未完成 */
@@ -114,8 +116,7 @@ interface ReviewSessionStoreState {
 
 let reviewAbort: AbortController | null = null
 
-export const useReviewSessionStore = create<ReviewSessionStoreState>()(
-  immer((set, get) => ({
+export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get) => ({
     projectId: null,
     session: null,
     loading: false,
@@ -125,11 +126,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
     lastUndoneNotice: null,
 
     loadForProject: async (projectId, targetSessionId) => {
-      set((state) => {
-        state.loading = true
-        state.error = null
-        state.projectId = projectId
-      })
+      set({ loading: true, error: null, projectId })
       const repo = getRepositories().reviewSessions
       let record: ReviewSessionRecord | undefined
       if (targetSessionId) {
@@ -146,10 +143,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
         record = undefined
       }
 
-      set((state) => {
-        state.session = record ?? null
-        state.loading = false
-      })
+      set({ session: record ?? null, loading: false })
 
       // 已载入且停在未出题阶段 ⇒ 自动开始第一题，不用用户到处找「出题」按钮
       if (record && record.status === 'active') {
@@ -165,9 +159,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const repo = getRepositories().reviewSessions
       const existing = await repo.findOpen(projectId)
       if (existing) {
-        set((state) => {
-          state.session = existing
-        })
+        set({ session: existing })
         return existing
       }
 
@@ -189,11 +181,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
         now: Date.now(),
       })
       const saved = await repo.save(created)
-      set((state) => {
-        state.session = saved
-        state.projectId = projectId
-        state.error = null
-      })
+      set({ session: saved, projectId, error: null })
 
       void get().ensureCurrentItemContent()
       return saved
@@ -225,11 +213,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       })
 
       const saved = await repo.save(created)
-      set((state) => {
-        state.session = saved
-        state.projectId = projectId
-        state.error = null
-      })
+      set({ session: saved, projectId, error: null })
 
       void get().ensureCurrentItemContent()
       return saved
@@ -241,9 +225,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       if (!session || !item) return
       const now = Date.now()
       patchItem(session, item.itemId, { draft: text }, now)
-      set((state) => {
-        if (state.session) patchItem(state.session, item.itemId, { draft: text }, now)
-      })
+      set({ session })
       await getRepositories().reviewSessions.save(session)
     },
 
@@ -289,16 +271,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
         },
         now,
       )
-      set((state) => {
-        if (state.session) {
-          patchItem(
-            state.session,
-            item.itemId,
-            { answer: trimmed, draft: '', phase: 'evaluating', interacted: true, messages },
-            now,
-          )
-        }
-      })
+      set({ session })
       await getRepositories().reviewSessions.save(session)
 
       await executeModelTurn('answer', trimmed)
@@ -309,11 +282,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { usedHint: true, interacted: true }, Date.now())
-      set((state) => {
-        if (state.session) {
-          patchItem(state.session, item.itemId, { usedHint: true, interacted: true }, Date.now())
-        }
-      })
+      set({ session })
       await executeModelTurn('hint', '')
     },
 
@@ -322,9 +291,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { interacted: true }, Date.now())
-      set((state) => {
-        if (state.session) patchItem(state.session, item.itemId, { interacted: true }, Date.now())
-      })
+      set({ session })
       await executeModelTurn('rephrase', '')
     },
 
@@ -358,23 +325,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
         },
         now,
       )
-      set((state) => {
-        if (state.session) {
-          patchItem(
-            state.session,
-            item.itemId,
-            {
-              answer: '暂时想不起来。',
-              draft: '',
-              phase: 'evaluating',
-              interacted: true,
-              selectedGrade: 'again',
-              messages,
-            },
-            now,
-          )
-        }
-      })
+      set({ session })
       await getRepositories().reviewSessions.save(session)
       await executeModelTurn('answer', '暂时想不起来。')
     },
@@ -384,11 +335,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { phase: 'answering', interacted: true }, Date.now())
-      set((state) => {
-        if (state.session) {
-          patchItem(state.session, item.itemId, { phase: 'answering', interacted: true }, Date.now())
-        }
-      })
+      set({ session })
       await executeModelTurn('question', '我已经看完讲解，请出一道复述题考我。')
     },
 
@@ -411,11 +358,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
         },
       ]
       patchItem(session, item.itemId, { phase: 'evaluating', messages }, now)
-      set((state) => {
-        if (state.session) {
-          patchItem(state.session, item.itemId, { phase: 'evaluating', messages }, now)
-        }
-      })
+      set({ session })
       await getRepositories().reviewSessions.save(session)
       await executeModelTurn('followup', trimmed)
     },
@@ -425,11 +368,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { selectedGrade: grade }, Date.now())
-      set((state) => {
-        if (state.session) {
-          patchItem(state.session, item.itemId, { selectedGrade: grade }, Date.now())
-        }
-      })
+      set({ session })
       void getRepositories().reviewSessions.save(session)
     },
 
@@ -441,9 +380,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       // 选档优先：手选 > AI 建议；都没有时必须由用户选，不默认记 good
       const grade = item.selectedGrade ?? suggestionFromMessages(item.messages)
       if (!grade) {
-        set((state) => {
-          state.error = '请先选择一个掌握档位'
-        })
+        set({ error: '请先选择一个掌握档位' })
         return false
       }
 
@@ -453,11 +390,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const now = Date.now()
 
       patchItem(session, item.itemId, { phase: 'saving', pendingOperationId: operationId }, now)
-      set((state) => {
-        if (state.session) {
-          patchItem(state.session, item.itemId, { phase: 'saving', pendingOperationId: operationId }, now)
-        }
-      })
+      set({ session })
       await getRepositories().reviewSessions.save(session)
 
       const outcome = await getRepositories().reviewSessions.grade({
@@ -472,10 +405,10 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       })
 
       if (outcome.status === 'applied' || outcome.status === 'duplicate') {
-        set((state) => {
-          state.session = outcome.session
-          state.error = null
-          state.lastUndoneNotice = `已记录「${item.title}」的掌握情况`
+        set({
+          session: outcome.session,
+          error: null,
+          lastUndoneNotice: `已记录「${item.title}」的掌握情况`,
         })
         // 自动出下一题
         void get().ensureCurrentItemContent()
@@ -483,20 +416,18 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       }
 
       if (outcome.status === 'unavailable') {
-        set((state) => {
-          state.session = outcome.session
-          state.error = outcome.message
+        set({
+          session: outcome.session,
+          error: outcome.message,
         })
         void get().ensureCurrentItemContent()
         return false
       }
 
       // conflict 或 missing：停在原地重试
-      set((state) => {
-        state.error = outcome.message
-        if ('session' in outcome && outcome.session) {
-          state.session = outcome.session as ReviewSessionRecord
-        }
+      set({
+        error: outcome.message,
+        session: 'session' in outcome && outcome.session ? (outcome.session as ReviewSessionRecord) : session,
       })
       return false
     },
@@ -508,10 +439,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       const now = Date.now()
       patchItem(session, item.itemId, { phase: 'skipped', skipReason: reason }, now)
       advanceAfter(session, item.itemId, now)
-      set((state) => {
-        state.session = session
-        state.error = null
-      })
+      set({ session, error: null })
       await getRepositories().reviewSessions.save(session)
       void get().ensureCurrentItemContent()
     },
@@ -530,21 +458,29 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       })
 
       if (outcome.status === 'applied') {
-        set((state) => {
-          state.session = outcome.session
-          state.lastUndoneNotice = null
-          state.error = null
+        set({
+          session: outcome.session,
+          lastUndoneNotice: null,
+          error: null,
         })
         return true
       }
 
-      set((state) => {
-        state.error = outcome.message
-        if ('session' in outcome && outcome.session) {
-          state.session = outcome.session as ReviewSessionRecord
-        }
+      set({
+        error: outcome.message,
+        session: 'session' in outcome && outcome.session ? (outcome.session as ReviewSessionRecord) : session,
       })
       return false
+    },
+
+    resumeSession: async () => {
+      const session = get().session
+      if (!session || session.status !== 'paused') return
+      const now = Date.now()
+      resumeSession(session, now)
+      await getRepositories().reviewSessions.save(session)
+      set({ session, error: null })
+      void get().ensureCurrentItemContent()
     },
 
     pauseAndLeave: async () => {
@@ -556,9 +492,9 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       settlePendingItems(session, now)
       pauseSession(session, now)
       await getRepositories().reviewSessions.save(session)
-      set((state) => {
-        state.session = session ? ({ ...session } as ReviewSessionRecord) : null
-        state.streaming = null
+      set({
+        session: session ? ({ ...session } as ReviewSessionRecord) : null,
+        streaming: null,
       })
     },
 
@@ -571,59 +507,48 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()(
       settlePendingItems(session, now)
       endSessionWithPending(session, now)
       await getRepositories().reviewSessions.save(session)
-      set((state) => {
-        state.session = session ? ({ ...session } as ReviewSessionRecord) : null
-        state.streaming = null
+      set({
+        session: session ? ({ ...session } as ReviewSessionRecord) : null,
+        streaming: null,
       })
     },
 
     stopStreaming: () => {
       reviewAbort?.abort()
       reviewAbort = null
-      set((state) => {
-        state.streaming = null
-      })
+      set({ streaming: null })
     },
 
     toggleSource: () => {
-      set((state) => {
-        state.sourceOpen = !state.sourceOpen
-      })
+      set((state) => ({ sourceOpen: !state.sourceOpen }))
     },
 
     setSourceOpen: (open) => {
-      set((state) => {
-        state.sourceOpen = open
-      })
+      set({ sourceOpen: open })
     },
 
     clearError: () => {
-      set((state) => {
-        state.error = null
-      })
+      set({ error: null })
     },
 
     clearNotice: () => {
-      set((state) => {
-        state.lastUndoneNotice = null
-      })
+      set({ lastUndoneNotice: null })
     },
 
     reset: () => {
       reviewAbort?.abort()
       reviewAbort = null
-      set((state) => {
-        state.projectId = null
-        state.session = null
-        state.loading = false
-        state.error = null
-        state.sourceOpen = false
-        state.streaming = null
-        state.lastUndoneNotice = null
+      set({
+        projectId: null,
+        session: null,
+        loading: false,
+        error: null,
+        sourceOpen: false,
+        streaming: null,
+        lastUndoneNotice: null,
       })
     },
-  })),
-)
+}))
 
 /**
  * 实际跑一轮模型请求（出题、提示、换问法、反馈、追问共用）。
@@ -645,15 +570,15 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   reviewAbort = controller
 
   const requestId = newId()
-  store.setState((draft) => {
-    draft.streaming = {
+  store.setState({
+    streaming: {
       itemId: item.itemId,
       requestId,
       purpose,
       text: '',
       startedAt: Date.now(),
-    }
-    draft.error = null
+    },
+    error: null,
   })
 
   // 补上本项标记
@@ -674,9 +599,9 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   ])
   const node = nodes.find((n) => n.id === item.nodeId)
   if (!node) {
-    store.setState((draft) => {
-      draft.streaming = null
-      draft.error = '主题节点已被删除'
+    store.setState({
+      streaming: null,
+      error: '主题节点已被删除',
     })
     return
   }
@@ -708,11 +633,15 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     signal: controller.signal,
     progressNote,
     onDelta: (delta) => {
-      store.setState((draft) => {
-        if (draft.streaming && draft.streaming.requestId === requestId) {
-          draft.streaming.text += delta
-        }
-      })
+      const cur = store.getState().streaming
+      if (cur && cur.requestId === requestId) {
+        store.setState({
+          streaming: {
+            ...cur,
+            text: cur.text + delta,
+          },
+        })
+      }
     },
   })
 
@@ -766,9 +695,9 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     patchItem(currentSession, item.itemId, patch, now)
     await getRepositories().reviewSessions.save(currentSession)
 
-    store.setState((draft) => {
-      draft.session = currentSession
-      draft.streaming = null
+    store.setState({
+      session: currentSession,
+      streaming: null,
     })
   } else {
     const failure = result.failure
@@ -788,10 +717,10 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     )
     await getRepositories().reviewSessions.save(currentSession)
 
-    store.setState((draft) => {
-      draft.session = currentSession
-      draft.streaming = null
-      draft.error = failure.message
+    store.setState({
+      session: currentSession,
+      streaming: null,
+      error: failure.message,
     })
   }
 }

@@ -64,6 +64,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   const undoLastConfirmed = useReviewSessionStore((state) => state.undoLastConfirmed)
   const pauseAndLeave = useReviewSessionStore((state) => state.pauseAndLeave)
   const endSession = useReviewSessionStore((state) => state.endSession)
+  const resumeSession = useReviewSessionStore((state) => state.resumeSession)
   const toggleSource = useReviewSessionStore((state) => state.toggleSource)
   const setSourceOpen = useReviewSessionStore((state) => state.setSourceOpen)
   const ensureContent = useReviewSessionStore((state) => state.ensureCurrentItemContent)
@@ -255,10 +256,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 await startBatch({ projectId, items, nodes })
               }}
               onResumeSession={() => {
-                if (session) {
-                  useReviewSessionStore.getState().session!.status = 'active'
-                  void ensureContent()
-                }
+                void resumeSession()
               }}
               onEndActiveSession={() => void endSession()}
               onInspectNodeSource={(nodeId) => {

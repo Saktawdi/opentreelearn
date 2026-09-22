@@ -69,4 +69,21 @@ describe('复习会话与账号', () => {
 
     expect(useReviewSessionStore.getState().session?.id).toBe(session.id)
   })
+
+  it('允许对 store 中的 session 与 items 进行就地变更（patchItem / settlePendingItems），不会因 Immer 冻结抛出 read-only 错误', async () => {
+    const session = await seedSession()
+    useReviewSessionStore.setState({ session, projectId: 'p1' })
+
+    const cur = useReviewSessionStore.getState().session!
+    expect(Object.isFrozen(cur)).toBe(false)
+    expect(Object.isFrozen(cur.items[0])).toBe(false)
+
+    // 验证保存草稿（内部调用 patchItem）能正常修改 draft 属性且不报错
+    await expect(useReviewSessionStore.getState().saveDraft('测试草稿')).resolves.not.toThrow()
+    expect(useReviewSessionStore.getState().session?.items[0].draft).toBe('测试草稿')
+
+    // 验证结束本次（内部调用 settlePendingItems）能正常处理且不报错
+    await expect(useReviewSessionStore.getState().endSession()).resolves.not.toThrow()
+    expect(useReviewSessionStore.getState().session?.status).toBe('ended')
+  })
 })
