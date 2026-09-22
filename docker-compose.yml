@@ -1,0 +1,62 @@
+# OpenTreeLearn 生产部署：web（nginx 静态 + 反代） + api（NestJS 同步服务 + SQLite）
+#
+#   cp .env.docker.example .env      # 可选：覆盖账号系统地址 / 对外端口
+#   docker compose up -d --build
+#
+# 访问 http://localhost:8080 ；api 只在 compose 内网暴露，浏览器一律走 web 的同源 /lern-api。
+
+name: opentreelearn
+
+services:
+  api:
+    build:
+      context: ./server
+    image: opentreelearn/sync-api:local
+    restart: unless-stopped
+    environment:
+      # 生产标记：Swagger 与 dev-token 都会关掉（见 server/src/common/runtime-security.ts）
+      NODE_ENV: production
+      PORT: "3901"
+      # SQLite 落在 sync-db 卷里，容器重建不丢数据
+      DATABASE_URL: file:/data/sync.db
+      # 账号系统地址：同步服务用它校验客户端 token
+      RUIYI_API_URL: ${RUIYI_API_URL:-https://api.sakta.top}
+      # 同源反代时浏览器不跨域，可留空；有其它域名前端直连时才需要
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+    volumes:
+      - sync-db:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3901/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # 一般不需要；本机联调想看 Swagger 或直连接口时再打开
+    # ports:
+    #   - "3901:3901"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opentreelearn/web:local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  sync-db:
+    name: opentreelearn-sync-db

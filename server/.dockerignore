@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+tsconfig.tsbuildinfo
+# 本地开发库不进镜像：容器的库在挂载卷里，由入口脚本迁移出来
+prisma/*.db
+prisma/*.db-journal

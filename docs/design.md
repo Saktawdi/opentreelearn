@@ -350,6 +350,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 - **鉴权**：守卫从 `token` 或 `Authorization: Bearer` 取 token，转发账号系统 `getInfo` 校验（**不共享 JWT 密钥**），结果按 token 缓存 60s；`accounts` 表用 `loginName` 做映射键。
 - **存储**：单表多态 `records(accountId, entity, localId, rev, clientUpdatedAt, deletedAt, data JSON)`；`accounts.revCounter` 是账号内单调递增的修订号，pull 用它当游标——**不信任客户端时钟**（会回拨）。JSON 载荷让协议与实体解耦，客户端加字段不必动服务端迁移。
 - **接口**：
+  - `GET /api/health` → 存活 + 数据库连通（**无鉴权**，容器探活用；只 ping 一次库，不做业务校验）
   - `GET /api/sync/pull?cursor&limit` → `{ cursor, hasMore, changes[] }`（含 tombstone，`data` 为 `{}`）
   - `POST /api/sync/push` → 逐条 last-write-wins；判旧的回 `stale` 并带回服务端版本（`updatedAt` 相等也判旧，所以重推幂等）
   - `GET /api/sync/status` → 当前账号、有效记录数、最新游标
@@ -388,6 +389,10 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 **待办**：
 - P2：图片资产 —— `Asset.blob` 走对象存储，同步体只传引用，`asset` 记录现在会被 `applyRemote` 跳过。
 - P3：写后节流自动同步、冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口）。
+
+### 13.4 Docker 部署（已实现）
+
+根目录 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，把 `/lern-api` 同源反代到 `api`）与 `api`（同步服务 + SQLite 命名卷）。api 不发布宿主端口，浏览器走同源路径、不依赖 CORS；容器入口先 `prisma migrate deploy` 再起服务，迁移失败即退出。`GET /api/health`（无鉴权）供 healthcheck 探活，顺带 ping 数据库。`prisma` CLI 因此进了 `dependencies` —— `--prod` 安装也要带上迁移能力；安装用的 pnpm store/cache 在同一构建层里删掉，否则镜像会多出约 350MB。命令、备份与镜像体积见 `server/README.md`。
 
 ## 14. 掌握度与复习调度（P2）
 

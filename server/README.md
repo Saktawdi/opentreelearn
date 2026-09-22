@@ -24,6 +24,7 @@ pnpm start:dev                # http://localhost:3901/api
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `GET` | `/api/health` | **无鉴权**：存活 + 数据库连通（容器/负载均衡探活） |
 | `POST` | `/api/auth/dev-token` | **仅开发**（`ALLOW_DEV_TOKEN=true` 且非生产）：签发 `dev-<账号名>` token，绕过账号系统联调 |
 | `GET` | `/api/sync/pull?cursor=0&limit=200` | 按游标增量拉取，返回 `{ cursor, hasMore, changes[] }` |
 | `POST` | `/api/sync/push` | 批量写入本地变更，返回 `{ cursor, applied[] }` |
@@ -87,7 +88,24 @@ model SyncRecord {
 
 ## 部署
 
-1. `pnpm build`，用 `NODE_ENV=production node dist/main` 起进程（PM2 / systemd 均可）。
+### Docker（推荐：一条命令带上前端）
+
+仓库根目录的 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，并把 `/lern-api` 反代到 `api`）与 `api`（本服务 + SQLite 卷）。api 不发布宿主端口，浏览器一律走同源 `/lern-api`，不依赖 CORS。
+
+```bash
+cp .env.docker.example .env      # 可选：改 RUIYI_API_URL / CORS_ORIGIN / WEB_PORT
+docker compose up -d --build     # 访问 http://localhost:8080
+```
+
+- **迁移自动跑**：容器入口先 `prisma migrate deploy` 再起服务；迁移失败即退出，不会带着旧 schema 对外服务。因此 `prisma` CLI 放在 `dependencies` 里——`--prod` 安装也要带上它。
+- **数据**：SQLite 在命名卷 `opentreelearn-sync-db`（容器内 `/data/sync.db`）。
+  备份：`docker compose cp api:/data/sync.db ./sync-$(date +%F).db`；恢复：反向复制回 `/data/sync.db` 后 `docker compose restart api`。
+- **生产开关**：compose 里写死 `NODE_ENV=production`，Swagger 与 dev-token 自动关闭（不再需要手工清 `ALLOW_DEV_TOKEN`）。
+- **镜像**：`opentreelearn/web:local`（nginx + 静态产物）、`opentreelearn/sync-api:local`（Node + Prisma 引擎 + 生产依赖）。两个 Dockerfile 都与各自的包同目录：根 `Dockerfile`（前端）与 `server/Dockerfile`（本服务）。
+
+### 传统方式（PM2 / systemd）
+
+1. `pnpm build`，用 `NODE_ENV=production node dist/main` 起进程（迁移需手工 `pnpm prisma:migrate:deploy`）。
 2. 前端把 `/lern-api` 反代到本服务（开发已在根 `vite.config.ts` 配好同源代理），这样浏览器不必依赖 CORS；若要直连，把前端源写进 `CORS_ORIGIN`。
 3. SQLite 文件在 `prisma/dev.db`（由 `DATABASE_URL` 决定），备份直接复制该文件；量级不大时够用，将来要换 Postgres 只需改 datasource 与迁移。
 4. 生产环境请清空 `ALLOW_DEV_TOKEN`：那一路径是唯一能绕过账号系统的入口（非生产才生效，但别留隐患）。
@@ -95,5 +113,6 @@ model SyncRecord {
 ## 已知坑
 
 - **`cors` 的函数 origin 会挂死请求**：该包把函数形式的 `origin` 当异步回调 `(origin, callback)`，同步返回布尔的函数永远不调 callback，表现为「连接建立、零字节响应」。所以 `createCorsOrigin()` 返回字符串/正则数组，并有单测锁住这一点。
-- **body 上限**：Nest 默认 100KB，push 是批量提交，这里放宽到 16MB（`main.ts` 的 `BODY_LIMIT`），并用 `useBodyParser` 显式注册。
+- **body 上限**：Nest 默认 100KB，push 是批量提交，这里放宽到 16MB（`main.ts` 的 `BODY_LIMIT`），并用 `useBodyParser` 显式注册。nginx 侧也要放宽（`docker/nginx.conf` 的 `client_max_body_size 20m`），否则大 push 会先被网关 413 掉。
 - **每次校验一次外部调用**：token 校验转发 `getInfo`，靠 60s 缓存摊薄；同步是低频批量操作，够用。
+- **镜像里的 pnpm store/cache**：pnpm 把包硬链接进 `node_modules`，但 store（`~/.local/share/pnpm/store`）与元数据缓存（`~/.cache/pnpm`）会留在镜像里，实测多占约 350MB。`server/Dockerfile` 用 `--store-dir=/tmp/pnpm-store` 装完后在同层 `rm -rf`，并清掉 prisma 的下载缓存；改 Dockerfile 时别把这一步弄丢。

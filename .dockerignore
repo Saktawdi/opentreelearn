@@ -1,0 +1,15 @@
+# 前端镜像的构建上下文（仓库根目录）不需要的东西。
+# server/ 是独立部署单元，体积大且与前端构建无关。
+node_modules
+dist
+dist-ssr
+server
+docs
+.gate
+.claude
+.git
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.docker.example
