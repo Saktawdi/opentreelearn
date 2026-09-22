@@ -196,6 +196,23 @@ export function summarizeSlotVersions(
   return summaries
 }
 
+/**
+ * 显示路径的稳定指纹：评估与复习资料快照都用它标识「当时看的是哪一版对话」。
+ *
+ * 只对消息 id 序列做一次 djb2 —— 它要回答的问题只是「还是同一条路径吗」，
+ * 不是密码学用途。内容变了 id 也不会变（同一批消息只是被改写的情况由时间判定兜底）。
+ */
+export function threadPathFingerprint(path: Message[]): string {
+  let hash = 5381
+  for (const message of path) {
+    const text = `${message.role}:${message.id}`
+    for (let i = 0; i < text.length; i += 1) {
+      hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0
+    }
+  }
+  return (hash >>> 0).toString(36)
+}
+
 /** fork 冻结的版号已被淘汰（或槽已不存在）的槽 id；用于继承提示条上说明回退。 */
 export function staleSelectionSlots(node: Node, selection?: Record<Id, number>): Id[] {
   if (!selection) return []

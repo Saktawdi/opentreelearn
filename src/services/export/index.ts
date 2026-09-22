@@ -21,8 +21,9 @@ export async function getProjectTreeExportData(projectId: string): Promise<RawTr
 
   const nodes = await repos.nodes.listByProject(projectId)
   const messages = await repos.messages.listByProject(projectId)
+  const notes = await repos.notes.listByProject(projectId)
 
-  return buildTreeExportData(project, nodes, messages)
+  return buildTreeExportData(project, nodes, messages, notes)
 }
 
 /**

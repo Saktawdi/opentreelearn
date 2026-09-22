@@ -266,7 +266,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 **Store 划分（实现）**：`settings-store`（全局配置）、`projects-store`（项目列表）、`account-store`（账号登录态）、`workspace-store`（当前打开项目的节点 / 消息 / 流式对话 / 选中态）。打开项目的全部状态放在同一个 store，避免「画布要读消息、对话要读节点」造成的跨 store 环形依赖。
 
-**LLM 服务拆分（实现）**：`services/llm/catalog.ts` 只放纯元数据（协议标签、默认地址、模型描述、`hasModel`），不引用任何厂商 SDK；`services/llm/providers.ts` 负责创建 `LanguageModel`，内部**动态 import** 四个厂商适配包。效果：设置页与模型选择器不会把厂商 SDK 打进首屏，只有真正发消息时才按需下载对应适配包。
+**LLM 服务拆分（实现）**：`services/llm/catalog.ts` 只放纯元数据（协议标签、默认地址、模型描述、`hasModel`），不引用任何厂商 SDK；`services/llm/providers.ts` 负责创建 `LanguageModel`，内部**动态 import** 四个厂商适配包。效果：设置页与模型选择器不会把厂商 SDK 打进首屏，只有真正发消息时才按需下载对应适配包。同目录的 `proxy.ts` 定义同源代理契约（路径 `/api-proxy`、目标请求头）并提供自定义 `fetch`，开发与生产各自实现该契约（Vite 中间件 / nginx），前端代码只有这一份。
 
 ## 8. 技术选型
 
@@ -295,10 +295,11 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 ## 10. 已知约束与风险
 
-- **浏览器直连 provider 的 CORS**：部分厂商/自建中转（如 new-api / one-api）未返回 `Access-Control-Allow-Origin`，浏览器会拦截。对策：
-  - 生产环境由部署侧反向代理统一域名，同源访问不产生跨域；
-  - 本地开发需自建站自身返回 CORS 头，或由开发者的反向代理处理；
-  - 错误分类器（`describeLlmError`）递归解析错误链，命中 CORS 时给出明确操作指引。
+- **浏览器直连 provider 的 CORS（已解决）**：部分厂商/自建中转（如 new-api / one-api）只在预检和**错误**响应上带 `Access-Control-Allow-Origin`，**流式回答那条不带** —— 于是出现「上游日志显示成功且有输出、浏览器却抛 `No 'Access-Control-Allow-Origin' header`」，而配置页的「连接测试」（非流式 `generateText`）仍然通过，极具迷惑性。对策是**全部改走同源 `/api-proxy`**，由服务端代为访问上游，浏览器不再参与跨域判定：
+  - 前端：`src/services/llm/proxy.ts` 给四个适配包传自定义 `fetch`，把跨域请求改写为同源地址，真实目标放在请求头 `x-llm-proxy-target`（**不能放查询串**：nginx 的 `$arg_*` 不还原百分号编码，见 `ngx_http_arg` 源码）。`baseURL` 保持上游原样不改写 —— openai 兼容系会做 ``new URL(`${baseURL}${path}`)`` 拼接，混进代理路径会拼出非法地址。本机/内网地址（`localhost`、私网 IP、`.local`、不带点的主机名）仍由浏览器直连，供用户自建推理服务使用。
+  - 开发/预览：`vite.config.ts` 的中间件；生产：`docker/nginx.conf` 的 `location = /api-proxy`（变量形式 `proxy_pass` + `resolver 127.0.0.11`、`proxy_ssl_server_name on` 且校验上游证书、`proxy_buffering off` 保证 SSE 边收边发，并拒掉环回/私网/链路本地目标以免变成内网探测跳板）。
+  - 浏览器请求的路径变了：升级后前后端要一起更新，否则旧产物会打到没配代理的服务端。
+  - 错误分类器（`describeLlmError`）命中跨域时提示「确认部署侧已带 `/api-proxy`」。
 - **数学公式渲染质量**：以 KaTeX 严格模式渲染，`$...$` 与 `$$...$$` 均支持；学术场景下不接受降级为正文字符。
 - **流式渲染性能**：Markdown 全量重解析成本高 → 节流（60ms）+ 流结束后定稿。
 - **自动布局与手动拖拽冲突**：`position` 一旦写入即锁定，须显式「重新布局」才归位。
@@ -340,7 +341,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 - 服务：若依账号系统 `https://api.sakta.top`，前端**浏览器直连**——该服务对预检已返回 `Access-Control-Allow-Origin` 与 `Access-Control-Allow-Headers: token, content-type`，受保护接口的自定义 `token` 头能通过预检，所以不需要像 LLM 那样走 `/api-proxy`。
 - 已接接口：`POST /v1/user/pub/login`（form-urlencoded）、`POST /v1/user/pub/sendCode`、`POST /v1/user/pub/register?emailCode=…`（JSON 体 + 查询参数）、`GET /v1/user/pri/getInfo`、`POST /v1/user/pri/refreshToken`、`POST /v1/user/pri/logout`。文档里的 `updateInfo` / `updatePassword` / `updateAvatar` 尚未接。
-- 会话：token 存 `localStorage['sakta-token']`；进「我的」页时恢复会话，取用户遇到 401 先用 `refreshToken` 换新 token 再取，仍失败才清掉本地 token；网络类失败保留 token 并给「重试」。
+- 会话：token 存 `localStorage['sakta-token']`，登录账号名存 `localStorage['sakta-account']`；**启动阶段**就用这两项把本地库绑对（纯本地读取，不联网）再载入数据 —— 登录用户刷新首页看到的就是账号库，期间的写入也落在账号库。token 是否还有效在首屏就绪后后台校验（401 先 `refreshToken` 换新 token 再取，仍失败才清掉本地 token）；网络类失败保留 token 并给「重试」，此时库仍按账号名绑着，网络恢复后自动同步照样有凭据可用。只有「本机有 token 却没记住账号名」（旧版本升上来）才需要联网确认一次，且有 1.5s 上限，离线不会卡在载入页。
 - 当前只读展示昵称 / 登录账号 / 邮箱 / 头像；头像相对路径用账号服务地址补全。
 
 ### 13.2 同步服务端（已实现，P1）
@@ -373,153 +374,94 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 | 本地同步层 | `data/sync-local.ts` | 载荷映射（设置抹掉 apiKey）、`applyRemote`（不记账，避免回环）、游标与状态、首次登录搬运游客数据 |
 | 协议类型 | `domain/sync.ts` | 与服务端 `server/src/entities.ts` 对齐的实体名与线上形状（放 domain 是因为 data 层也要用，而 data 只能依赖 domain） |
 | 网络层 | `services/sync/client.ts` | `/lern-api` 下的 pull/push/status；信封解析与账号客户端共用 `services/api/envelope.ts` |
-| 编排 | `stores/sync-store.ts` | 推增量 → 拉增量 → 落游标；token 过期先刷新再重试一次；首次登录策略 |
-| 分库 | `stores/data-session.ts` | 登录/退出/恢复会话时切库并重载 store（`opentreelearn:<loginName>`，游客用默认库） |
-| 界面 | `features/me/SyncPanel.tsx`、`FirstLoginDialog.tsx` | 状态（待同步 N 项 / 上次同步 / 失败原因）+ 立即同步；首次登录三选一 |
+| 编排 | `stores/sync-store.ts` | 推增量 → 拉增量 → 落游标；token 过期先刷新再重试一次；首次登录策略；`autoSync` 自动同步（四道闸门 + 节流） |
+| 运行期接线 | `stores/sync-runtime.ts` | 挂一次：登录态变化驱动同步初始化 / 清理；窗口聚焦补一次；待推变更巡检（默认 60s，只在有变更时发请求） |
+| 分库 | `stores/data-session.ts` | 登录/退出/恢复会话时切库并重载 store（`opentreelearn:<loginName>`，游客用默认库）；`bindStoredAccountDatabase()` 供启动阶段纯本地绑库；换库时丢弃内存里的复习会话 |
+| 界面 | `features/me/SyncPanel.tsx`、`FirstLoginDialog.tsx` | 状态（待同步 N 项 / 上次同步 / 失败原因）+ 立即同步；首次登录三选一（挂在 `AppShell` 上，哪一页登录都能看到） |
 
 **合并的语义**：登录后活动库就是账号库（空的），所以「上传本机数据（合并）」会先把**游客库**的记录搬进账号库（`importRecordsInto`），再记账上传；同一条记录云端更新时仍以云端为准。游客库原样保留，退出登录后还是那份内容。设置行只在账号库还没有设置时导入，图片资产没有同步通道但会一起搬（本机要能继续看图）。
 
+**复习会话不在同步范围内**（T-128）：它是本机、按账号的数据（Dexie v4 的 `reviewSessions` 表），不新增同步实体，也不承诺跨设备接着做；随节点同步的是掌握度、排期与计划开关。四条路径都要正确处理这张表：首次登录合并时一起搬（同项目出现两份未完成会话则只留最近的一份 open，其余转 `ended` 但内容保留）、项目删除（本地与远端 tombstone）级联清理、「以云端为准」清空。会话只在换库 / 清库时从内存丢弃，普通同步刷新不 reset 正在做的那一批。
+
 **首次登录策略**（每台设备问一次，决策记在账号库的 `syncState.initialized`）：
 - 上传本机数据（合并）：搬 + 推 + 拉，推荐
-- 以云端为准：清空本机实体与台账（**保留设置行**，否则本机 BYOK 密钥再也回不来），游标归零后整库重拉
+- 以云端为准：清空本机实体、台账与会话（**保留设置行**，否则本机 BYOK 密钥再也回不来），游标归零后整库重拉
 - 暂不同步：只落决策，变更仍留在 outbox，之后手动同步照样推
 
-**测试**：`data/sync-local.test.ts`（记账/合并/载荷/级联/密钥保留）与 `stores/sync-store.test.ts`（用服务端替身跑推送、增量拉取、判旧覆盖、tombstone、401 重试、三种首登策略），共 22 个用例。
+**自动同步的触发时机**（`useSyncRuntime`，挂在 `AppShell` 上）：启动完成且已决策过 → 静默同步一次；窗口重新聚焦 / 切回标签页 → 补一次；每 60s 巡检本机待推变更，有才推。两次自动同步之间有 120s 最小间隔（失败也进窗口，避免聚焦一次就重试一次），手动「立即同步」不受此限制；未决策首次登录策略时不自动动手，等用户选。以前同步只在进「我的」页时触发，首页放一天也不会拉一次云端变更。
+
+**测试**：`data/sync-local.test.ts`（记账/合并/载荷/级联/密钥保留/复习会话的合并去重与清理）、`stores/sync-store.test.ts`（用服务端替身跑推送、增量拉取、判旧覆盖、tombstone、401 重试、三种首登策略、自动同步的闸门与节流）、`stores/review-session-store.test.ts`（切账号丢弃内存会话、普通重载保留）、`stores/data-session.test.ts`（冷启动绑库的三种情形）。
 
 **待办**：
 - P2：图片资产 —— `Asset.blob` 走对象存储，同步体只传引用，`asset` 记录现在会被 `applyRemote` 跳过。
-- P3：写后节流自动同步、冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口）。
+- P3：冲突可见提示、以及「把游客库数据导入当前账号」（在账号库已初始化时目前没有再导入的入口 —— 冷启动绑库修好之前，被误写进游客库的数据只能靠它救回来）。
 
 ### 13.4 Docker 部署（已实现）
 
-根目录 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，把 `/lern-api` 同源反代到 `api`）与 `api`（同步服务 + SQLite 命名卷）。api 不发布宿主端口，浏览器走同源路径、不依赖 CORS；容器入口先 `prisma migrate deploy` 再起服务，迁移失败即退出。`GET /api/health`（无鉴权）供 healthcheck 探活，顺带 ping 数据库。`prisma` CLI 因此进了 `dependencies` —— `--prod` 安装也要带上迁移能力；安装用的 pnpm store/cache 在同一构建层里删掉，否则镜像会多出约 350MB。命令、备份与镜像体积见 `server/README.md`。
+根目录 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，把 `/lern-api` 同源反代到 `api`，另提供 `/api-proxy` 转发浏览器发往 LLM 厂商的请求）与 `api`（同步服务 + SQLite 命名卷）。api 不发布宿主端口，浏览器走同源路径、不依赖 CORS；容器入口先 `prisma migrate deploy` 再起服务，迁移失败即退出。`GET /api/health`（无鉴权）供 healthcheck 探活，顺带 ping 数据库。`prisma` CLI 因此进了 `dependencies` —— `--prod` 安装也要带上迁移能力；安装用的 pnpm store/cache 在同一构建层里删掉，否则镜像会多出约 350MB。命令、备份与镜像体积见 `server/README.md`。
 
-## 14. 掌握度与复习调度（P2）
+`/api-proxy` 是本期新增的、唯一对外且不鉴权的入口，两处细节值得记住：目标地址靠请求头而非查询串传递（nginx `$arg_*` 不做百分号解码）；目标域名由 `resolver 127.0.0.11`（compose 内置 DNS）现场解析，若把 web 镜像单独跑在 compose 之外，需把 `resolver` 换成可用的公网 DNS。上游 TLS 默认开启证书校验（nginx:alpine 自带 ca-certificates），不为了连通性放松；真要接自签证书的自建中转，再加 `proxy_ssl_verify off`。反向代理日志里所有 LLM 请求都显示为来自 web 容器的 `/api-proxy`，排查具体上游要靠 `x-llm-proxy-target`（该头不会转发给上游）。
 
-> 学习产品只做到「讲清楚」不够：知识会忘。这一节让 AI 给每个节点量化掌握度、
-> 结合遗忘曲线排出复习计划，并在到期时提醒 —— 画布从静态地图变成一张「会提示你
-> 哪里快忘了」的地图。**实施细节以本节为准**（含对最初设想的三处修正：复习会话
-> 队列、档位而非分数、通知预算）。
+## 14. 掌握度与复习调度（T-128 重构）
 
-### 14.1 数据模型与存储（零成本）
+> 掌握度与复习体验经 T-128 重构方案（详见 `docs/t128-review-experience-refactor.md`）
+> 进行全面升级：从原先的「聊天节点内挂载浮条」改为主工作区内独立、可中断恢复的
+> **复习工作模式（`/p/:projectId?view=review`）**。
+>
+> 核心改进：
+> 1. **独立复习工作区**：概览候选、自动出题与补学、反馈与四档预览、确认与小结；
+> 2. **计划与评估解耦**：生成摘要不偷偷加入计划，新建节点显式 `reviewEnrollment: 'disabled'`；
+> 3. **本地原子评分与撤销**：Dexie v4 新增 `reviewSessions` 表，评分操作事务性写入节点、台账与会话，支持在未产生下一题交互前撤销；
+> 4. **旧中心兼容投影**：旧 `kind: 'review'` 节点在常规学习树中隐藏，其普通学习后代自动重定向至最近可见祖先，历史记录提供只读查阅入口；
+> 5. **弱化提醒与按需热力**：移除聊天流内频繁插话的 ReviewNudge，取消首页重复 toast，热力图支持在画布按需开启。
 
-`Node` 只加四个**可选**字段，无新表、无 Dexie 迁移、`server/` 零改动（同步载荷是
-JSON，服务端不解释内容）：
+### 14.1 数据模型与存储
+
+`Node` 结构扩展：
 
 ```ts
 interface Node {
-  kind?: 'topic' | 'review'   // 缺省 = 普通学习节点；review = 复习中心
+  kind?: 'topic' | 'review'   // 缺省 = 普通学习节点；review = 历史复习中心
   mastery?: {
-    score: number             // 0-100，只用于展示与排序
-    weakPoints?: string[]     // ≤3 条，只做出题材料，绝不作为调度键
-    updatedAt: number         // 快照时间（过期判定的基准）
+    score: number             // 0-100，用于展示与排序
+    weakPoints?: string[]     // ≤3 条，只做出题材料
+    updatedAt: number         // AI 评估快照时间（过期判定的基准）
+    gradedAt?: number         // 最近一次复习评分的时间
   }
-  review?: {                  // 序列化形状：全部 number（epoch ms）
-    card: ReviewCard          // due / stability / difficulty / scheduledDays /
-                              // learningSteps / reps / lapses / state / lastReview?
+  review?: {
+    card: ReviewCard          // FSRS 卡片
     lastGrade?: ReviewGrade   // 最近一次评分档位
+  }
+  reviewEnrollment?: 'enabled' | 'disabled' // 显式复习计划开关
+  assessmentMeta?: {
+    assessedAt?: number       // 最近一次 AI 评估时间
+    basedOnStudiedAt?: number // 评估依据的学习时间
+    basedOnPath?: string      // 评估依据的对话路径指纹
+    source: 'ai' | 'review' | 'historical'
   }
   lastStudiedAt?: number      // 显示路径末条消息的 createdAt
 }
 ```
 
-三条口径：
+Dexie v4 新增 `reviewSessions` 表，用于存放本机会话、草稿、阶段状态与确认结果，保障刷新恢复与事务一致。
 
-- **聚合值不落库**：父节点的掌握度由子树实时聚合（`domain/mastery/aggregate.ts`）；
-  存下来就要级联回写、还要处理拖拽换父与多端合并，得不偿失。
-- **「最后学习时间」= 显示路径末条消息的 `createdAt`，不是 `node.updatedAt`**：
-  重命名 / 拖拽 / 生成摘要都会改 `updatedAt`，拿它当「学过没有」会把整理动作
-  误读成学习。单一写入口在消息落库处（`touchLastStudied`），只前进不后退。
-- **复习排期是本机状态**：`review` 随节点同步（LWW），但 `.tree` 导出只带
-  `mastery`，不带排期 —— due 是相对时间的概念，换台设备由本地重新排。
+### 14.2 掌握度与计划管理
 
-`normalizeNode()` 在存储读回边界兜底：`mastery` 缺 `updatedAt` 退回 0（弱化显示
-而不是丢分数）；`review.card` 任一关键字段坏掉就整张丢掉（半张卡会让 FSRS 用
-错误的 stability 排期，宁可从下一轮重新建卡）；`kind` 未知值退化成普通节点。
+- **生成摘要与加入计划分离**：点击「生成学习评估」只更新摘要、掌握度分数与薄弱点；用户在详情中明确点击「加入复习计划」才以当前时间初始化 FSRS 卡片；
+- **掌握度查看不调模型**：点击节点头部的状态徽标只打开详情弹窗，展示依据与薄弱点，绝不隐式触发消耗 token 的模型调用；
+- **旧数据与导入兼容**：导入的 `.tree` 缺省标记 `reviewEnrollment: 'disabled'`，防止导入历史树堆积虚假逾期；旧本地节点缺开关但有掌握度时兼容为已加入。v2 格式的 `.tree` 会携带事实性复习数据（快照时间、最近评分时间、显式计划开关与评估来源），但排期（FSRS 卡片与 due）与本机会话继续不随文件导出；
+- **`.tree` v2 扩展**：补全分支来源 `forkFrom`（消息级映射恢复）、画布坐标 `position`、归档状态与笔记；图片本体留在本地资产表，导出写明图片张数并在导入时如实告知，避免空气泡。双向兼容 v1 格式。
 
-### 14.2 掌握度量化（阶段 A）
+### 14.3 复习工作模式（/p/:projectId?view=review）
 
-- **一次结构化调用**：`services/llm/derive.ts` 的 `generateSummary` 用
-  `generateText + Output.object(zod)` 同时产出 `summary / mastery / weakPoints`。
-  AI SDK 7 里 `generateObject` 已 deprecated，两者是同一套结构化输出机制。
-  provider 不支持结构化输出时（自建中转常见）退回纯文本摘要：**宁可这次没有
-  掌握度，也不要写一个瞎编的分数进排期**。
-- **刷新保持手动**：升级既有「生成学习摘要」按钮，不额外花钱、不自动调用 LLM。
-  首次拿到分数时按档位种一张 FSRS 卡（`seedReviewCard`），节点从这一刻进入复习池；
-  已有卡的节点不动排期（手动刷新摘要不该把复习进度清零）。
-- **聚合**：子树（含自身）均值 + 覆盖率 `learned/total`；缺 `mastery` 的节点
-  不计入均值（不当 0 分），`kind === 'review'` 整棵子树显式跳过，归档节点跳过。
-- **过期标记**：`mastery.updatedAt` 比 `lastStudiedAt` 早超过 6 小时（`MASTERY_STALE_MS`）
-  即视为过期，卡片弱化显示 + 头部说明。阈值刻意不是 0：生成摘要后顺手再问一句
-  也会让 `lastStudiedAt` 变新，那点时间差不足以让分数失真。
-- **没评估过的节点**在节点头部给一条轻提示（不弹窗、不自动调用），引导用户生成。
+- **概览（Overview）**：默认推荐 3 个到期主题，支持勾选调整（单批最多 20 个），支持次级展开提前复习主题；
+- **练习（Practice）**：自动出题或进入关键点补学；支持提示、换问法、暂时想不起来与跳过；
+- **反馈与评分（Feedback）**：AI 建议可覆盖，四档真实排期预览，明确点击「确认并继续」后原子落库；
+- **恢复与撤销（Resume & Undo）**：浏览器刷新、稍后继续离开后可无损恢复同一题；在下一题未作答前支持撤销评分；
+- **小结（Summary）**：如实列出已完成数、跳过数与未完成数，展示真实下次到期排期。
 
-### 14.3 遗忘曲线与到期提醒（阶段 B）
+### 14.4 旧复习中心兼容
 
-- **`domain/review/fsrs.ts` 适配层**：`ts-fsrs`（MIT、0 依赖、FSRS-6）只活在这一层，
-  对外只暴露本项目的 `ReviewCard`（number epoch）。`Date` 对象与 `elapsed_days`
-  这类 6.0 要删的 API 一律不进入存储形状 —— 升级只改这一个文件。
-  关闭 fuzz：排期必须可复现。`lapses` 只在 `again` 命中 Review 状态的卡时 +1（FSRS 语义）。
-- **评分状态机** `domain/review/schedule.ts`：掌握度分档 → FSRS 初始评分
-  （`<40 Again / 40-59 Hard / 60-84 Good / ≥85 Easy`）；评分回流按档位给固定步长
-  修正掌握度，`again` 额外把分数压回「重新学习」区间。
-- **复习池**：只有活跃、有掌握度、非复习中心的节点参与；归档随节点走。
-- **画布热力图**：保持率降饱和 / 变色（70% 琥珀、50% 红），在**可见卡片**里用
-  分钟级时钟（`useDecayClock`，复用 `useThrottledValue`）现算；详情画布开了
-  `onlyRenderVisibleElements`，离屏卡片不参与计算。
-- **通知预算**：队列封顶 20/天（`DAILY_REVIEW_CAP`），首页每天最多提示一次
-  （`lib/daily-notice.ts` 用 localStorage 记日期）。反复弹的提醒等于训练用户
-  忽略提醒，所以两个上限都写死在 domain/lib 里。
-- **首页到期数每次挂载重算**：`review-store` 是全局常驻的，`loaded` 只表示
-  「有过一次结果」，**不当节流开关**用 —— 复习完再回首页必须看到新数字。
-  去重交给 `daily-notice`（按天），不依赖「数字变没变」。
-
-### 14.4 复习中心与会话（阶段 C）
-
-- **复习中心节点**（`kind: 'review'`）：每项目至多一个，自成一棵根树，入口在
-  画布顶栏与首页「今日复习」面板；已存在则直接选中，不重复创建。
-- **`domain/review/digest.ts`**：`buildStudyDigest` 每次发送时**重算**（不冻结），
-  每主题一行：掌握档位 / N 天前学习 / 保持率 / 薄弱点，用缩进表达树的层级。
-  `assembleContext` 对 `kind === 'review'` 走这个分支，既有路径零改动；
-  系统提示明确它只做诊断 / 计划 / 答疑，**不改其他节点的数据**。
-  快照按「活跃节点一个都不能少」构造：父节点归档 / 断链的活跃子节点由
-  `buildTreeIndex` 挂到根桶，环里的节点（父子互指、自指）从任何根都走不到，
-  由末尾的平铺兜底带出来（与画布布局的 `strays` 兜底同一约定）—— 宁可层级
-  不完美，也不能让一颗带掌握度的子树在复习中心里凭空消失。
-- **复习会话队列**（相对最初设想补上的缺口）：复习的心理成本主要在导航。
-  会话开始时一次性算好队列（保持率最低优先 + 「不与上一题同父」的交错约束），
-  一次一个节点、显示进度 `3/7`，走完给小结。低掌握度 / FSRS 处在（重）学习步的
-  节点标为**「重新学习」**而不是「复习」—— 让还没掌握的人硬回忆只会挫败。
-- **评分回流**：复习模式下导师在点评末尾输出 `[[rating:good]]`，客户端把它预选在
-  浮条上，用户一键覆盖成任意档位。不做第二次结构化调用：判定与点评本来就是同一次
-  回答的两面。标记留在消息正文里（模型下一轮看得到自己的历史判定），展示与预览时
-  剥掉（`stripReviewRating` / `stripStreamingReviewRating`）。
-- **改判是「当作只评过新档位」**：同一题再点一次，卡片与掌握度都从**首次评分前**
-  的状态重算，而不是在已评过的结果上再叠一层 —— 叠一层会让一次改判被 FSRS 算成
-  两次复习（`reps` 多算、`again` 的 `lapses` 留在卡上、due 被推远），改判本身变成
-  惩罚。会话因此同时记下每题的基准分与基准卡（`baseScores` / `baseCards`）：
-  `again` 压到 35 后再改 `good` 从基准分重算（不是 40），遗忘那次也不再留在卡上。
-  两个数字（卡片档位与掌握度）必须描述同一次评分，否则互相打脸。
-- **结构性题目**：出题 prompt 要求优先出「这个主题该挂在哪个主题下面」「A 和 B
-  是什么关系」这类题 —— 树本身是题库，这是相对卡片类应用的独有优势。
-- **顺手复习**：学完一个节点、刚好有到期旧节点时，在输入框上方提示
-  「顺手复习一下 N 天前学的《X》」，从该节点切入整个队列，把复习嵌进学习流。
-
-### 14.5 已知取舍
-
-- **粒度**：FSRS 是为原子记忆设计的，节点级卡片是粗粒度近似。卡片语义已明确定义为
-  「能否复述 / 推导这个主题的核心」；太粗的节点用现成的树拆成子节点，不引入新机制。
-- **多端并发**：`review` 与 `mastery` 都在节点载荷里，同步走 LWW；两端各复习同一
-  主题会丢 `reps` / `due`。接受该粗糙度（复习是单人单端动作），要精确合并需
-  `review` 单独成表 + 服务端合并，超出本期。
-- **判定标记走正文**：比额外字段便宜（消息表零改动、模型可见历史判定），代价是
-  标记会出现在上下文与导出里 —— 导出时已剥掉，上下文里保留反而是有用的信息。
-
-**测试**：`mastery/aggregate`（无掌握度 / 复习中心被排除 / 归档 / 环）、
-`review/fsrs`（Date↔number 往返、due 单调后移、again 使 lapses+1、保持率衰减）、
-`review/schedule`（分档边界、分数修正、到期 / 逾期口径）、`review/queue`
-（封顶 / 保持率优先 / 交错 / 重学分流）、`review/digest`（空树 / 全未学 / 超限取舍）、
-`review/protocol`（解析与剥离）、`normalize`（新字段坏数据）、`context/assemble`
-（复习中心走 digest、复习会话导师规则）、`stores`（评估 / 评分回流 / 改判重排 /
-会话生命周期 / 跨项目到期统计）、`data`（节点更新进同步台账、事务包含 `outbox`），
-以及 `.tree` 的掌握度往返导出与导入后的 `lastStudiedAt` 推导。
+- 常规树上不再呈现 `kind: 'review'` 节点，不创建新的中心节点；
+- 挂在旧中心下方的普通学习子树通过 `projectVisibleNodes` 投影接回可见祖先，内容与学习关系完整保留；
+- 复习概览提供次级「查看旧复习中心历史记录」弹窗，只读回溯过去的复习消息。

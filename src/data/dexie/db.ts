@@ -9,7 +9,20 @@ import type {
   Project,
   ProjectSettings,
 } from '@/domain/models'
+import type { ReviewSessionRecord } from '@/domain/review/session'
 import type { SyncEntity } from '@/domain/sync'
+
+/**
+ * 复习会话文档。
+ *
+ * 整条会话存成**一条有版本的记录**（含每个主题的练习内容与确认记录）：
+ * 拆成多表就要顺带处理跨表事务、索引与项目级联，而会话的读写单位本来就是
+ * 「一个项目里的一份未完成会话」。记录不参与云同步，只在本机按账号保存。
+ */
+export interface ReviewSessionRow extends ReviewSessionRecord {
+  /** 未完成（active / paused）标记：每个项目最多一条，靠它做索引查询 */
+  open: 0 | 1
+}
 
 export interface SettingsRecord {
   key: string
@@ -56,6 +69,7 @@ export class AppDatabase extends Dexie {
   settings!: Table<SettingsRecord, string>
   outbox!: Table<OutboxRecord, number>
   syncState!: Table<SyncStateRecord, string>
+  reviewSessions!: Table<ReviewSessionRow, Id>
 
   constructor(name = 'opentreelearn') {
     super(name)
@@ -80,6 +94,13 @@ export class AppDatabase extends Dexie {
     this.version(3).stores({
       outbox: '++seq, entity, localId, [entity+localId]',
       syncState: 'key',
+    })
+
+    // v4 只加复习会话表：不删任何旧节点、旧消息、既有排期。
+    // `[projectId+open]` 让「这个项目的未完成会话」一次索引查出来；
+    // 「每个项目至多一份未完成会话」由仓储在事务里保证 —— 按钮禁用挡不住多标签页。
+    this.version(4).stores({
+      reviewSessions: 'id, projectId, [projectId+open], updatedAt',
     })
   }
 }

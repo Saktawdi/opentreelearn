@@ -13,12 +13,10 @@ import type {
   Message,
   MessagePart,
   Node,
-  NodeReview,
   Note,
   NoteKind,
   Project,
   ProjectSettings,
-  ReviewGrade,
 } from '@/domain/models'
 import {
   appendEntry,
@@ -31,15 +29,10 @@ import {
 } from '@/domain/thread/mutations'
 import { resolveThread } from '@/domain/thread/resolve'
 import { sortNotes } from '@/domain/notes'
-import {
-  createNodeFromAction,
-  nodeActionRequiresMessage,
-  type NodeActionKind,
-} from '@/domain/node-ops/actions'
+import { createNodeFromAction, nodeActionRequiresMessage, type NodeActionKind } from '@/domain/node-ops/actions'
 import { buildTreeIndex, descendantsOf } from '@/domain/tree/tree'
-import { createReviewCenterNode, findReviewCenter } from '@/domain/review/center'
-import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
-import { masteryAfterGrade, nextReview, seedReviewCard } from '@/domain/review/schedule'
+import { seedReviewCard } from '@/domain/review/schedule'
+import { threadPathFingerprint } from '@/domain/thread/resolve'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages } from '@/services/llm/chat'
 import {
@@ -90,44 +83,6 @@ export interface NewNoteInput {
   body?: string
 }
 
-/**
- * 一次复习会话：队列 + 走到第几题 + 每题的结果。
- *
- * 队列在开始时一次性算好（`buildReviewQueue`），会话中途不重排 ——
- * 复习到一半顺序突变比顺序不够优更让人困惑。会话本身不落库：
- * 它是「今天这一次动作」的临时状态，跨端同步没有意义（见工单的并发取舍）。
- */
-export interface ReviewSession {
-  items: ReviewQueueItem[]
-  /** 当前第几题（0 基）；等于 items.length 表示已走完 */
-  cursor: number
-  /** 每题评到的档位，走完时给小结 */
-  results: Record<Id, ReviewGrade>
-  /**
-   * 每题**首次评分前**的掌握度分数。
-   *
-   * 改判要「当作只评过新档位」来算分，就必须从这个基准重算 ——
-   * 拿改判后的分数再算一次会叠加（again 把分数压到 35，再改 good 会变成 40）。
-   */
-  baseScores: Record<Id, number>
-  /**
-   * 每题**首次评分前**的复习卡片；`null` = 评之前没有卡（历史数据）。
-   *
-   * 与 `baseScores` 同理：改判必须从复习前的卡片重排。若在已排过的卡上再排一次，
-   * 一次改判会被 FSRS 当成两次复习（reps 多算、again 的 lapses 留在卡上、
-   * due 被推远），改判本身就成了惩罚。
-   */
-  baseCards: Record<Id, NodeReview | null>
-  startedAt: number
-  finishedAt?: number
-}
-
-/** 当前该复习的那一条；会话结束或没有会话时为 null。 */
-export function currentReviewItem(session: ReviewSession | null): ReviewQueueItem | null {
-  if (!session || session.finishedAt) return null
-  return session.items[session.cursor] ?? null
-}
-
 interface WorkspaceState {
   projectId: Id | null
   project: Project | null
@@ -142,8 +97,6 @@ interface WorkspaceState {
   streaming: StreamingState | null
   /** 正在手动生成摘要的节点，用于在节点卡片上渲染骨架屏 */
   summarizingNodeIds: Id[]
-  /** 当前项目的复习会话；不落库 */
-  reviewSession: ReviewSession | null
 
   openProject: (projectId: Id) => Promise<void>
   reset: () => void
@@ -181,20 +134,12 @@ interface WorkspaceState {
   /** 在历史版本间切换：只改 selection，一次节点更新 */
   setSlotVersion: (nodeId: Id, slotId: Id, version: number) => Promise<void>
   refreshSummary: (nodeId: Id) => Promise<void>
-  /** 写入一次学习评估：摘要 + 掌握度（+ 首次评估时按档位种一张复习卡） */
+  /** 写入一次学习评估：只写摘要与掌握度；**绝不自动种卡、不自动加入复习计划** */
   setNodeAssessment: (nodeId: Id, assessment: SummaryAssessment) => Promise<void>
-  /** 复习评分回流：推进卡片、修正掌握度；会话进行中同时记录本题结果 */
-  rateReview: (nodeId: Id, grade: ReviewGrade) => Promise<void>
-  /** 打开（必要时创建）复习中心节点并选中它 */
-  openReviewCenter: () => Promise<Node | null>
-  /**
-   * 开始一次复习会话；返回本次队列（空队列表示今天没有到期的）。
-   * `fromNodeId` 用于「顺手复习」：从指定的到期节点切入队列。
-   */
-  startReviewSession: (fromNodeId?: Id) => Promise<ReviewQueueItem[]>
-  /** 下一题；走完最后一题时结束会话（有复习中心就回到那里看小结） */
-  advanceReviewSession: () => void
-  endReviewSession: () => void
+  /** 用户明确点击「加入复习计划」：以当前时间初始化卡片并打上 enabled 开关 */
+  enrollInReview: (nodeId: Id) => Promise<void>
+  /** 移出复习计划：停止到期提醒，保留历史卡片与掌握度 */
+  unenrollFromReview: (nodeId: Id) => Promise<void>
   clearError: () => void
 }
 
@@ -256,7 +201,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     error: null,
     streaming: null,
     summarizingNodeIds: [],
-    reviewSession: null,
 
     openProject: async (projectId) => {
       set((state) => {
@@ -269,7 +213,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.selectedNodeId = null
         state.streaming = null
         state.summarizingNodeIds = []
-        state.reviewSession = null
       })
 
       const repositories = getRepositories()
@@ -320,7 +263,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.streaming = null
         state.error = null
         state.summarizingNodeIds = []
-        state.reviewSession = null
       })
     },
 
@@ -822,9 +764,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           updatedAt: now,
         }
         patch.mastery = mastery
-        // 第一次拿到掌握度：按档位种一张卡，节点从这一刻进入复习池。
-        // 已经有卡的节点不动它的排期 —— 手动刷新摘要不该把复习进度清零。
-        if (!node.review) patch.review = seedReviewCard(mastery.score, now)
+        // 记录本次评估依据的学习时间与对话路径指纹，来源标为 'ai'
+        const visible = resolveThread(node, get().messagesByNode[nodeId] ?? []).path
+        const basedOnPath = threadPathFingerprint(visible)
+        patch.assessmentMeta = {
+          assessedAt: now,
+          basedOnStudiedAt: node.lastStudiedAt,
+          basedOnPath,
+          source: 'ai',
+        }
+        // D10：生成摘要与加入复习计划彻底分开！
+        // 新生成评估的主题默认保持 disabled，已有计划的节点保留其原排期。
+        // 绝不偷偷调用 seedReviewCard() 把未确认的主题加入复习池。
       }
 
       await getRepositories().nodes.update(nodeId, patch)
@@ -835,117 +786,38 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       })
     },
 
-    rateReview: async (nodeId, grade) => {
-      const state = get()
-      const node = state.nodes.find((item) => item.id === nodeId)
+    enrollInReview: async (nodeId) => {
+      const node = get().nodes.find((item) => item.id === nodeId)
+      if (!node || !node.mastery) return
+
+      const now = Date.now()
+      const patch: Partial<Node> = {
+        reviewEnrollment: 'enabled',
+        // 首次加入时种卡（按当前时间，不使用历史时间，防止刚加入就堆积虚假逾期）
+        review: node.review ?? seedReviewCard(node.mastery.score, now),
+        updatedAt: now,
+      }
+      await getRepositories().nodes.update(nodeId, patch)
+      set((state) => {
+        const target = state.nodes.find((item) => item.id === nodeId)
+        if (target) Object.assign(target, patch)
+      })
+    },
+
+    unenrollFromReview: async (nodeId) => {
+      const node = get().nodes.find((item) => item.id === nodeId)
       if (!node) return
 
       const now = Date.now()
-      // 同一题已经评过再点，是「改判」而不是「又复习了一次」：
-      // 卡片与掌握度都必须**从复习前的状态重算**，而不是在已评过的结果上再叠一层 ——
-      // 叠一层会让一次改判被算成两次复习（reps 多算、again 的 lapses 留在卡上、
-      // due 被推远），分数也会互相打脸（first=again 压到 35，改判 good 却停在 35）。
-      const session = state.reviewSession
-      const baseScore = session?.baseScores[nodeId] ?? node.mastery?.score ?? 50
-      // `undefined` = 这道题还没评过（基准就是当前状态）；`null` = 评之前就没有卡
-      const storedBaseCard = session?.baseCards[nodeId]
-      const baseReview = storedBaseCard === undefined ? node.review : (storedBaseCard ?? undefined)
-
-      // 分数只做展示：按档位给固定步长修正（保留 AI 给的薄弱点，它们仍是最近一次评估的结果）
-      const mastery: MasterySnapshot = {
-        ...(node.mastery ?? {}),
-        score: masteryAfterGrade(baseScore, grade),
-        updatedAt: now,
-      }
-
+      // 移出计划停止到期提醒，保留历史卡片与掌握度
       const patch: Partial<Node> = {
-        review: nextReview(baseReview, grade, now),
-        mastery,
+        reviewEnrollment: 'disabled',
         updatedAt: now,
       }
-
       await getRepositories().nodes.update(nodeId, patch)
-      set((draft) => {
-        const target = draft.nodes.find((item) => item.id === nodeId)
+      set((state) => {
+        const target = state.nodes.find((item) => item.id === nodeId)
         if (target) Object.assign(target, patch)
-        const current = draft.reviewSession
-        if (!current || current.finishedAt) return
-        current.results[nodeId] = grade
-        // 首次评分时记下基准；改判不再覆盖它，保证重算始终从「没评过」出发
-        if (current.baseScores[nodeId] === undefined) current.baseScores[nodeId] = baseScore
-        if (current.baseCards[nodeId] === undefined) current.baseCards[nodeId] = baseReview ?? null
-      })
-    },
-
-    openReviewCenter: async () => {
-      const node = await ensureReviewCenter()
-      if (!node) return null
-      get().selectNode(node.id)
-      return node
-    },
-
-    startReviewSession: async (fromNodeId) => {
-      const projectId = get().projectId
-      const nodes = get().nodes
-      const built = buildReviewQueue(nodes, Date.now())
-      // 「顺手复习」从指定节点切入：把它转到队首，其余保持原序 ——
-      // 若直接跳到中间，前面的到期节点会被整场跳过，等于悄悄丢掉了它们
-      const index = fromNodeId ? built.findIndex((item) => item.nodeId === fromNodeId) : 0
-      const items = index > 0 ? [...built.slice(index), ...built.slice(0, index)] : built
-
-      // 会话走完要回到复习中心看小结：从「顺手复习」进来时项目里可能还没有它，
-      // 先补齐，否则最后一题评完就卡在节点上，既看不到小结也退不出去
-      if (projectId && items.length > 0) await ensureReviewCenter()
-
-      set((draft) => {
-        draft.reviewSession =
-          items.length > 0
-            ? {
-                items,
-                cursor: 0,
-                results: {},
-                baseScores: {},
-                baseCards: {},
-                startedAt: Date.now(),
-              }
-            : null
-        const first = items[0]
-        if (first) {
-          draft.selectedNodeId = first.nodeId
-          draft.viewMode = 'chat'
-        }
-      })
-      return items
-    },
-
-    advanceReviewSession: () => {
-      set((draft) => {
-        const session = draft.reviewSession
-        if (!session || session.finishedAt) return
-        session.cursor = Math.min(session.cursor + 1, session.items.length)
-        if (session.cursor >= session.items.length) {
-          session.finishedAt = Date.now()
-          // 走完回到复习中心看小结：会话在队列里，回原节点会让人以为还没结束
-          const center = draft.nodes.find(
-            (node) => node.kind === 'review' && node.status === 'active',
-          )
-          if (center) {
-            draft.selectedNodeId = center.id
-            draft.viewMode = 'chat'
-          } else {
-            // 复习中心被删/归档了：直接收掉会话，别留下「已结束但关不掉」的僵尸
-            draft.reviewSession = null
-          }
-          return
-        }
-        draft.selectedNodeId = session.items[session.cursor].nodeId
-        draft.viewMode = 'chat'
-      })
-    },
-
-    endReviewSession: () => {
-      set((draft) => {
-        draft.reviewSession = null
       })
     },
 
@@ -956,30 +828,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
   })),
 )
-
-/**
- * 确保当前项目有复习中心，返回它（没有就建一个并落库）。
- *
- * 会话的结束落点就是复习中心，所以「开始复习」之前必须先备好 —— 从
- * 「顺手复习」进来的用户可能从没打开过复习中心，缺了它最后一题评完就
- * 无处可去。刻意不负责选中：调用方各自决定光标落在哪。
- */
-async function ensureReviewCenter(): Promise<Node | null> {
-  const state = useWorkspaceStore.getState()
-  const projectId = state.projectId
-  if (!projectId) return null
-
-  const existing = findReviewCenter(state.nodes)
-  if (existing) return existing
-
-  const node = createReviewCenterNode({ projectId })
-  await getRepositories().nodes.create(node)
-  useWorkspaceStore.setState((draft) => {
-    draft.nodes.push(node)
-  })
-  touchProject(projectId)
-  return node
-}
 
 /**
  * 「最后学习时间」的唯一写入口：消息落库处调用。
@@ -1088,18 +936,17 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
   const assetUrls =
     assetIds.length > 0 ? await loadAssetUrls(repositories.assets, assetIds) : new Map()
 
-  // 这一轮是不是复习会话里的当前题：是的话导师走「回忆优先」的规则
-  const sessionItem = currentReviewItem(store.getState().reviewSession)
   const context = assembleContext({
     node,
     nodes,
     messagesByNode,
     assetUrls,
+    projectName: state.project?.name,
+    projectDescription: state.project?.description,
     backgroundProfile: settings.backgroundProfile,
     projectBackground: projectSettings?.backgroundProfile,
     projectSystemPrompt: projectSettings?.systemPrompt,
     budgetTokens: settings.contextBudget,
-    reviewMode: sessionItem?.nodeId === nodeId ? sessionItem.mode : undefined,
     now: Date.now(),
   })
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { errorMessage } from '@/lib/utils'
+import { useAccountStore } from './account-store'
+import { bindStoredAccountDatabase } from './data-session'
 import { useProjectsStore } from './projects-store'
 import { useSettingsStore } from './settings-store'
 
@@ -13,6 +15,14 @@ import { useSettingsStore } from './settings-store'
  */
 export const BOOTSTRAP_TIMEOUT_MS = 12_000
 
+/**
+ * 旧版本升上来（本机有 token 却没记住账号名）时，等账号服务确认身份的上限。
+ *
+ * 只有这一种情况需要联网才能算出库名。超时就先按游客库跑完启动，用户可以在「我的」
+ * 页重试；不在这里等满网络超时，否则离线升级的用户会卡在载入页。
+ */
+export const IDENTITY_PROBE_TIMEOUT_MS = 1_500
+
 export type BootstrapPhase = 'loading' | 'ready' | 'error'
 
 export interface BootstrapState {
@@ -20,6 +30,18 @@ export interface BootstrapState {
   /** 仅在 phase === 'error' 时有值。 */
   message: string | null
   retry: () => void
+}
+
+/** 给一个 promise 加超时上限：到点就继续，不等它（用于不该挡首屏的网络动作）。 */
+function withTimeout(run: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = window.setTimeout(() => resolve(), ms)
+    const done = () => {
+      window.clearTimeout(timer)
+      resolve()
+    }
+    void run.then(done, done)
+  })
 }
 
 export function useBootstrap(): BootstrapState {
@@ -38,6 +60,12 @@ export function useBootstrap(): BootstrapState {
 
     void (async () => {
       try {
+        // 先把库绑对再载入数据（纯本地读取，不联网）：登录用户刷新首页时，画面上与
+        // 写入的都必须已经是账号库，否则期间写的内容会在切库后「消失」。
+        const needsIdentity = await bindStoredAccountDatabase()
+        // 本机没记住账号名（旧版本升级）时才需要联网问一次 —— 有上限，不拖死首屏
+        if (needsIdentity) await withTimeout(useAccountStore.getState().restore(), IDENTITY_PROBE_TIMEOUT_MS)
+
         await Promise.all([
           useSettingsStore.getState().load(),
           useProjectsStore.getState().load(),
@@ -47,6 +75,9 @@ export function useBootstrap(): BootstrapState {
         // 超时之后才姗姗来迟的成功同样接受：这里自愈比停在错误页更有用。
         setPhase('ready')
         setMessage(null)
+        // token 是否还有效放到后台校验：库已经绑对了，失败只影响同步可用性。
+        // 放在载入之后跑，避免它与载入读的是两个库。
+        void useAccountStore.getState().restore()
       } catch (error) {
         if (cancelled) return
         window.clearTimeout(timer)

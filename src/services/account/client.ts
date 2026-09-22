@@ -22,6 +22,15 @@ export const ACCOUNT_BASE_URL = 'https://api.sakta.top'
 /** token 存 localStorage，键名沿用生态里既有的 `sakta-token`。 */
 export const ACCOUNT_TOKEN_KEY = 'sakta-token'
 
+/**
+ * 上次成功登录的账号名（loginName），与 token 配套存本机。
+ *
+ * 本地库名由 loginName 决定（`opentreelearn:<loginName>`）。冷启动必须**先绑库再载入
+ * 数据**，而这一步不该等账号服务：离线时会白屏，慢网时会先按游客库载入再被切掉。
+ * 记住账号名就能纯本地切库，token 是否还有效交给后台校验。
+ */
+export const ACCOUNT_IDENTITY_KEY = 'sakta-account'
+
 export interface AccountRole {
   roleId?: number
   roleName?: string
@@ -193,5 +202,33 @@ export function clearAccountToken(): void {
     window.localStorage.removeItem(ACCOUNT_TOKEN_KEY)
   } catch {
     // 同上：清不掉不影响内存里的退出。
+  }
+}
+
+/** 上次登录的账号名；读不到（隐私模式、从未登录）返回 null，此时按游客库启动。 */
+export function readAccountIdentity(): string | null {
+  try {
+    const value = window.localStorage.getItem(ACCOUNT_IDENTITY_KEY)?.trim()
+    return value ? value : null
+  } catch {
+    return null
+  }
+}
+
+export function saveAccountIdentity(loginName: string | undefined): void {
+  try {
+    const value = loginName?.trim()
+    if (value) window.localStorage.setItem(ACCOUNT_IDENTITY_KEY, value)
+    else window.localStorage.removeItem(ACCOUNT_IDENTITY_KEY)
+  } catch {
+    // 存不下只是退化成「启动先看游客库、进我的页再切」，不值得打断登录流程。
+  }
+}
+
+export function clearAccountIdentity(): void {
+  try {
+    window.localStorage.removeItem(ACCOUNT_IDENTITY_KEY)
+  } catch {
+    // 同上。
   }
 }

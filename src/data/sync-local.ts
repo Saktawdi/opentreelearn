@@ -10,6 +10,7 @@ import {
   SYNC_STATE_KEY,
   type AppDatabase,
   type OutboxRecord,
+  type ReviewSessionRow,
   type SyncStateRecord,
 } from './dexie/db'
 
@@ -38,7 +39,7 @@ interface EntityAdapter {
 export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<void> {
   await db.transaction(
     'rw',
-    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes],
+    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes, db.reviewSessions],
     async () => {
       await db.projects.delete(projectId)
       await db.projectSettings.delete(projectId)
@@ -46,6 +47,8 @@ export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<
       await db.messages.where('projectId').equals(projectId).delete()
       await db.assets.where('projectId').equals(projectId).delete()
       await db.notes.where('projectId').equals(projectId).delete()
+      // 复习会话只存在本机：项目没了，参考它的进度与草稿也没有意义
+      await db.reviewSessions.where('projectId').equals(projectId).delete()
     },
   )
 }
@@ -142,6 +145,15 @@ export async function importRecordsInto(
     }
   }
 
+  // 复习会话是纯本机数据：一起搬过去，但**不进 outbox**（没有对应的云同步实体）。
+  // 「每个项目至多一份未完成会话」这条不变量要在这里一并守住，见 mergeReviewSessions。
+  const sessions = await source.reviewSessions.toArray()
+  if (sessions.length > 0) {
+    const migrated = await mergeReviewSessions(target, sessions)
+    await target.reviewSessions.bulkPut(migrated)
+    count += migrated.length
+  }
+
   const sourceSettings = await source.settings.get(SETTINGS_KEY)
   if (sourceSettings && !(await target.settings.get(SETTINGS_KEY))) {
     await target.settings.put(sourceSettings)
@@ -149,6 +161,65 @@ export async function importRecordsInto(
   }
 
   return count
+}
+
+/**
+ * 把源库的复习会话并入目标库，并守住「每个项目至多一份未完成会话」。
+ *
+ * 目标库里可能本来就有这个项目的未完成会话：这台设备上次登录过、退出到游客态又复习到
+ * 一半，这次再登录合并 —— 两边都是 open。两份并行会各自往同一个节点写排期，`findOpen`
+ * 也只能随机返回其中一份，另一份成了打不开的僵尸进度。
+ *
+ * 做法：按项目把「目标库已有的 + 这次要搬的」放在一起，按最后活动时间倒序，只留最新的
+ * 一份 open，其余转 `ended`（内容全保留，历史仍可查看）。转 ended 的行版本 +1 ——
+ * 仓储的 `save` 见状会拒绝内存里的旧副本覆盖，避免又被改回 active。
+ *
+ * @returns 源库里这些会话该写进目标库的样子（已转 ended 的已就地改好）
+ */
+async function mergeReviewSessions(
+  target: AppDatabase,
+  sessions: ReviewSessionRow[],
+): Promise<ReviewSessionRow[]> {
+  const openByProject = new Map<Id, ReviewSessionRow[]>()
+  for (const row of sessions) {
+    if (row.open !== 1) continue
+    const bucket = openByProject.get(row.projectId)
+    if (bucket) bucket.push(row)
+    else openByProject.set(row.projectId, [row])
+  }
+  if (openByProject.size === 0) return sessions
+
+  const now = Date.now()
+  const close = (row: ReviewSessionRow): ReviewSessionRow => ({
+    ...row,
+    status: 'ended',
+    finishedAt: row.finishedAt ?? now,
+    open: 0,
+    version: row.version + 1,
+  })
+
+  const closedFromSource = new Map<Id, ReviewSessionRow>()
+  const closedInTarget: ReviewSessionRow[] = []
+
+  for (const [projectId, incoming] of openByProject) {
+    const existing = await target.reviewSessions
+      .where('[projectId+open]')
+      .equals([projectId, 1])
+      .toArray()
+
+    const candidates = [
+      ...existing.map((row) => ({ row, incoming: false })),
+      ...incoming.map((row) => ({ row, incoming: true })),
+    ].sort((a, b) => b.row.updatedAt - a.row.updatedAt)
+
+    for (const candidate of candidates.slice(1)) {
+      if (candidate.incoming) closedFromSource.set(candidate.row.id, close(candidate.row))
+      else closedInTarget.push(close(candidate.row))
+    }
+  }
+
+  if (closedInTarget.length > 0) await target.reviewSessions.bulkPut(closedInTarget)
+  return sessions.map((row) => closedFromSource.get(row.id) ?? row)
 }
 
 export function createSyncLocal(db: AppDatabase) {
@@ -321,7 +392,16 @@ export function createSyncLocal(db: AppDatabase) {
     async clearLocalData(): Promise<void> {
       await db.transaction(
         'rw',
-        [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes, db.outbox],
+        [
+          db.projects,
+          db.projectSettings,
+          db.nodes,
+          db.messages,
+          db.assets,
+          db.notes,
+          db.outbox,
+          db.reviewSessions,
+        ],
         async () => {
           await Promise.all([
             db.projects.clear(),
@@ -331,6 +411,8 @@ export function createSyncLocal(db: AppDatabase) {
             db.assets.clear(),
             db.notes.clear(),
             db.outbox.clear(),
+            // 「以云端为准」= 本机被清空重拉；会话不参与同步，留下就成了孤儿
+            db.reviewSessions.clear(),
           ])
         },
       )

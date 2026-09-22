@@ -7,7 +7,9 @@ import type {
   Note,
   Project,
   ProjectSettings,
+  ReviewGrade,
 } from '@/domain/models'
+import type { ReviewItemResult, ReviewSessionRecord } from '@/domain/review/session'
 
 export interface ProjectRepository {
   list(): Promise<Project[]>
@@ -76,6 +78,69 @@ export interface SettingsRepository {
   save(settings: GlobalSettings): Promise<void>
 }
 
+export interface GradeReviewInput {
+  sessionId: Id
+  itemId: Id
+  /** 幂等键：第一次尝试前生成并落库，重试必须复用 */
+  operationId: Id
+  projectId: Id
+  nodeId: Id
+  grade: ReviewGrade
+  /** 调用方看到的会话版本；小于库里的版本说明这次写入基于过期状态 */
+  expectedVersion: number
+  now: number
+}
+
+export type GradeReviewOutcome =
+  /** 本次写入生效 */
+  | { status: 'applied'; node: Node; session: ReviewSessionRecord; result: ReviewItemResult }
+  /** 同一个操作（或同一项）已经落过库；**不重复写**，返回既有结果 */
+  | { status: 'duplicate'; node: Node; session: ReviewSessionRecord; result: ReviewItemResult }
+  /** 状态已变化（别处已评分 / 版本过期），需要刷新后重新确认 */
+  | { status: 'conflict'; message: string; session: ReviewSessionRecord }
+  /** 会话记录已不存在（被项目删除、账号切换或手动清理） */
+  | { status: 'missing'; message: string }
+  /** 节点已删除 / 归档 / 移出计划：当前项转 unavailable，不评分 */
+  | { status: 'unavailable'; message: string; session: ReviewSessionRecord }
+
+export interface UndoReviewInput {
+  sessionId: Id
+  itemId: Id
+  projectId: Id
+  nodeId: Id
+  now: number
+}
+
+export type UndoReviewOutcome =
+  | { status: 'applied'; node: Node; session: ReviewSessionRecord }
+  | { status: 'conflict'; message: string; session: ReviewSessionRecord }
+  | { status: 'missing'; message: string; session?: ReviewSessionRecord }
+
+/**
+ * 复习会话仓储。
+ *
+ * 评分与撤销必须是**一个事务**：节点（掌握度 + 排期）、同步台账与会话记录要么一起
+ * 成功要么一起回滚。旧实现里 `nodes.update` 单独调用、会话只在内存里，
+ * 刷新一次就丢，重试还会把一次复习算成两次。
+ */
+export interface ReviewSessionRepository {
+  get(id: Id): Promise<ReviewSessionRecord | undefined>
+  /** 项目里未完成的会话（active / paused）；每个项目至多一份 */
+  findOpen(projectId: Id): Promise<ReviewSessionRecord | undefined>
+  /** 项目内全部会话（含已完成 / 已结束），按更新时间倒序 */
+  listByProject(projectId: Id): Promise<ReviewSessionRecord[]>
+  /**
+   * 落库整条会话。
+   * 同一项目已存在**另一份**未完成会话时拒绝写入（返回既有会话）——「每个项目
+   * 至多一份未完成会话」的约束必须落在持久化层，不能只靠按钮禁用。
+   */
+  save(session: ReviewSessionRecord): Promise<ReviewSessionRecord>
+  remove(id: Id): Promise<void>
+  removeByProject(projectId: Id): Promise<void>
+  grade(input: GradeReviewInput): Promise<GradeReviewOutcome>
+  undo(input: UndoReviewInput): Promise<UndoReviewOutcome>
+}
+
 export interface Repositories {
   projects: ProjectRepository
   projectSettings: ProjectSettingsRepository
@@ -84,4 +149,5 @@ export interface Repositories {
   assets: AssetRepository
   notes: NoteRepository
   settings: SettingsRepository
+  reviewSessions: ReviewSessionRepository
 }

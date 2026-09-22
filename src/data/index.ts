@@ -5,13 +5,18 @@ import type { Repositories } from './repository'
 
 export type {
   AssetRepository,
+  GradeReviewInput,
+  GradeReviewOutcome,
   MessageRepository,
   NodeRepository,
   NoteRepository,
   ProjectRepository,
   ProjectSettingsRepository,
   Repositories,
+  ReviewSessionRepository,
   SettingsRepository,
+  UndoReviewInput,
+  UndoReviewOutcome,
 } from './repository'
 export { createSyncLocal, type SyncLocal } from './sync-local'
 

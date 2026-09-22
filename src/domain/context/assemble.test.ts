@@ -91,6 +91,20 @@ describe('assembleContext', () => {
     expect(result.system).not.toContain('全局背景')
   })
 
+  it('injects project name and description when provided', () => {
+    const node = makeNode({ id: 'n1', createdAt: 1 })
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', []]]),
+      projectName: '深入理解计算机系统',
+      projectDescription: '从程序员视角理解底层硬件与系统软件',
+    })
+    expect(result.system).toContain('## 所属学习项目')
+    expect(result.system).toContain('- **名称**：深入理解计算机系统')
+    expect(result.system).toContain('- **描述**：从程序员视角理解底层硬件与系统软件')
+  })
+
   it('resolves image parts to data urls and falls back to a placeholder', () => {
     const node = makeNode({ id: 'n1', createdAt: 1 })
     const message = makeMessage({

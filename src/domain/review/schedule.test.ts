@@ -12,11 +12,12 @@ import {
   isRelearning,
   masteryAfterGrade,
   nextReview,
+  previewGrade,
   retentionOf,
-  reviewStats,
   seedReviewCard,
   startOfDay,
 } from './schedule'
+import { dueCounts } from './enrollment'
 
 const NOW = Date.UTC(2026, 5, 10, 9, 0, 0)
 
@@ -89,25 +90,26 @@ describe('review state machine', () => {
   })
 })
 
-describe('due helpers', () => {
-  it('only counts active, assessed, non-review-center nodes', () => {
+describe('due helpers & dueCounts', () => {
+  it('only counts active, assessed, enrolled non-review-center nodes', () => {
     const assessed = withMastery(topic('a'), 70)
     const bare = topic('b')
     const archived = withMastery(topic('c', { status: 'archived' }), 70)
     const center = withMastery(topic('d', { kind: 'review' }), 70)
 
     const nodes = [assessed, bare, archived, center]
-    const stats = reviewStats(nodes, NOW)
+    const stats = dueCounts(nodes, NOW)
 
     // 从未排过卡的已评估节点视为「立刻要复习」
     expect(isDue(assessed, NOW)).toBe(true)
     expect(isDue(bare, NOW)).toBe(false)
     expect(isDue(archived, NOW)).toBe(false)
     expect(isDue(center, NOW)).toBe(false)
-    expect(stats).toEqual({ due: 1, overdue: 0 })
+    expect(stats.due).toBe(1)
+    expect(stats.overdue).toBe(0)
   })
 
-  it('separates due-today from overdue', () => {
+  it('separates due-today from overdue in dueCounts', () => {
     const today = startOfDay(NOW)
     const dueToday = withMastery(topic('today'), 70)
     dueToday.review = { card: { ...createReviewCard(today), due: today + 60_000 } }
@@ -118,11 +120,22 @@ describe('due helpers', () => {
     expect(isOverdue(dueToday, NOW)).toBe(false)
     expect(isDue(overdue, NOW)).toBe(true)
     expect(isOverdue(overdue, NOW)).toBe(true)
-    expect(reviewStats([dueToday, overdue], NOW)).toEqual({ due: 2, overdue: 1 })
+    const counts = dueCounts([dueToday, overdue], NOW)
+    expect(counts.due).toBe(2)
+    expect(counts.overdue).toBe(1)
   })
 
   it('reports no due date for a node without a card', () => {
     expect(dueAt(withMastery(topic('a'), 70))).toBeNull()
+  })
+})
+
+describe('previewGrade', () => {
+  it('previews next due and score with real scheduler without mutating original', () => {
+    const preview = previewGrade(70, undefined, 'good', NOW)
+    expect(preview.score).toBe(75)
+    expect(preview.due).toBeGreaterThan(NOW)
+    expect(preview.scheduledDays).toBeGreaterThanOrEqual(0)
   })
 })
 

@@ -1,6 +1,7 @@
 import type { Id, Node, ReviewGrade } from '@/domain/models'
 import { buildTreeIndex } from '@/domain/tree/tree'
-import { dueAt, gradeOfScore, isDue, isRelearning, retentionOf, startOfDay } from './schedule'
+import { isDueForReview } from './enrollment'
+import { dueAt, gradeOfScore, isRelearning, retentionOf, startOfDay } from './schedule'
 
 /**
  * 学习快照（digest）：复习中心的上下文来源。
@@ -95,7 +96,7 @@ export function buildStudyDigest(nodes: Node[], options: DigestOptions): StudyDi
       studiedDaysAgo: node.lastStudiedAt === undefined ? null : daysAgo(now, node.lastStudiedAt),
       retention: retentionOf(node, now),
       weakPoints: node.mastery?.weakPoints ?? [],
-      due: isDue(node, now),
+      due: isDueForReview(node, now),
       relearn: isRelearning(node),
     }
   })

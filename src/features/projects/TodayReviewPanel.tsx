@@ -1,12 +1,8 @@
 import { Brain, ChevronRight } from 'lucide-react'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
 import type { Project } from '@/domain/models'
-import { markNotifiedToday, shouldNotifyToday } from '@/lib/daily-notice'
 import { useReviewStore } from '@/stores/review-store'
-
-const NOTICE_KEY = 'today-review'
 
 /**
  * 首页「今日复习」面板：到期 N / 逾期 N，点进对应项目的复习中心。
@@ -21,32 +17,16 @@ export function TodayReviewPanel({ projects }: { projects: Project[] }) {
   const loaded = useReviewStore((state) => state.loaded)
   const load = useReviewStore((state) => state.load)
 
-  // 挂载即刷新、刷新完再判通知：到期数会随着「刚复习完 / 刚生成评估 / 跨天」
-  // 变化，而 store 是全局常驻的（loaded 早就为 true 且不会重置），只靠 loaded
-  // 判断会一直显示上次离开首页时的旧数字、也不会在跨天时重新提示。
-  // 通知的去重交给 daily-notice（每天一次），不依赖「数字变没变」。
+  // 挂载即刷新数据；D11 决定：首页取消重复的到期 toast 弹窗，不反复占用注意力
   useEffect(() => {
-    let cancelled = false
-    void load().then(() => {
-      if (cancelled) return
-      const due = useReviewStore.getState().total.due
-      if (due === 0) return
-      if (!shouldNotifyToday(NOTICE_KEY)) return
-      markNotifiedToday(NOTICE_KEY)
-      toast.info(`今天有 ${due} 个主题到期复习`, {
-        description: '打开项目即可从复习中心开始',
-      })
-    })
-    return () => {
-      cancelled = true
-    }
+    void load()
   }, [load])
 
   if (!loaded || total.due === 0) return null
 
   const nameOf = (projectId: string) =>
     projects.find((project) => project.id === projectId)?.name ?? '已删除的项目'
-  const rows = Object.entries(summaries)
+  const rows = Object.entries(summaries).filter(([, stats]) => stats.due > 0)
 
   return (
     <div className="mt-5 rounded-lg border border-accent/25 bg-accent-soft/20 px-4 py-3.5">
@@ -58,7 +38,7 @@ export function TodayReviewPanel({ projects }: { projects: Project[] }) {
           {total.overdue > 0 ? (
             <>
               {' '}
-              · 逾期 <span className="tabular-nums text-danger">{total.overdue}</span>
+              · 其中逾期 <span className="tabular-nums text-danger">{total.overdue}</span>
             </>
           ) : null}
         </span>
@@ -69,7 +49,7 @@ export function TodayReviewPanel({ projects }: { projects: Project[] }) {
           <li key={projectId}>
             <button
               type="button"
-              onClick={() => navigate(`/p/${projectId}`, { state: { openReviewCenter: true } })}
+              onClick={() => navigate(`/p/${projectId}?view=review`)}
               className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted transition-colors hover:bg-elevated hover:text-ink"
             >
               <span className="min-w-0 flex-1 truncate">{nameOf(projectId)}</span>

@@ -7,9 +7,9 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { Brain, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
+import { Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -23,8 +23,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
 import { FocusChatView } from '@/features/chat/FocusChatView'
 import { cn } from '@/lib/utils'
-import { hasModel } from '@/services/llm/catalog'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
 import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
@@ -32,6 +30,9 @@ import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
 import { StarterPanel } from './StarterPanel'
 import { useDecayClock } from '@/features/chat/useDecayClock'
+import { ReviewWorkspace } from '@/features/review/ReviewWorkspace'
+import { dueCounts } from '@/domain/review/enrollment'
+import { projectVisibleNodes } from '@/domain/review/center'
 
 const nodeTypes = {
   learn: LearnNodeCard,
@@ -71,6 +72,10 @@ export function CanvasPage() {
 function CanvasWorkspace() {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const viewModeQuery = searchParams.get('view')
+  const isReviewMode = viewModeQuery === 'review'
+
   // 外层 Provider 的实例 = 右侧微缩导航地图
   const miniApi = useReactFlow()
   const { fitView } = miniApi
@@ -92,16 +97,17 @@ function CanvasWorkspace() {
   const startRootNode = useWorkspaceStore((state) => state.startRootNode)
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
-  const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
   const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
-  const openReviewCenter = useWorkspaceStore((state) => state.openReviewCenter)
 
-  // 保持率热力图：分钟级时钟，交互抖动不触发额外重算
+  // 保持率热力图：按需开启（默认关闭，保持界面清爽），使用分钟级时钟
+  const [showHeatMap, setShowHeatMap] = useState(false)
   const heatNow = useDecayClock()
 
-  const providers = useSettingsStore((state) => state.settings.providers)
-  const summaryModelRef = useSettingsStore((state) => state.settings.summaryModelRef)
-  const hasSummaryModel = hasModel(providers, summaryModelRef)
+  // 到期数统计：常驻文字入口显示
+  const dueSummary = useMemo(() => dueCounts(nodes, heatNow), [nodes, heatNow])
+
+  // 视图投影：旧复习中心在常规学习树中隐藏，但它的普通后代继续可见
+  const visibleNodes = useMemo(() => projectVisibleNodes(nodes), [nodes])
 
   // 布局状态：右侧地图宽度与折叠状态
   const [mapWidth, setMapWidth] = useState<number>(320)
@@ -149,11 +155,8 @@ function CanvasWorkspace() {
   }, [contextMenu, createRootDialog.open, nodeToDelete])
 
   /**
-   * 首页「今日复习」带 openReviewCenter 进来时，只消费**那一次导航**。
-   *
-   * 按 `location.key` 记账而不是一个布尔 ref：组件在 `/p/a` → `/p/b` 这类
-   * 只换参数的跳转里不会卸载，布尔标记一旦为 true 就会被下一个项目再消费一次
-   * （普通进入也莫名弹出复习中心）。key 唯一标识一条历史记录，消费完即作废。
+   * 首页「今日复习」带 openReviewCenter 进来时，一次性转换为新复习模式：
+   * 自动导航到 ?view=review。
    */
   const wantsReviewCenter = Boolean(
     (location.state as { openReviewCenter?: boolean } | null)?.openReviewCenter,
@@ -161,35 +164,53 @@ function CanvasWorkspace() {
   const navKey = location.key
   const consumedNavKey = useRef<string | null>(null)
 
+  // 模式切换与项目加载解耦：只在 projectId 真正改变时重新 openProject，
+  // 改变查询参数（?view=review&session=...）不能清空工作区！
+  const loadedProjectIdRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (!projectId) return
+    if (loadedProjectIdRef.current === projectId) return
+    loadedProjectIdRef.current = projectId
+
     void openProject(projectId).then(() => {
       if (!wantsReviewCenter || consumedNavKey.current === navKey) return
       consumedNavKey.current = navKey
-      void openReviewCenter()
+      setSearchParams((prev) => {
+        prev.set('view', 'review')
+        return prev
+      })
     })
+
     return () => {
       reset()
+      loadedProjectIdRef.current = null
     }
-  }, [projectId, navKey, wantsReviewCenter, openProject, openReviewCenter, reset])
+  }, [projectId, navKey, wantsReviewCenter, openProject, reset, setSearchParams])
 
-  // 右侧微缩导航地图：始终用点阵紧凑布局
+  // 右侧微缩导航地图：始终用点阵紧凑布局，使用投影后的可见节点（隐藏旧复习中心）
   const miniGraph = useMemo(
-    () => buildGraph(nodes, messagesByNode, selectedNodeId, { miniMapMode: true, now: heatNow }),
-    [nodes, messagesByNode, selectedNodeId, heatNow],
+    () =>
+      buildGraph(visibleNodes, messagesByNode, selectedNodeId, {
+        miniMapMode: true,
+        showHeatMap,
+        now: heatNow,
+      }),
+    [visibleNodes, messagesByNode, selectedNodeId, showHeatMap, heatNow],
   )
 
   // 展开详情画布：卡片形态、复用持久化的节点坐标；未展开时不计算
   const detailGraph = useMemo(
     () =>
       isDetailCanvasOpen
-        ? buildGraph(nodes, messagesByNode, selectedNodeId, {
+        ? buildGraph(visibleNodes, messagesByNode, selectedNodeId, {
             miniMapMode: false,
             summarizingNodeIds,
+            showHeatMap,
             now: heatNow,
           })
         : null,
-    [nodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds, heatNow],
+    [visibleNodes, messagesByNode, selectedNodeId, isDetailCanvasOpen, summarizingNodeIds, showHeatMap, heatNow],
   )
   const detailGeometry = detailGraph ?? EMPTY_GRAPH
 
@@ -286,6 +307,25 @@ function CanvasWorkspace() {
     )
   }
 
+  // 复习工作区模式
+  if (isReviewMode && projectId) {
+    return (
+      <ReviewWorkspace
+        projectId={projectId}
+        onLeave={(target) => {
+          setSearchParams((prev) => {
+            prev.delete('view')
+            prev.delete('session')
+            return prev
+          })
+          if (target?.nodeId) {
+            selectNode(target.nodeId)
+          }
+        }}
+      />
+    )
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-canvas">
       {/* 左侧：主对话舞台（FocusChatView） */}
@@ -367,16 +407,45 @@ function CanvasWorkspace() {
         {/* 顶部极简信息标与操作 */}
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
-            <Tooltip label="复习中心：今日该复习什么">
+            {/* 常驻文字复习入口，带到期数 */}
+            <Tooltip label="进入复习工作区">
               <button
                 type="button"
-                aria-label="复习中心"
-                onClick={() => void openReviewCenter()}
-                className="mr-0.5 rounded-sm p-0.5 text-muted transition-colors hover:text-accent"
+                onClick={() =>
+                  setSearchParams((prev) => {
+                    prev.set('view', 'review')
+                    return prev
+                  })
+                }
+                className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:text-accent font-medium"
               >
-                <Brain className="h-3 w-3" />
+                <Brain className="h-3 w-3 text-accent" />
+                <span>复习</span>
+                {dueSummary.due > 0 ? (
+                  <span className="rounded bg-accent-soft px-1 text-accent tabular-nums">
+                    {dueSummary.due}
+                  </span>
+                ) : null}
               </button>
             </Tooltip>
+
+            <span className="h-3 w-px bg-line/60 mx-0.5" />
+
+            {/* 按需开启的保持率热力图 */}
+            <Tooltip label={showHeatMap ? '关闭记忆热力图' : '开启记忆热力图'}>
+              <button
+                type="button"
+                aria-label="切换记忆热力图"
+                onClick={() => setShowHeatMap((v) => !v)}
+                className={cn(
+                  'rounded-sm p-0.5 transition-colors',
+                  showHeatMap ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink',
+                )}
+              >
+                <Flame className="h-3 w-3" />
+              </button>
+            </Tooltip>
+
             <span className="text-2xs text-muted">{activeCount} 个节点</span>
             <Tooltip label="重新居中">
               <button
@@ -423,13 +492,10 @@ function CanvasWorkspace() {
         <CanvasContextMenu
           menu={contextMenu}
           onClose={() => setContextMenu(null)}
-          hasSummaryModel={hasSummaryModel}
-          summarizingNodeIds={summarizingNodeIds}
           onNodeAction={(kind, nodeId) => {
             selectNode(nodeId)
             void applyAction(kind, nodeId)
           }}
-          onRefreshSummary={(nodeId) => void refreshSummary(nodeId)}
           onArchiveNode={(nodeId) => void archiveNode(nodeId)}
           onDeleteNode={(nodeId) => setNodeToDelete(nodeId)}
           onCreateRootAt={(flowPosition) =>
@@ -568,12 +634,20 @@ function CanvasWorkspace() {
                 size="sm"
                 onClick={() => {
                   setIsDetailCanvasOpen(false)
-                  void openReviewCenter()
+                  setSearchParams((prev) => {
+                    prev.set('view', 'review')
+                    return prev
+                  })
                 }}
                 className="gap-1.5 bg-surface/90 backdrop-blur"
               >
-                <Brain className="h-3.5 w-3.5 text-muted" />
-                复习中心
+                <Brain className="h-3.5 w-3.5 text-accent" />
+                复习工作区
+                {dueSummary.due > 0 ? (
+                  <span className="rounded bg-accent-soft px-1 text-accent text-2xs tabular-nums">
+                    {dueSummary.due}
+                  </span>
+                ) : null}
               </Button>
               <Button
                 variant="secondary"

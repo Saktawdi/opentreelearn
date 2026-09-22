@@ -1,5 +1,7 @@
 import { createDefaultSettings, clampContextBudget } from './defaults'
 import type {
+  AssessmentMeta,
+  AssessmentSource,
   GlobalSettings,
   MasterySnapshot,
   ModelRef,
@@ -166,15 +168,43 @@ export function normalizeMastery(value: unknown): MasterySnapshot | undefined {
 
   const weakPoints = readStringArray(value.weakPoints).slice(0, 3)
 
+  const gradedAt = readOptionalNumber(value.gradedAt)
+
   return {
     score: clampScore(value.score),
     ...(weakPoints.length > 0 ? { weakPoints } : {}),
     updatedAt: readNumber(value.updatedAt, 0),
+    ...(gradedAt !== undefined ? { gradedAt } : {}),
   }
 }
 
 function readOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+const ASSESSMENT_SOURCES: readonly AssessmentSource[] = ['ai', 'review', 'historical']
+
+/**
+ * 学习评估来源的读回归一化。
+ *
+ * 来源认不出来时退化成 `historical`：**不根据分数猜**它是 AI 评估还是复习评分
+ * —— 猜错等于给用户看一段假的依据。时间与指纹缺失一律留空（没有依据就说没有）。
+ */
+export function normalizeAssessmentMeta(value: unknown): AssessmentMeta | undefined {
+  if (!isRecord(value)) return undefined
+  const source = ASSESSMENT_SOURCES.includes(value.source as AssessmentSource)
+    ? (value.source as AssessmentSource)
+    : 'historical'
+  const assessedAt = readOptionalNumber(value.assessedAt)
+  const basedOnStudiedAt = readOptionalNumber(value.basedOnStudiedAt)
+  const basedOnPath = readString(value.basedOnPath)
+
+  return {
+    source,
+    ...(assessedAt !== undefined ? { assessedAt } : {}),
+    ...(basedOnStudiedAt !== undefined ? { basedOnStudiedAt } : {}),
+    ...(basedOnPath ? { basedOnPath } : {}),
+  }
 }
 
 /**
@@ -269,6 +299,10 @@ export function normalizeNode(value: unknown): Node | null {
     kind: value.kind === 'review' ? 'review' : value.kind === 'topic' ? 'topic' : undefined,
     mastery: normalizeMastery(value.mastery),
     review: normalizeReview(value.review),
+    ...(value.reviewEnrollment === 'enabled' || value.reviewEnrollment === 'disabled'
+      ? { reviewEnrollment: value.reviewEnrollment }
+      : {}),
+    assessmentMeta: normalizeAssessmentMeta(value.assessmentMeta),
     lastStudiedAt: readOptionalNumber(value.lastStudiedAt),
     createdAt,
     updatedAt: readNumber(value.updatedAt, createdAt),

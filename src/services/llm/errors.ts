@@ -40,7 +40,7 @@ export function describeLlmError(error: unknown): LlmErrorInfo {
     return {
       kind: 'cors',
       message: '请求被浏览器跨域策略拦截或网络不可达',
-      hint: '本地开发请确认该服务返回了 CORS 头（Access-Control-Allow-Origin）；生产环境应由部署侧反向代理统一域名，避免跨域。',
+      hint: '本应用已把请求改走同源 /api-proxy（开发由 Vite 中间件、生产由 docker/nginx.conf 提供）。若仍报跨域，多半是部署侧缺少这段代理配置：请确认用的新镜像、nginx.conf 已带上 location = /api-proxy。',
     }
   }
 

@@ -2,32 +2,31 @@ import { generateText, type LanguageModel } from 'ai'
 import type { GlobalSettings, ModelRef, ProviderConfig } from '@/domain/models'
 import { ModelResolutionError, findProvider } from './catalog'
 import { effectiveProviderBaseUrl } from './errors'
+import { createLlmProxyFetch } from './proxy'
+
+/** 四个适配包共用：把跨域请求改写成同源 /api-proxy（见 proxy.ts），baseURL 本身保持上游原样。 */
+const proxyFetch = createLlmProxyFetch()
 
 export async function createLanguageModel(
   provider: ProviderConfig,
   modelId: string,
 ): Promise<LanguageModel> {
-  const rawBase = effectiveProviderBaseUrl(provider)
-  // 在开发环境下（import.meta.env.DEV 为 true），如果 baseURL 是远程 http(s) 地址，
-  // 自动通过同源的 /api-proxy/ 路径转发，避免任何浏览器的 CORS 拦截（特别是 SSE 场景）
-  const effectiveBase =
-    import.meta.env.DEV && /^https?:\/\//i.test(rawBase)
-      ? `${window.location.origin}/api-proxy/${rawBase}`
-      : rawBase
-  const baseURL = effectiveBase || undefined
+  const baseURL = effectiveProviderBaseUrl(provider) || undefined
 
   switch (provider.kind) {
     case 'openai': {
       const { createOpenAI } = await import('@ai-sdk/openai')
-      return createOpenAI({ apiKey: provider.apiKey, baseURL })(modelId)
+      return createOpenAI({ apiKey: provider.apiKey, baseURL, fetch: proxyFetch })(modelId)
     }
     case 'anthropic': {
       const { createAnthropic } = await import('@ai-sdk/anthropic')
-      return createAnthropic({ apiKey: provider.apiKey, baseURL })(modelId)
+      return createAnthropic({ apiKey: provider.apiKey, baseURL, fetch: proxyFetch })(modelId)
     }
     case 'google': {
       const { createGoogleGenerativeAI } = await import('@ai-sdk/google')
-      return createGoogleGenerativeAI({ apiKey: provider.apiKey, baseURL })(modelId)
+      return createGoogleGenerativeAI({ apiKey: provider.apiKey, baseURL, fetch: proxyFetch })(
+        modelId,
+      )
     }
     case 'openai-compatible': {
       if (!baseURL) {
@@ -38,6 +37,7 @@ export async function createLanguageModel(
         name: provider.label || 'compatible',
         apiKey: provider.apiKey,
         baseURL,
+        fetch: proxyFetch,
       })(modelId)
     }
   }

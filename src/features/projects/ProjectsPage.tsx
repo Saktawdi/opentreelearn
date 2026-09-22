@@ -51,7 +51,10 @@ export function ProjectsPage() {
     setExportingId(project.id)
     try {
       await exportProjectAsTreeFile(project)
-      toast.success(`已导出「${project.name}」`)
+      // 说明清楚导出的是学习树：本机复习会话（未做完的那一批）不参与导出，也不是完整备份
+      toast.success(`已导出「${project.name}」`, {
+        description: '学习树与对话；本机复习记录不包含在内',
+      })
     } catch (error) {
       toast.error(`导出失败：${errorMessage(error)}`)
     } finally {
@@ -248,8 +251,18 @@ export function ProjectsPage() {
                       ))}
                     </div>
 
-                    <p className="mt-3 border-t border-line pt-2.5 text-xs text-faint">
-                      更新于 {formatRelativeTime(project.updatedAt)}
+                    <p className="mt-3 border-t border-line pt-2.5 text-xs text-faint flex items-center justify-between">
+                      <span>更新于 {formatRelativeTime(project.updatedAt)}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/p/${project.id}?view=review`)
+                        }}
+                        className="text-2xs text-muted hover:text-accent transition-colors"
+                      >
+                        进入复习
+                      </button>
                     </p>
                   </div>
                 ))}

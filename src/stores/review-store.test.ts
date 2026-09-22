@@ -17,6 +17,7 @@ function assessed(id: string, projectId: string, due: number | null): Node {
     position: null,
     status: 'active',
     mastery: { score: 70, updatedAt: NOW },
+    reviewEnrollment: 'enabled',
     createdAt: 1,
     updatedAt: 1,
   }
@@ -35,7 +36,7 @@ beforeEach(async () => {
 })
 
 describe('review store', () => {
-  it('aggregates due and overdue counts per project', async () => {
+  it('aggregates due, overdue, and scheduled counts per project', async () => {
     const yesterday = NOW - 2 * 24 * 60 * 60 * 1000
     await getRepositories().nodes.createMany([
       assessed('p1-due', 'p1', NOW - 60_000),
@@ -48,20 +49,27 @@ describe('review store', () => {
     await useReviewStore.getState().load()
     const state = useReviewStore.getState()
 
-    expect(state.summaries.p1).toEqual({ due: 2, overdue: 1 })
-    expect(state.summaries.p2).toEqual({ due: 2, overdue: 0 })
-    expect(state.total).toEqual({ due: 4, overdue: 1 })
+    expect(state.summaries.p1.due).toBe(2)
+    expect(state.summaries.p1.overdue).toBe(1)
+    expect(state.summaries.p1.scheduled).toBe(1)
+
+    expect(state.summaries.p2.due).toBe(2)
+    expect(state.summaries.p2.overdue).toBe(0)
+
+    expect(state.total.due).toBe(4)
+    expect(state.total.overdue).toBe(1)
+    expect(state.total.scheduled).toBe(1)
   })
 
-  it('reports nothing when there is nothing due', async () => {
+  it('reports 0 due when there are only scheduled items', async () => {
     await getRepositories().nodes.create(
       assessed('future', 'p1', NOW + 24 * 60 * 60 * 1000),
     )
 
     await useReviewStore.getState().load()
 
-    expect(useReviewStore.getState().summaries).toEqual({})
-    expect(useReviewStore.getState().total).toEqual({ due: 0, overdue: 0 })
+    expect(useReviewStore.getState().total.due).toBe(0)
+    expect(useReviewStore.getState().total.scheduled).toBe(1)
   })
 
   it('re-derives on every load, even after it has been loaded once', async () => {
@@ -77,8 +85,8 @@ describe('review store', () => {
     })
     await useReviewStore.getState().load()
 
-    expect(useReviewStore.getState().total).toEqual({ due: 0, overdue: 0 })
-    expect(useReviewStore.getState().summaries).toEqual({})
+    expect(useReviewStore.getState().total.due).toBe(0)
+    expect(useReviewStore.getState().total.scheduled).toBe(1)
     expect(useReviewStore.getState().loaded).toBe(true)
   })
 
@@ -90,6 +98,6 @@ describe('review store', () => {
 
     expect(useReviewStore.getState().loaded).toBe(false)
     expect(useReviewStore.getState().summaries).toEqual({})
-    expect(useReviewStore.getState().total).toEqual({ due: 0, overdue: 0 })
+    expect(useReviewStore.getState().total).toEqual({ due: 0, overdue: 0, scheduled: 0 })
   })
 })
