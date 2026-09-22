@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ArrowRight,
   BookOpen,
   CheckCircle2,
@@ -21,14 +20,12 @@ import { cn } from '@/lib/utils'
 import type { ReviewSessionRecord } from '@/domain/review/session'
 
 interface ReviewOverviewProps {
-  projectName: string
   nodes: Node[]
   hasChatModel: boolean
   activeSession: ReviewSessionRecord | null
   onStartBatch: (items: ReviewQueueItem[]) => void
   onResumeSession: () => void
   onEndActiveSession: () => void
-  onLeave: () => void
   onInspectNodeSource?: (nodeId: Id) => void
   onOpenLegacyHistory?: () => void
   hasLegacyCenters?: boolean
@@ -43,14 +40,12 @@ interface ReviewOverviewProps {
  * - 绝不宣称未经测量的虚假时间（如预计 3 分钟）。
  */
 export function ReviewOverview({
-  projectName,
   nodes,
   hasChatModel,
   activeSession,
   onStartBatch,
   onResumeSession,
   onEndActiveSession,
-  onLeave,
   onInspectNodeSource,
   onOpenLegacyHistory,
   hasLegacyCenters = false,
@@ -108,19 +103,6 @@ export function ReviewOverview({
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-12 max-w-4xl mx-auto w-full">
-      {/* 顶部标题与返回 */}
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onLeave}
-          className="flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-ink"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>返回学习</span>
-        </button>
-        <span className="text-xs text-faint">{projectName} / 复习</span>
-      </div>
-
       {/* 存在未完成会话横幅 */}
       {activeSession && activeProgress && (
         <div className="mb-6 rounded-xl border border-accent/40 bg-accent-soft/30 p-4">

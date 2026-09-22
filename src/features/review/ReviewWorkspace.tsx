@@ -248,7 +248,6 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
             />
           ) : (
             <ReviewOverview
-              projectName={project?.name ?? '项目'}
               nodes={nodes}
               hasChatModel={hasChatModel}
               activeSession={session?.status === 'paused' ? session : null}
@@ -262,7 +261,6 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 }
               }}
               onEndActiveSession={() => void endSession()}
-              onLeave={() => onLeave()}
               onInspectNodeSource={(nodeId) => {
                 setInspectedNodeId(nodeId)
                 setSourceOpen(true)
