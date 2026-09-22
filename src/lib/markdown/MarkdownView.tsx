@@ -1,11 +1,12 @@
 import { Check, Copy } from 'lucide-react'
-import { isValidElement, memo, useEffect, useState, type ReactNode } from 'react'
+import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { highlightCode } from './highlighter'
+import { normalizeDisplayMath } from './math-fences'
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [html, setHtml] = useState<string | null>(null)
@@ -75,6 +76,9 @@ export const MarkdownView = memo(function MarkdownView({
   content: string
   className?: string
 }) {
+  // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
+  const normalized = useMemo(() => normalizeDisplayMath(content), [content])
+
   return (
     <div className={cn('md-body', className)}>
       <ReactMarkdown
@@ -97,7 +101,7 @@ export const MarkdownView = memo(function MarkdownView({
           },
         }}
       >
-        {content}
+        {normalized}
       </ReactMarkdown>
     </div>
   )
