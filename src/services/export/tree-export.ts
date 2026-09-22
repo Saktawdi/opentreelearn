@@ -16,7 +16,7 @@ import { buildTreeIndex, depthOf } from '@/domain/tree/tree'
  *
  * - v1：只有卡片标题、显示路径对话、掌握度分数与复习中心标记；
  * - v2：补上**事实性**复习数据（掌握度快照时间、最近评分时间、计划开关、评估来源）、
- *   分支来源 `forkFrom`、画布坐标、归档标记与笔记。
+ *   分支来源 `forkFrom`、画布坐标、卡片时间（`createdAt` / `updatedAt`）、归档标记与笔记。
  *
  * 排期（`review.card`）与复习会话仍然不导出：`due` 是绝对时间，跨设备/跨时区导入必然
  * 失真；会话是「本机、按账号」的练习记录，不是学习树的一部分。新增字段对只认 v1 的
@@ -54,6 +54,15 @@ export interface RawTreeExportCard {
   messages: RawTreeExportMessage[]
   children: string[]
   depth?: number
+  /**
+   * 节点创建 / 最后更新时间。
+   *
+   * 导出它是因为**时间就是排布**：画布的树布局按 `createdAt` 排列根节点与同级节点，
+   * 导入端要是自己按数组顺序合成时间，整棵树在画布上的左右次序就变了 —— 节点没丢，
+   * 却「跑到别处去了」，看起来就像少了一棵树。
+   */
+  createdAt?: number
+  updatedAt?: number
   position?: [number, number, number]
   /** 归档节点；普通节点不写这个字段（老工具忽略它，仍按活跃卡片读） */
   archived?: true
@@ -167,6 +176,8 @@ export function buildTreeExportData(
       messages: mappedMessages,
       children: childIds,
       depth,
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
     }
 
     if (node.position) {

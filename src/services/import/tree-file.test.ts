@@ -105,6 +105,8 @@ describe('parseTreeJson', () => {
             messages: [{ id: 'm3', role: 'user', content: '二问', timestamp: 200 }],
             children: [],
             archived: true,
+            createdAt: 900,
+            updatedAt: 1000,
             forkFrom: { nodeId: 'c-root', messageId: 'm2' },
             reviewEnrollment: 'enabled',
             mastery: { score: 90, weakPoints: ['易错点'], updatedAt: 1500, gradedAt: 1600 },
@@ -138,7 +140,11 @@ describe('parseTreeJson', () => {
 
     expect(root.position).toEqual({ x: 120, y: 240 })
     expect(root.status).toBe('active')
+    expect(root.createdAt).toBeUndefined()
     expect(child.status).toBe('archived')
+    // 卡片自带的时间要读出来：画布按 createdAt 排布，导入端靠它还原原样
+    expect(child.createdAt).toBe(900)
+    expect(child.updatedAt).toBe(1000)
     expect(child.forkFrom).toEqual({ nodeSourceId: 'c-root', messageSourceId: 'm2' })
     expect(child.reviewEnrollment).toBe('enabled')
     expect(child.mastery?.updatedAt).toBe(1500)

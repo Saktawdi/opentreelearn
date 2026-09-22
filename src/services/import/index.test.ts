@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getDatabase, getRepositories } from '@/data'
+import { computeTreeLayout } from '@/domain/tree/layout'
 import type { ParsedProject } from './tree-file'
 import { importParsedProject } from './index'
 
@@ -183,5 +184,76 @@ describe('importParsedProject', () => {
     expect(note.nodeId).toBe(node.id)
     expect(note.quote).toBe('重点')
     expect(note.body).toBe('这个是考点')
+  })
+
+  it('keeps the file’s own creation times so the canvas order survives the import', async () => {
+    const { project } = await importParsedProject(
+      makeParsed([
+        // 数组顺序与真实创建时间相反 —— 位置只认时间，不认数组下标
+        {
+          sourceId: 'newer',
+          title: '第四天学习笔记',
+          parentSourceId: null,
+          status: 'active',
+          createdAt: 9_000,
+          updatedAt: 9_500,
+          messages: [{ role: 'user', content: '第四天', createdAt: 9_000 }],
+        },
+        {
+          sourceId: 'older',
+          title: 'Day3学习笔记',
+          parentSourceId: null,
+          status: 'active',
+          createdAt: 3_000,
+          updatedAt: 3_000,
+          messages: [{ role: 'user', content: '第三天', createdAt: 3_000 }],
+        },
+      ]),
+    )
+
+    const nodes = await getRepositories().nodes.listByProject(project.id)
+    const older = nodes.find((node) => node.title === 'Day3学习笔记')!
+    const newer = nodes.find((node) => node.title === '第四天学习笔记')!
+
+    expect(older.createdAt).toBe(3_000)
+    expect(newer.createdAt).toBe(9_000)
+    expect(newer.updatedAt).toBe(9_500)
+
+    // 画布的树布局按 createdAt 排根节点与同级节点：先建的那棵仍在左边，
+    // 否则节点没丢却换了地方，用户会当成「整棵树不见了」
+    const { positions } = computeTreeLayout(nodes)
+    expect(positions.get(older.id)!.x).toBeLessThan(positions.get(newer.id)!.x)
+  })
+
+  it('falls back to the earliest message time when the file has no card timestamps', async () => {
+    // v1 与外部工具的文件没有卡片时间戳：按首条消息定先后，而不是按数组顺序
+    const { project } = await importParsedProject(
+      makeParsed([
+        {
+          sourceId: 'late',
+          title: '后来的树',
+          parentSourceId: null,
+          status: 'active',
+          messages: [{ role: 'user', content: '晚', createdAt: 8_000 }],
+        },
+        {
+          sourceId: 'early',
+          title: '先建的树',
+          parentSourceId: null,
+          status: 'active',
+          messages: [{ role: 'user', content: '早', createdAt: 2_000 }],
+        },
+      ]),
+    )
+
+    const nodes = await getRepositories().nodes.listByProject(project.id)
+    const early = nodes.find((node) => node.title === '先建的树')!
+    const late = nodes.find((node) => node.title === '后来的树')!
+
+    expect(early.createdAt).toBe(2_000)
+    expect(late.createdAt).toBe(8_000)
+
+    const { positions } = computeTreeLayout(nodes)
+    expect(positions.get(early.id)!.x).toBeLessThan(positions.get(late.id)!.x)
   })
 })

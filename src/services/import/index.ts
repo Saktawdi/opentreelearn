@@ -26,6 +26,20 @@ function importedLastStudiedAt(card: ParsedCard, masteryAt: number): number | un
   return card.mastery ? masteryAt : undefined
 }
 
+/**
+ * 文件里最早的一条消息时间 —— 老文件（v1 / 外部工具）没有卡片自己的时间戳时的降级依据。
+ *
+ * 节点总是「先有节点、后有对话」，所以首条消息时间只比真实创建时间晚一点；
+ * 用来还原节点之间的先后顺序足够了。
+ */
+function earliestMessageAt(card: ParsedCard): number | undefined {
+  let earliest: number | undefined
+  for (const message of card.messages) {
+    if (earliest === undefined || message.createdAt < earliest) earliest = message.createdAt
+  }
+  return earliest
+}
+
 export async function importParsedProject(parsed: ParsedProject): Promise<ImportResult> {
   const db = getDatabase()
   const repositories = getRepositories()
@@ -60,7 +74,12 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
 
   const baseOrderTime = project.createdAt
   const nodes: Node[] = parsed.cards.map((card, index) => {
-    const masteryAt = baseOrderTime + index
+    // **时间就是位置**：画布的树布局按 createdAt 排列根节点与同级节点。若按数组下标合成时间，
+    // 导入后的左右次序与文件里的次序就不一定一致 —— 节点一个没少，却在画布上换了地方，
+    // 用户会当成「整棵树不见了」。所以：文件带的真实时间 > 最早一条消息的时间 > 数组顺序兜底。
+    const createdAt = card.createdAt ?? earliestMessageAt(card) ?? baseOrderTime + index
+    const updatedAt = card.updatedAt ?? createdAt
+    const masteryAt = createdAt
     const lastStudiedAt = importedLastStudiedAt(card, masteryAt)
     const forkFrom = resolveFork(card, nodeIdMap, messageIdMap)
     return {
@@ -94,8 +113,8 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
           }
         : {}),
       ...(lastStudiedAt === undefined ? {} : { lastStudiedAt }),
-      createdAt: masteryAt,
-      updatedAt: masteryAt,
+      createdAt,
+      updatedAt,
     }
   })
 

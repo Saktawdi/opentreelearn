@@ -27,6 +27,9 @@ const rawCardSchema = z.object({
   messages: z.array(rawMessageSchema).optional(),
   children: z.array(z.string()).optional(),
   depth: z.coerce.number().optional(),
+  /** v2：节点真实时间；缺省（v1 / 外部文件）由导入端按消息时间或数组顺序兜底 */
+  createdAt: z.coerce.number().optional(),
+  updatedAt: z.coerce.number().optional(),
   /** 画布坐标 [x, y, z]；v1 文件也写过，只是以前的解析端没读 */
   position: z.array(z.coerce.number()).optional(),
   /** v2：归档标记 */
@@ -110,6 +113,9 @@ export interface ParsedCard {
   messages: ParsedMessage[]
   contextSeed?: string[]
   status: NodeStatus
+  /** 真实的创建 / 更新时间；缺省时导入端按最早消息时间兜底 —— 画布按它排布 */
+  createdAt?: number
+  updatedAt?: number
   position?: { x: number; y: number }
   /** 复习中心标记（`.tree` 里有 kind: 'review' 时） */
   kind?: 'review'
@@ -388,6 +394,8 @@ export function parseTreeJson(rawJson: unknown, fallbackName = '未命名项目'
     const position = readPosition(card.position)
     const reviewEnrollment = readEnrollment(card.reviewEnrollment)
     const assessmentMeta = readAssessmentMeta(card.assessmentMeta)
+    const createdAt = readTime(card.createdAt)
+    const updatedAt = readTime(card.updatedAt)
 
     return {
       sourceId: card.id,
@@ -396,6 +404,8 @@ export function parseTreeJson(rawJson: unknown, fallbackName = '未命名项目'
       messages,
       contextSeed: seedSet.size > 0 ? Array.from(seedSet).slice(0, 8) : undefined,
       status: card.archived === true ? 'archived' : 'active',
+      ...(createdAt !== undefined ? { createdAt } : {}),
+      ...(updatedAt !== undefined ? { updatedAt } : {}),
       ...(position ? { position } : {}),
       kind: card.kind === 'review' ? 'review' : undefined,
       mastery,

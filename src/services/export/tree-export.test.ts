@@ -92,6 +92,9 @@ describe('tree-export', () => {
     expect(rootCard.title).toBe('极限与连续')
     expect(rootCard.children).toEqual(['n-child1', 'n-archived'])
     expect(rootCard.position).toEqual([100, 200, 0])
+    // 卡片时间必须跟着走：画布按 createdAt 排布，导入端没它就只能自己合成
+    expect(rootCard.createdAt).toBe(1000)
+    expect(childCard.createdAt).toBe(1100)
     expect(rootCard.messages.length).toBe(2)
     expect(rootCard.messages[0].role).toBe('user')
     expect(rootCard.messages[1].role).toBe('ai')
@@ -112,6 +115,7 @@ describe('tree-export', () => {
     const reparsedChild = reparsed.cards.find((c) => c.sourceId === 'n-child1')!
     expect(reparsedChild.parentSourceId).toBe('n-root')
     expect(reparsedChild.contextSeed).toEqual(['引用前文极限知识'])
+    expect(reparsedChild.createdAt).toBe(1100)
     expect(reparsed.cards.find((c) => c.sourceId === 'n-archived')?.status).toBe('archived')
   })
 
