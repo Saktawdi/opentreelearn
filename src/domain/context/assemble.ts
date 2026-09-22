@@ -20,6 +20,8 @@ export interface AssembleInput {
   nodes: Node[]
   messagesByNode: Map<Id, Message[]>
   assetUrls?: Map<Id, string>
+  projectName?: string
+  projectDescription?: string
   backgroundProfile?: string
   projectBackground?: string
   projectSystemPrompt?: string
@@ -236,6 +238,17 @@ export function assembleContext(input: AssembleInput): AssembleResult {
     const background = input.projectBackground?.trim() || input.backgroundProfile?.trim()
     if (background) {
       sections.push(`## 学习者背景\n${background}`)
+    }
+
+    const projectInfo: string[] = []
+    if (input.projectName?.trim()) {
+      projectInfo.push(`- **名称**：${input.projectName.trim()}`)
+    }
+    if (input.projectDescription?.trim()) {
+      projectInfo.push(`- **描述**：${input.projectDescription.trim()}`)
+    }
+    if (projectInfo.length > 0) {
+      sections.push(`## 所属学习项目\n${projectInfo.join('\n')}`)
     }
 
     const projectPrompt = input.projectSystemPrompt?.trim()

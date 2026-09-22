@@ -666,9 +666,11 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   await getRepositories().reviewSessions.save(session)
 
   // 读取当前需要的节点和前置消息
-  const [nodes, messages] = await Promise.all([
+  const [project, nodes, messages, projectSettings] = await Promise.all([
+    getRepositories().projects.get(projectId),
     getRepositories().nodes.listByProject(projectId),
     getRepositories().messages.listByProject(projectId),
+    getRepositories().projectSettings.get(projectId),
   ])
   const node = nodes.find((n) => n.id === item.nodeId)
   if (!node) {
@@ -687,7 +689,6 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   }
 
   const settings = useSettingsStore.getState().settings
-  const projectSettings = await getRepositories().projectSettings.get(projectId)
 
   const total = session.items.length
   const currentIdx = session.cursor + 1
@@ -696,6 +697,8 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   const result = await runReviewRequest({
     settings,
     projectSettings,
+    projectName: project?.name,
+    projectDescription: project?.description,
     node,
     nodes,
     messagesByNode,

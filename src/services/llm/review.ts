@@ -27,6 +27,8 @@ import type { GlobalSettings } from '@/domain/models'
 export interface ReviewRequestInput {
   settings: GlobalSettings
   projectSettings?: ProjectSettings | null
+  projectName?: string
+  projectDescription?: string
   node: Node
   nodes: Node[]
   messagesByNode: Map<Id, Message[]>
@@ -144,6 +146,8 @@ export async function runReviewRequest(
     purpose: input.purpose,
     material,
     history,
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
     backgroundProfile: input.settings.backgroundProfile,
     projectBackground: input.projectSettings?.backgroundProfile,
     projectSystemPrompt: input.projectSettings?.systemPrompt,

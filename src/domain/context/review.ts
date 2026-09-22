@@ -197,6 +197,8 @@ export interface ReviewContextInput {
   material: ReviewMaterial
   /** 本项已经产生的消息（题目、提示、学习者回答…），按时间顺序 */
   history: ReviewContextMessage[]
+  projectName?: string
+  projectDescription?: string
   backgroundProfile?: string
   projectBackground?: string
   projectSystemPrompt?: string
@@ -218,6 +220,17 @@ export function assembleReviewContext(input: ReviewContextInput): ReviewContext 
 
   const background = input.projectBackground?.trim() || input.backgroundProfile?.trim()
   if (background) sections.push(`## 学习者背景\n${background}`)
+
+  const projectInfo: string[] = []
+  if (input.projectName?.trim()) {
+    projectInfo.push(`- **名称**：${input.projectName.trim()}`)
+  }
+  if (input.projectDescription?.trim()) {
+    projectInfo.push(`- **描述**：${input.projectDescription.trim()}`)
+  }
+  if (projectInfo.length > 0) {
+    sections.push(`## 所属学习项目\n${projectInfo.join('\n')}`)
+  }
 
   const projectPrompt = input.projectSystemPrompt?.trim()
   if (projectPrompt) sections.push(`## 项目要求\n${projectPrompt}`)

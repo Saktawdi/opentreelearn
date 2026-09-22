@@ -941,6 +941,8 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
     nodes,
     messagesByNode,
     assetUrls,
+    projectName: state.project?.name,
+    projectDescription: state.project?.description,
     backgroundProfile: settings.backgroundProfile,
     projectBackground: projectSettings?.backgroundProfile,
     projectSystemPrompt: projectSettings?.systemPrompt,

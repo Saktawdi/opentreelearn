@@ -77,6 +77,22 @@ describe('review context & material assembly', () => {
     expect(followupCtx.system).toContain('[[rating:again|hard|good|easy]]')
   })
 
+  it('injects project name and description when provided', () => {
+    const node: Node = makeNode({ id: 'n1', title: '正交投影' })
+    const material = { text: '## 资料', versionId: 'v1', truncated: false }
+    const ctx = assembleReviewContext({
+      node,
+      purpose: 'question',
+      material,
+      history: [],
+      projectName: '高等代数',
+      projectDescription: '线性空间与二次型精要',
+    })
+    expect(ctx.system).toContain('## 所属学习项目')
+    expect(ctx.system).toContain('- **名称**：高等代数')
+    expect(ctx.system).toContain('- **描述**：线性空间与二次型精要')
+  })
+
   it('formats topicPathLabel accurately', () => {
     const root = makeNode({ id: 'r', title: '高等代数' })
     const sub = makeNode({ id: 's', parentId: 'r', title: '向量空间' })
