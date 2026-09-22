@@ -334,6 +334,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 - 云同步：服务端 P1 已就绪（`server/`），客户端接入见 13.3。
 - 项目导出（Markdown / JSON）、全局检索、节点合并与引用
 - 首屏进一步瘦身：Markdown 渲染栈按需加载、KaTeX 字体子集化
+- LLM 工具调用（对话途中调用工具：跨节点检索、AI 建节点等）—— 设计方案见 [llm-tool-calling.md](./llm-tool-calling.md)，状态：设计稿，未实现
 
 ## 13. 账号与同步
 
