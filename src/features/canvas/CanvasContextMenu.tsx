@@ -4,7 +4,6 @@ import {
   LayoutGrid,
   Maximize2,
   Plus,
-  RefreshCw,
   RotateCcw,
   Trash2,
   Waypoints,
@@ -19,10 +18,7 @@ export type CanvasContextMenuTarget =
 interface CanvasContextMenuProps {
   menu: CanvasContextMenuTarget | null
   onClose: () => void
-  hasSummaryModel: boolean
-  summarizingNodeIds: string[]
   onNodeAction: (kind: NodeActionKind, nodeId: string) => void
-  onRefreshSummary: (nodeId: string) => void
   onArchiveNode: (nodeId: string) => void
   onDeleteNode: (nodeId: string) => void
   onCreateRootAt: (flowPosition: { x: number; y: number }) => void
@@ -70,10 +66,7 @@ function MenuSeparator() {
 export function CanvasContextMenu({
   menu,
   onClose,
-  hasSummaryModel,
-  summarizingNodeIds,
   onNodeAction,
-  onRefreshSummary,
   onArchiveNode,
   onDeleteNode,
   onCreateRootAt,
@@ -154,24 +147,6 @@ export function CanvasContextMenu({
             label="从最新消息发散"
             onClick={() => {
               onNodeAction('diverge', menu.nodeId)
-              onClose()
-            }}
-          />
-          <MenuSeparator />
-          <MenuItem
-            icon={
-              <RefreshCw
-                className={
-                  summarizingNodeIds.includes(menu.nodeId)
-                    ? 'h-3.5 w-3.5 animate-spin'
-                    : 'h-3.5 w-3.5'
-                }
-              />
-            }
-            label={summarizingNodeIds.includes(menu.nodeId) ? '正在生成摘要…' : '生成学习摘要'}
-            disabled={!hasSummaryModel || summarizingNodeIds.includes(menu.nodeId)}
-            onClick={() => {
-              onRefreshSummary(menu.nodeId)
               onClose()
             }}
           />

@@ -38,7 +38,7 @@ interface EntityAdapter {
 export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<void> {
   await db.transaction(
     'rw',
-    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes],
+    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes, db.reviewSessions],
     async () => {
       await db.projects.delete(projectId)
       await db.projectSettings.delete(projectId)
@@ -46,6 +46,8 @@ export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<
       await db.messages.where('projectId').equals(projectId).delete()
       await db.assets.where('projectId').equals(projectId).delete()
       await db.notes.where('projectId').equals(projectId).delete()
+      // 复习会话只存在本机：项目没了，参考它的进度与草稿也没有意义
+      await db.reviewSessions.where('projectId').equals(projectId).delete()
     },
   )
 }
@@ -140,6 +142,25 @@ export async function importRecordsInto(
       await (targetTable as { bulkPut(values: unknown[]): Promise<unknown> }).bulkPut(rows)
       count += rows.length
     }
+  }
+
+  // 复习会话是纯本机数据：一起搬过去，但**不进 outbox**（没有对应的云同步实体）。
+  // 同一项目在目标库里已有未完成会话时保留两份内容，把较早的那份转 ended ——
+  // 静默丢弃用户刚才的进度，或者让两份未完成会话并行写排期，都是更糟的选择。
+  const sessions = await source.reviewSessions.toArray()
+  if (sessions.length > 0) {
+    const openByProject = new Map<Id, number>()
+    for (const row of sessions) {
+      if (row.open === 1) openByProject.set(row.projectId, (openByProject.get(row.projectId) ?? 0) + 1)
+    }
+    const migrated = sessions.map((row) => {
+      if (row.open !== 1) return row
+      if ((openByProject.get(row.projectId) ?? 0) <= 1) return row
+      openByProject.set(row.projectId, (openByProject.get(row.projectId) ?? 1) - 1)
+      return { ...row, status: 'ended' as const, finishedAt: row.finishedAt ?? Date.now(), open: 0 as const }
+    })
+    await target.reviewSessions.bulkPut(migrated)
+    count += migrated.length
   }
 
   const sourceSettings = await source.settings.get(SETTINGS_KEY)
@@ -321,7 +342,16 @@ export function createSyncLocal(db: AppDatabase) {
     async clearLocalData(): Promise<void> {
       await db.transaction(
         'rw',
-        [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes, db.outbox],
+        [
+          db.projects,
+          db.projectSettings,
+          db.nodes,
+          db.messages,
+          db.assets,
+          db.notes,
+          db.outbox,
+          db.reviewSessions,
+        ],
         async () => {
           await Promise.all([
             db.projects.clear(),
@@ -331,6 +361,8 @@ export function createSyncLocal(db: AppDatabase) {
             db.assets.clear(),
             db.notes.clear(),
             db.outbox.clear(),
+            // 「以云端为准」= 本机被清空重拉；会话不参与同步，留下就成了孤儿
+            db.reviewSessions.clear(),
           ])
         },
       )

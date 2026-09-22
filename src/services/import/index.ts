@@ -1,6 +1,5 @@
 import { getDatabase, getRepositories } from '@/data'
 import type { Message, Node, Project } from '@/domain/models'
-import { seedReviewCard } from '@/domain/review/schedule'
 import { newId } from '@/lib/id'
 import { parseTreeFileText, type ParsedCard, type ParsedProject } from './tree-file'
 
@@ -59,8 +58,8 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
       position: null,
       status: 'active',
       ...(card.kind === 'review' ? { kind: 'review' as const } : {}),
-      // 导入的掌握度按档位种一张卡（导入时刻起排期），跟应用内首次评估一致；
-      // .tree 不携带复习排期本身
+      // D10 / 8.2：新导入 .tree 保留学习内容与参考掌握度，显式写 reviewEnrollment: 'disabled'，
+      // 绝不自动种卡、不自动初始化用户计划，防止刚导入就堆积虚假逾期。
       ...(card.mastery
         ? {
             mastery: {
@@ -68,7 +67,12 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
               weakPoints: card.mastery.weakPoints,
               updatedAt: masteryAt,
             },
-            review: seedReviewCard(card.mastery.score, masteryAt),
+            reviewEnrollment: 'disabled' as const,
+            assessmentMeta: {
+              assessedAt: masteryAt,
+              basedOnStudiedAt: lastStudiedAt,
+              source: 'historical' as const,
+            },
           }
         : {}),
       ...(lastStudiedAt === undefined ? {} : { lastStudiedAt }),

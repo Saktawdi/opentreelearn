@@ -17,6 +17,7 @@ import type {
 } from '@/data/repository'
 import { createSyncLocal, purgeProjectRows, type SyncLocal } from '../sync-local'
 import { SETTINGS_KEY, type AppDatabase } from './db'
+import { createReviewSessionRepository } from './review-sessions'
 
 function createProjectRepository(db: AppDatabase, sync: SyncLocal): ProjectRepository {
   return {
@@ -208,6 +209,7 @@ export function createDexieRepositories(db: AppDatabase): Repositories {
     assets: createAssetRepository(db),
     notes: createNoteRepository(db, sync),
     settings: createSettingsRepository(db, sync),
+    reviewSessions: createReviewSessionRepository(db),
   }
 }
 
@@ -226,6 +228,7 @@ export async function purgeProject(db: AppDatabase, projectId: Id): Promise<void
   await purgeProjectRows(db, projectId)
 
   const sync = createSyncLocal(db)
+  // 复习会话是本机数据（不同步），删除项目时一并清掉，不留孤儿记录
   if (project) await sync.recordChange('project', projectId, 'delete')
   await sync.recordChange('projectSettings', projectId, 'delete')
   for (const id of nodes) await sync.recordChange('node', id, 'delete')

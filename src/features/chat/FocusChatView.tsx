@@ -41,9 +41,7 @@ import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
-import { ReviewCenterPanel } from '@/features/review/ReviewCenterPanel'
-import { ReviewNudge } from '@/features/review/ReviewNudge'
-import { ReviewSessionBar } from '@/features/review/ReviewSessionBar'
+import { LearningStatusDialog } from '@/features/review/LearningStatusDialog'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { SelectionMenu } from './SelectionMenu'
@@ -67,6 +65,8 @@ export function FocusChatView({
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
+  const enrollInReview = useWorkspaceStore((state) => state.enrollInReview)
+  const unenrollFromReview = useWorkspaceStore((state) => state.unenrollFromReview)
   const isSummarizing = useWorkspaceStore((state) =>
     state.summarizingNodeIds.includes(nodeId),
   )
@@ -80,6 +80,7 @@ export function FocusChatView({
   const [renaming, setRenaming] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const composerRef = useRef<ComposerHandle>(null)
 
   // 祖先路径链路（面包屑）
@@ -172,13 +173,12 @@ export function FocusChatView({
             </button>
           )}
 
-          {/* 掌握度：有分数就显示（过期时弱化），没有分数就给一条轻提示引导生成。
-              复习中心是元数据节点，没有可评估的学习内容，不显示它 */}
+          {/* 掌握度：点击只打开详情，明确不调用 LLM，不改排期 */}
           {node.kind !== 'review' ? (
             <MasteryIndicator
               nodeId={node.id}
-              hasSummaryModel={hasSummaryModel}
               summarizing={isSummarizing}
+              onClick={() => setStatusDialogOpen(true)}
             />
           ) : null}
         </div>
@@ -265,15 +265,10 @@ export function FocusChatView({
 
       {/* 沉浸对话主舞台（完全铺满容器宽度） */}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
-        {node.kind === 'review' ? <ReviewCenterPanel /> : null}
         <MessageList nodeId={node.id} />
 
         {hasChatModel ? (
           <>
-            {/* 复习会话进行中、且当前正好轮到这个节点时，贴一条评分浮条 */}
-            <ReviewSessionBar nodeId={node.id} />
-            {/* 刚学完 + 有到期旧节点 ⇒ 顺手复习一下 */}
-            {node.kind !== 'review' ? <ReviewNudge nodeId={node.id} /> : null}
             <Composer
               key={node.id}
               ref={composerRef}
@@ -299,6 +294,26 @@ export function FocusChatView({
           </div>
         )}
       </div>
+
+      {/* 学习状态与复习详情对话框 */}
+      <LearningStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        node={node}
+        hasSummaryModel={hasSummaryModel}
+        isSummarizing={isSummarizing}
+        onGenerateAssessment={() => refreshSummary(node.id)}
+        onEnrollInReview={() => enrollInReview(node.id)}
+        onUnenrollFromReview={() => unenrollFromReview(node.id)}
+        onStartSingleReview={() => {
+          // 跳转进入复习工作区（通过 URL view=review）
+          const url = new URL(window.location.href)
+          url.searchParams.set('view', 'review')
+          window.history.pushState({}, '', url.toString())
+          // 触发 popstate 让外层监听响应
+          window.dispatchEvent(new PopStateEvent('popstate'))
+        }}
+      />
 
       {/* 删除确认对话框 */}
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
@@ -332,25 +347,21 @@ export function FocusChatView({
 /**
  * 节点头部的掌握度标记。
  *
- * 三种形态：有分数（过期时弱化 + 说明）、没有分数（轻提示引导生成，**不自动调用 LLM**）、
- * 生成中（转圈）。没有分数时不弹窗、不打扰，只是一条可点的提示。
+ * D09：点击只查看详情；只有明确点击「生成 / 更新学习评估」才调用评估模型。
+ * 默认状态文案按分档映射为「待巩固 / 初步理解 / 基本掌握 / 较熟悉」；未评估显示「学习状态」，不显示 0 分。
  */
 function MasteryIndicator({
   nodeId,
-  hasSummaryModel,
   summarizing,
+  onClick,
 }: {
   nodeId: Id
-  hasSummaryModel: boolean
   summarizing: boolean
+  onClick: () => void
 }) {
-  const mastery = useWorkspaceStore(
-    (state) => state.nodes.find((item) => item.id === nodeId)?.mastery,
-  )
-  const lastStudiedAt = useWorkspaceStore(
-    (state) => state.nodes.find((item) => item.id === nodeId)?.lastStudiedAt,
-  )
-  const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
+  const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
+  const mastery = node?.mastery
+  const lastStudiedAt = node?.lastStudiedAt
 
   if (summarizing) {
     return (
@@ -362,16 +373,15 @@ function MasteryIndicator({
   }
 
   if (!mastery) {
-    if (!hasSummaryModel) return null
     return (
-      <Tooltip label="根据这段对话评估掌握度，并给出薄弱点">
+      <Tooltip label="查看学习状态或生成评估">
         <button
           type="button"
-          onClick={() => void refreshSummary(nodeId)}
+          onClick={onClick}
           className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent/50 hover:text-accent"
         >
           <Brain className="h-3 w-3" />
-          还没有掌握度 · 生成评估
+          学习状态
         </button>
       </Tooltip>
     )
@@ -381,18 +391,10 @@ function MasteryIndicator({
   const band = GRADE_BAND_LABEL[gradeOfScore(mastery.score)]
 
   return (
-    <Tooltip
-      label={
-        stale
-          ? '生成评估后又继续学习过，分数可能已过期 —— 重新生成一次评估'
-          : mastery.weakPoints?.length
-            ? `薄弱：${mastery.weakPoints.join('、')}`
-            : `掌握档位：${band}`
-      }
-    >
+    <Tooltip label="点击查看依据、薄弱点与复习计划">
       <button
         type="button"
-        onClick={() => hasSummaryModel && void refreshSummary(nodeId)}
+        onClick={onClick}
         className={cn(
           'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
           stale
@@ -403,7 +405,7 @@ function MasteryIndicator({
         <Brain className="h-3 w-3" />
         <span className="tabular-nums">掌握 {mastery.score}</span>
         <span className="text-faint">· {band}</span>
-        {stale ? <span className="text-faint">· 已过期</span> : null}
+        {stale ? <span className="text-faint">· 有新内容</span> : null}
       </button>
     </Tooltip>
   )

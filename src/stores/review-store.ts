@@ -2,36 +2,35 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { getRepositories } from '@/data'
 import type { Id, Node } from '@/domain/models'
-import { reviewStats, type ReviewDueSummary } from '@/domain/review/schedule'
+import { dueCounts, type DueCounts } from '@/domain/review/enrollment'
 
 /**
- * 跨项目的复习概况：首页「今日复习」面板用。
+ * 跨项目的复习概况：首页「今日复习」面板与项目卡片用。
  *
  * 数据直接从 `nodes.listAll()` 现算，不落库、不进同步 —— 到期数是一个
  * 随时间变化的派生值，存下来只会过期。
  *
- * `loaded` 只表示「是否已经有过一次结果」，**不是节流开关**：它在 store 里
- * 常驻内存，跨组件挂载存活，拿它跳过刷新会让面板一直显示上次离开首页时的
- * 数字（复习完回来还是「到期 3」）。
+ * 统一走 `domain/review/enrollment.ts` 的 `dueCounts`：只有**已加入计划的主题**
+ * 才计入到期，未加入的主题无论有没有掌握度都不算逾期，避免一打开应用就看到假到期。
  */
 interface ReviewState {
   /** projectId -> 该项目的到期 / 逾期数 */
-  summaries: Record<Id, ReviewDueSummary>
+  summaries: Record<Id, DueCounts>
   /** 所有项目合计 */
-  total: ReviewDueSummary
+  total: DueCounts
   loaded: boolean
   /** 读节点现算一次；已加载过也照算（回首页要看到最新数字） */
   load: () => Promise<void>
   reset: () => void
 }
 
-const EMPTY: ReviewDueSummary = { due: 0, overdue: 0 }
+const EMPTY: DueCounts = { due: 0, overdue: 0, scheduled: 0 }
 
 /** 纯计算：按项目分组算到期 / 逾期，抽出便于单测与复用。 */
 export function summarizeByProject(
   nodes: Node[],
   now: number,
-): { summaries: Record<Id, ReviewDueSummary>; total: ReviewDueSummary } {
+): { summaries: Record<Id, DueCounts>; total: DueCounts } {
   const byProject = new Map<Id, Node[]>()
   for (const node of nodes) {
     const bucket = byProject.get(node.projectId)
@@ -42,13 +41,14 @@ export function summarizeByProject(
     }
   }
 
-  const summaries: Record<Id, ReviewDueSummary> = {}
-  const total: ReviewDueSummary = { due: 0, overdue: 0 }
+  const summaries: Record<Id, DueCounts> = {}
+  const total: DueCounts = { due: 0, overdue: 0, scheduled: 0 }
   for (const [projectId, projectNodes] of byProject) {
-    const stats = reviewStats(projectNodes, now)
-    if (stats.due > 0) summaries[projectId] = stats
+    const stats = dueCounts(projectNodes, now)
+    if (stats.due > 0 || stats.scheduled > 0) summaries[projectId] = stats
     total.due += stats.due
     total.overdue += stats.overdue
+    total.scheduled += stats.scheduled
   }
   return { summaries, total }
 }

@@ -30,6 +30,8 @@ export interface LearnNodeData extends Record<string, unknown> {
    * （卡片组件用 `cardRetention` + 下面这个分钟级时钟现算），离屏卡片不参与。
    */
   reviewCard?: ReviewCard
+  /** 是否开启保持率热力高亮；默认关闭，避免花哨 */
+  showHeatMap?: boolean
   /** 分钟级时钟（见 CanvasPage 的 useDecayClock）；保持率现算的基准 */
   now: number
 }
@@ -44,6 +46,8 @@ export interface GraphResult {
 export interface GraphOptions {
   miniMapMode?: boolean
   summarizingNodeIds?: Id[]
+  /** 是否开启热力图着色 */
+  showHeatMap?: boolean
   /**
    * 保持率的计算基准时间。调用方按分钟级节流传进来：保持率随时间连续衰减，
    * 没必要每帧重算（见 CanvasPage 的 useDecayClock）。
@@ -111,6 +115,7 @@ export function buildGraph(
           ? { score: aggregate.score, learned: aggregate.learned, total: aggregate.total }
           : null,
         masteryStale: isMasteryStale(node.mastery, node.lastStudiedAt),
+        showHeatMap: Boolean(options?.showHeatMap),
         ...(node.review ? { reviewCard: node.review.card } : {}),
         now,
       },

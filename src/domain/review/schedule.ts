@@ -19,19 +19,33 @@ export const BAND_GOOD_MAX = 85
 /** 「重新学习」的掌握度上界：低于它说明还没掌握到能复习的程度。 */
 export const RELEARN_MAX_SCORE = 35
 
+/**
+ * 复习评分的用户文案。
+ *
+ * 打磨过的四档措辞：`again` 说「没想起来」而不是「忘了」—— 前者描述这次回忆的
+ * 事实，后者像在评价人；`easy` 说「很熟悉」而不是「太简单」，避免暗示「该加难度」。
+ */
 export const GRADE_ACTION_LABEL: Record<ReviewGrade, string> = {
-  again: '忘了',
-  hard: '吃力',
-  good: '记得',
-  easy: '太简单',
+  again: '没想起来',
+  hard: '有点吃力',
+  good: '基本掌握',
+  easy: '很熟悉',
 }
 
-/** 学习快照里的掌握档位措辞（比按钮文案更书面一点）。 */
+/** 每个档位的一句辅助说明，帮助用户判断该选哪一档。 */
+export const GRADE_HINT_LABEL: Record<ReviewGrade, string> = {
+  again: '需要重新梳理关键点',
+  hard: '能想起一部分，但需要提示',
+  good: '能独立说明主要内容',
+  easy: '能顺畅解释并应用',
+}
+
+/** 节点的学习状态措辞（比评分按钮更书面一点，用于节点头部与详情）。 */
 export const GRADE_BAND_LABEL: Record<ReviewGrade, string> = {
-  again: '生疏',
-  hard: '不熟',
-  good: '掌握',
-  easy: '熟练',
+  again: '待巩固',
+  hard: '初步理解',
+  good: '基本掌握',
+  easy: '较熟悉',
 }
 
 export function clampScore(value: number): number {
@@ -134,21 +148,34 @@ export function retentionOf(node: Node, now: number): number | null {
   return node.review ? cardRetention(node.review.card, now) : null
 }
 
-export interface ReviewDueSummary {
+/** 一次评分的预览结果：掌握度会变成几分、下次安排在哪天。 */
+export interface GradePreview {
+  score: number
   due: number
-  overdue: number
+  /** 距下次复习的天数（不足一天按天显示时是 0）；分钟级安排如实取整为 0 */
+  scheduledDays: number
 }
 
-/** 一批节点的到期 / 逾期统计（首页「今日复习」与复习中心都用它）。 */
-export function reviewStats(nodes: Node[], now: number): ReviewDueSummary {
-  let due = 0
-  let overdue = 0
-  for (const node of nodes) {
-    if (!isDue(node, now)) continue
-    due += 1
-    if (isOverdue(node, now)) overdue += 1
+/**
+ * 档位预览。
+ *
+ * 与真正落库的 `gradeReview` 走**同一个** `masteryAfterGrade` / `nextReview`，
+ * 日期不是「1 / 3 / 7 / 15 天」那种硬编码文案 —— 预览与实际排期对不上，
+ * 用户下次就不会再信这个数字。预览基准（评分前的分数与卡片）由调用方传入，
+ * 与确认时使用的基准一致。
+ */
+export function previewGrade(
+  score: number,
+  review: NodeReview | undefined,
+  grade: ReviewGrade,
+  now: number,
+): GradePreview {
+  const next = nextReview(review, grade, now)
+  return {
+    score: masteryAfterGrade(score, grade),
+    due: next.card.due,
+    scheduledDays: next.card.scheduledDays,
   }
-  return { due, overdue }
 }
 
 /** 保持率热力档位：默认 70% 琥珀、50% 红。 */

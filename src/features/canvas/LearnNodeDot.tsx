@@ -8,8 +8,8 @@ import type { LearnFlowNode } from './graph'
 export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<LearnFlowNode>) {
   const isSelected = data.selected
   const isReviewCenter = data.reviewCenter
-  // 微缩地图也吃热力图：保持率低到阈值时点阵变色，一眼看出哪块快忘了
-  const heat = data.reviewCard ? cardHeat(data.reviewCard, data.now) : 'none'
+  // 微缩地图也吃热力图：只有在开启热力图视图时变色，其余时刻保持整洁的选中态区分
+  const heat = data.reviewCard && data.showHeatMap ? cardHeat(data.reviewCard, data.now) : 'none'
   const tooltipText = isReviewCenter
     ? `${data.title || '复习中心'} · 复习中心`
     : heat === 'none'

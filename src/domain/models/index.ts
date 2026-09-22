@@ -88,9 +88,51 @@ export interface MasterySnapshot {
    * 每次生成文本都会漂移，无法稳定标识一个记忆。
    */
   weakPoints?: string[]
-  /** 快照时间（epoch ms）：之后又继续学习超过阈值就算过期（见 domain/mastery） */
+  /**
+   * **评估快照时间**（epoch ms）：之后又继续学习超过阈值就算过期（见 domain/mastery）。
+   *
+   * 复习评分只改 `score`，不动这个时间 —— 否则「摘要与薄弱点是哪次评估得出的」
+   * 会被一次评分刷成「刚刚评估过」，等于伪造依据（见 AssessmentMeta）。
+   */
   updatedAt: number
+  /** 最近一次**因复习评分**改动分数的时间；从未被评分改过就没有。 */
+  gradedAt?: number
 }
+
+/** 最近一次掌握状态变化来自哪里。 */
+export type AssessmentSource = 'ai' | 'review' | 'historical'
+
+/**
+ * 学习评估的来源与依据。
+ *
+ * 掌握度可能与摘要来自不同时间、不同动作（AI 评估 vs 复习评分），只有分开记账，
+ * 界面才能如实说「这个分数是复习评出来的，摘要还是上次评估的」，而不是把两者
+ * 说成同一个「刚刚更新」。
+ */
+export interface AssessmentMeta {
+  /** 最近一次 AI 学习评估（摘要 + 掌握度）的时间；历史数据没有，此时不声称任何依据 */
+  assessedAt?: number
+  /** 那次评估依据的学习时间（当时的 `lastStudiedAt`），用于判断「评估后有新的学习内容」 */
+  basedOnStudiedAt?: number
+  /**
+   * 那次评估依据的对话版本指纹（可见路径的稳定摘要）。
+   *
+   * 只比时间无法区分「又学了新内容」与「切到了另一个历史版本」：后者学习时间没变，
+   * 但评估针对的确实是另一版对话，界面要另行标注。
+   */
+  basedOnPath?: string
+  /** 最近一次状态变化来自 AI 评估还是用户复习评分；历史数据缺省视为 historical */
+  source: AssessmentSource
+}
+
+/**
+ * 复习计划开关。
+ *
+ * 缺省（老数据、导入数据）由 `domain/review/enrollment` 兼容推导：有掌握度即视为
+ * 已加入 —— 升级不该让已经在复习的主题凭空退出计划。新建节点显式写 `disabled`：
+ * 用户没有明确选择过，就不该开始积累复习任务。
+ */
+export type ReviewEnrollment = 'enabled' | 'disabled'
 
 /** FSRS 卡片状态；与 ts-fsrs 的 State 枚举一一对应，存成字符串免得版本换了数字含义 */
 export type ReviewCardState = 'new' | 'learning' | 'review' | 'relearning'
@@ -148,6 +190,10 @@ export interface Node {
   mastery?: MasterySnapshot
   /** 复习调度状态；有 mastery 的节点在第一次复习后才有 */
   review?: NodeReview
+  /** 复习计划开关；缺省时按「有掌握度即已加入」兼容（见 ReviewEnrollment） */
+  reviewEnrollment?: ReviewEnrollment
+  /** 学习评估的来源与依据；历史数据没有 */
+  assessmentMeta?: AssessmentMeta
   /**
    * 最后学习时间（epoch ms）= 显示路径末条消息的 createdAt。
    *

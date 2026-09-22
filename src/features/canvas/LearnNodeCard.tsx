@@ -21,13 +21,10 @@ const HEAT_STYLES: Record<HeatLevel, { border: string; badge: string }> = {
 }
 
 /**
- * 保持率热力角标：只在有卡片、且确实该提醒时出现（否则又是一堆装饰）。
- *
- * 保持率在**卡片渲染时**用分钟级时钟现算：离屏卡片根本不会渲染（详情画布开了
- * `onlyRenderVisibleElements`），所以「仅可见卡片计算」是自然满足的。
+ * 保持率热力角标：只在有卡片、开启热力视图且确实该提醒时出现（默认保持整洁）。
  */
 function HeatBadge({ data }: { data: LearnFlowNode['data'] }) {
-  if (!data.reviewCard) return null
+  if (!data.reviewCard || !data.showHeatMap) return null
   const heat = cardHeat(data.reviewCard, data.now)
   if (heat === 'none') return null
   const retention = cardRetention(data.reviewCard, data.now)
@@ -93,7 +90,7 @@ function MasteryLine({ data }: { data: LearnFlowNode['data'] }) {
 
 export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
   const hasExcerpt = Boolean(data.excerpt)
-  const heat = data.reviewCard ? HEAT_STYLES[cardHeat(data.reviewCard, data.now)].border : ''
+  const heat = data.reviewCard && data.showHeatMap ? HEAT_STYLES[cardHeat(data.reviewCard, data.now)].border : ''
 
   return (
     <div

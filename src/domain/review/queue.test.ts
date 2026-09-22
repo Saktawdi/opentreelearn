@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Node, ReviewCard } from '@/domain/models'
 import { makeNode } from '@/test/fixtures'
 import { createReviewCard } from './fsrs'
-import { buildReviewQueue, DAILY_REVIEW_CAP } from './queue'
+import {
+  buildReviewQueue,
+  defaultSelection,
+  earlyReviewCandidates,
+  MAX_BATCH_SIZE,
+  pickBatch,
+} from './queue'
 
 const NOW = Date.UTC(2026, 5, 10, 9, 0, 0)
 const DAY = 24 * 60 * 60 * 1000
@@ -12,6 +18,7 @@ interface ScheduledOptions {
   score?: number
   due?: number
   card?: ReviewCard
+  enrollment?: 'enabled' | 'disabled'
 }
 
 /** 造一个已排期的节点：掌握度 + 一张卡，`due` 默认已过期。 */
@@ -22,6 +29,7 @@ function scheduled(id: string, options: ScheduledOptions = {}): Node {
     ...node,
     mastery: { score: options.score ?? 70, updatedAt: NOW },
     review: { card: { ...card, due: options.due ?? NOW - 1000 } },
+    ...(options.enrollment ? { reviewEnrollment: options.enrollment } : {}),
   }
 }
 
@@ -41,17 +49,19 @@ function reviewStateCard(stability: number): ReviewCard {
 }
 
 describe('buildReviewQueue', () => {
-  it('only queues due, assessed, active topic nodes', () => {
+  it('only queues due, assessed, active topic nodes enrolled in review', () => {
     const archived = scheduled('archived')
     archived.status = 'archived'
     const center = scheduled('center')
     center.kind = 'review'
+    const unenrolled = scheduled('unenrolled', { enrollment: 'disabled' })
 
     const nodes = [
       scheduled('due'),
       makeNode({ id: 'unassessed' }),
       archived,
       center,
+      unenrolled,
       scheduled('future', { due: NOW + DAY }),
     ]
 
@@ -85,21 +95,18 @@ describe('buildReviewQueue', () => {
     expect([...ids].sort()).toEqual(['a', 'b', 'c', 'd'])
   })
 
-  it('still returns everything when every item shares one parent', () => {
-    const nodes = [
-      scheduled('a', { parentId: 'p1' }),
-      scheduled('b', { parentId: 'p1' }),
-      scheduled('c', { parentId: 'p1' }),
-    ]
-
-    expect(buildReviewQueue(nodes, NOW)).toHaveLength(3)
-  })
-
-  it('caps the daily queue', () => {
-    const nodes = Array.from({ length: DAILY_REVIEW_CAP + 7 }, (_, index) =>
+  it('does not truncate candidates in the queue but pickBatch limits to MAX_BATCH_SIZE', () => {
+    const nodes = Array.from({ length: 28 }, (_, index) =>
       scheduled(`n${index}`),
     )
-    expect(buildReviewQueue(nodes, NOW)).toHaveLength(DAILY_REVIEW_CAP)
+    const queue = buildReviewQueue(nodes, NOW)
+    expect(queue).toHaveLength(28)
+
+    const batch = pickBatch(queue, 30)
+    expect(batch).toHaveLength(MAX_BATCH_SIZE)
+
+    const def = defaultSelection(queue)
+    expect(def).toHaveLength(3)
   })
 
   it('marks low-mastery and learning-state nodes as relearn', () => {
@@ -117,5 +124,16 @@ describe('buildReviewQueue', () => {
     expect(modes.get('weak')).toBe('relearn')
     expect(modes.get('learning')).toBe('relearn')
     expect(modes.get('strong')).toBe('review')
+  })
+})
+
+describe('earlyReviewCandidates', () => {
+  it('returns enrolled nodes that are not yet due', () => {
+    const dueNode = scheduled('due', { due: NOW - 1000 })
+    const futureNode = scheduled('future', { due: NOW + 10 * DAY, enrollment: 'enabled' })
+    const notEnrolled = scheduled('not-enrolled', { due: NOW + 10 * DAY, enrollment: 'disabled' })
+
+    const result = earlyReviewCandidates([dueNode, futureNode, notEnrolled], NOW)
+    expect(result.map((i) => i.nodeId)).toEqual(['future'])
   })
 })

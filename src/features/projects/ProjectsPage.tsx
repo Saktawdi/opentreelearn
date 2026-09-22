@@ -248,8 +248,18 @@ export function ProjectsPage() {
                       ))}
                     </div>
 
-                    <p className="mt-3 border-t border-line pt-2.5 text-xs text-faint">
-                      更新于 {formatRelativeTime(project.updatedAt)}
+                    <p className="mt-3 border-t border-line pt-2.5 text-xs text-faint flex items-center justify-between">
+                      <span>更新于 {formatRelativeTime(project.updatedAt)}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/p/${project.id}?view=review`)
+                        }}
+                        className="text-2xs text-muted hover:text-accent transition-colors"
+                      >
+                        进入复习
+                      </button>
                     </p>
                   </div>
                 ))}
