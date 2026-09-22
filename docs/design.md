@@ -266,7 +266,7 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 **Store 划分（实现）**：`settings-store`（全局配置）、`projects-store`（项目列表）、`account-store`（账号登录态）、`workspace-store`（当前打开项目的节点 / 消息 / 流式对话 / 选中态）。打开项目的全部状态放在同一个 store，避免「画布要读消息、对话要读节点」造成的跨 store 环形依赖。
 
-**LLM 服务拆分（实现）**：`services/llm/catalog.ts` 只放纯元数据（协议标签、默认地址、模型描述、`hasModel`），不引用任何厂商 SDK；`services/llm/providers.ts` 负责创建 `LanguageModel`，内部**动态 import** 四个厂商适配包。效果：设置页与模型选择器不会把厂商 SDK 打进首屏，只有真正发消息时才按需下载对应适配包。
+**LLM 服务拆分（实现）**：`services/llm/catalog.ts` 只放纯元数据（协议标签、默认地址、模型描述、`hasModel`），不引用任何厂商 SDK；`services/llm/providers.ts` 负责创建 `LanguageModel`，内部**动态 import** 四个厂商适配包。效果：设置页与模型选择器不会把厂商 SDK 打进首屏，只有真正发消息时才按需下载对应适配包。同目录的 `proxy.ts` 定义同源代理契约（路径 `/api-proxy`、目标请求头）并提供自定义 `fetch`，开发与生产各自实现该契约（Vite 中间件 / nginx），前端代码只有这一份。
 
 ## 8. 技术选型
 
@@ -295,10 +295,11 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 ## 10. 已知约束与风险
 
-- **浏览器直连 provider 的 CORS**：部分厂商/自建中转（如 new-api / one-api）未返回 `Access-Control-Allow-Origin`，浏览器会拦截。对策：
-  - 生产环境由部署侧反向代理统一域名，同源访问不产生跨域；
-  - 本地开发需自建站自身返回 CORS 头，或由开发者的反向代理处理；
-  - 错误分类器（`describeLlmError`）递归解析错误链，命中 CORS 时给出明确操作指引。
+- **浏览器直连 provider 的 CORS（已解决）**：部分厂商/自建中转（如 new-api / one-api）只在预检和**错误**响应上带 `Access-Control-Allow-Origin`，**流式回答那条不带** —— 于是出现「上游日志显示成功且有输出、浏览器却抛 `No 'Access-Control-Allow-Origin' header`」，而配置页的「连接测试」（非流式 `generateText`）仍然通过，极具迷惑性。对策是**全部改走同源 `/api-proxy`**，由服务端代为访问上游，浏览器不再参与跨域判定：
+  - 前端：`src/services/llm/proxy.ts` 给四个适配包传自定义 `fetch`，把跨域请求改写为同源地址，真实目标放在请求头 `x-llm-proxy-target`（**不能放查询串**：nginx 的 `$arg_*` 不还原百分号编码，见 `ngx_http_arg` 源码）。`baseURL` 保持上游原样不改写 —— openai 兼容系会做 ``new URL(`${baseURL}${path}`)`` 拼接，混进代理路径会拼出非法地址。本机/内网地址（`localhost`、私网 IP、`.local`、不带点的主机名）仍由浏览器直连，供用户自建推理服务使用。
+  - 开发/预览：`vite.config.ts` 的中间件；生产：`docker/nginx.conf` 的 `location = /api-proxy`（变量形式 `proxy_pass` + `resolver 127.0.0.11`、`proxy_ssl_server_name on` 且校验上游证书、`proxy_buffering off` 保证 SSE 边收边发，并拒掉环回/私网/链路本地目标以免变成内网探测跳板）。
+  - 浏览器请求的路径变了：升级后前后端要一起更新，否则旧产物会打到没配代理的服务端。
+  - 错误分类器（`describeLlmError`）命中跨域时提示「确认部署侧已带 `/api-proxy`」。
 - **数学公式渲染质量**：以 KaTeX 严格模式渲染，`$...$` 与 `$$...$$` 均支持；学术场景下不接受降级为正文字符。
 - **流式渲染性能**：Markdown 全量重解析成本高 → 节流（60ms）+ 流结束后定稿。
 - **自动布局与手动拖拽冲突**：`position` 一旦写入即锁定，须显式「重新布局」才归位。
@@ -397,7 +398,9 @@ server/        同步 BFF（NestJS + Prisma + SQLite）：账号映射 + 增量 
 
 ### 13.4 Docker 部署（已实现）
 
-根目录 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，把 `/lern-api` 同源反代到 `api`）与 `api`（同步服务 + SQLite 命名卷）。api 不发布宿主端口，浏览器走同源路径、不依赖 CORS；容器入口先 `prisma migrate deploy` 再起服务，迁移失败即退出。`GET /api/health`（无鉴权）供 healthcheck 探活，顺带 ping 数据库。`prisma` CLI 因此进了 `dependencies` —— `--prod` 安装也要带上迁移能力；安装用的 pnpm store/cache 在同一构建层里删掉，否则镜像会多出约 350MB。命令、备份与镜像体积见 `server/README.md`。
+根目录 `docker-compose.yml` 起两个容器：`web`（nginx 托管前端 `dist`，把 `/lern-api` 同源反代到 `api`，另提供 `/api-proxy` 转发浏览器发往 LLM 厂商的请求）与 `api`（同步服务 + SQLite 命名卷）。api 不发布宿主端口，浏览器走同源路径、不依赖 CORS；容器入口先 `prisma migrate deploy` 再起服务，迁移失败即退出。`GET /api/health`（无鉴权）供 healthcheck 探活，顺带 ping 数据库。`prisma` CLI 因此进了 `dependencies` —— `--prod` 安装也要带上迁移能力；安装用的 pnpm store/cache 在同一构建层里删掉，否则镜像会多出约 350MB。命令、备份与镜像体积见 `server/README.md`。
+
+`/api-proxy` 是本期新增的、唯一对外且不鉴权的入口，两处细节值得记住：目标地址靠请求头而非查询串传递（nginx `$arg_*` 不做百分号解码）；目标域名由 `resolver 127.0.0.11`（compose 内置 DNS）现场解析，若把 web 镜像单独跑在 compose 之外，需把 `resolver` 换成可用的公网 DNS。上游 TLS 默认开启证书校验（nginx:alpine 自带 ca-certificates），不为了连通性放松；真要接自签证书的自建中转，再加 `proxy_ssl_verify off`。反向代理日志里所有 LLM 请求都显示为来自 web 容器的 `/api-proxy`，排查具体上游要靠 `x-llm-proxy-target`（该头不会转发给上游）。
 
 ## 14. 掌握度与复习调度（T-128 重构）
 
