@@ -1,0 +1,99 @@
+import { beforeEach, afterEach, describe, expect, it } from 'vitest'
+import { MockLanguageModelV3 } from 'ai/test'
+import { streamReply } from './chat'
+
+/**
+ * 中断（abort）不该在浏览器里留下未处理的 promise rejection。
+ *
+ * 背景：`streamText` 会把 `result.usage` 包一层 `.then(() => {})` 交给遥测通道当完成信号，
+ * 而只读 `.catch()` 兜底的是 Node 分支（`openTelemetryChannelSpanContext` 里
+ * `isNodeRuntime()` 为真才走到）。浏览器里这段派生 promise 无人接住：一旦在**第一个 step
+ * 结束前**中断，SDK 会用 `abortSignal.reason` 拒绝全部结果 promise，于是控制台出现
+ * 「Uncaught (in promise) DOMException: The operation was aborted.」。
+ *
+ * 这里把运行环境伪装成浏览器（SDK 判定运行时看的是 `process.release.name`），
+ * 复现该时序并断言不再有未处理的 rejection。
+ */
+
+const realRelease = process.release
+
+function fakeBrowserRuntime(): void {
+  Object.defineProperty(process, 'release', {
+    value: { name: 'vite-browser' },
+    configurable: true,
+  })
+}
+
+function restoreRuntime(): void {
+  Object.defineProperty(process, 'release', { value: realRelease, configurable: true })
+}
+
+/** 上游：响应头已到、一个 chunk 都没吐，被中断时以 signal.reason 结束响应体（真实 fetch 的行为）。 */
+function hangingStream(signal: AbortSignal): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: 'stream-start', warnings: [] })
+    },
+    pull(controller) {
+      return new Promise<void>((resolve) => {
+        const fail = () => {
+          try {
+            controller.error(signal.reason)
+          } catch {
+            // 流已关闭
+          }
+          resolve()
+        }
+        if (signal.aborted) return fail()
+        signal.addEventListener('abort', fail, { once: true })
+      })
+    },
+  })
+}
+
+let unhandled: unknown[] = []
+const collect = (reason: unknown) => {
+  unhandled.push(reason)
+}
+
+beforeEach(() => {
+  unhandled = []
+  fakeBrowserRuntime()
+  process.on('unhandledRejection', collect)
+})
+
+afterEach(() => {
+  process.off('unhandledRejection', collect)
+  restoreRuntime()
+})
+
+describe('streamReply 的中断处理', () => {
+  it('第一个 step 结束前中断，不产生未处理的 rejection', async () => {
+    const controller = new AbortController()
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => ({
+        stream: hangingStream(options.abortSignal ?? controller.signal),
+      }),
+    })
+
+    const pending = streamReply({
+      model,
+      system: '系统提示',
+      messages: [{ role: 'user', content: '你好' }],
+      abortSignal: controller.signal,
+    })
+
+    // 让请求真正挂在上游，再中断：这是「加载即中断 / 点了停止」的时序
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    controller.abort()
+
+    const result = await pending
+    // 中断后要落在「没有正文」的稳定结果上，调用方据此回滚阶段
+    expect(result.text).toBe('')
+    expect(result.usage).toBeUndefined()
+
+    // 未处理的 rejection 在微任务队列排空后才上报
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(unhandled).toEqual([])
+  })
+})

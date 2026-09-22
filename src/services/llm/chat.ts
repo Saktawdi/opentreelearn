@@ -71,6 +71,14 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
     system: params.system,
     messages: params.messages,
     abortSignal: params.abortSignal,
+    // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。
+    // streamText 把 `result.usage.then(() => {})` 当作遥测的「完成信号」，只有 Node 分支
+    // （openTelemetryChannelSpanContext 里 isNodeRuntime() 为真）会顺手 .catch 掉它；
+    // 浏览器里没有接住的人。于是**在第一个 step 结束前中断**时（点了停止、离开复习页、
+    // 同一项被新请求顶掉），SDK 用 abortSignal.reason 拒绝全部结果 promise，控制台就出现
+    // 「Uncaught (in promise) DOMException: The operation was aborted.」——中断是正常操作，
+    // 不该报成未捕获异常。isEnabled: false 时 SDK 根本不建这个完成信号，问题消失。
+    telemetry: { isEnabled: false },
   })
 
   let text = ''
