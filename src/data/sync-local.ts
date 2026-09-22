@@ -10,6 +10,7 @@ import {
   SYNC_STATE_KEY,
   type AppDatabase,
   type OutboxRecord,
+  type ReviewSessionRow,
   type SyncStateRecord,
 } from './dexie/db'
 
@@ -145,20 +146,10 @@ export async function importRecordsInto(
   }
 
   // 复习会话是纯本机数据：一起搬过去，但**不进 outbox**（没有对应的云同步实体）。
-  // 同一项目在目标库里已有未完成会话时保留两份内容，把较早的那份转 ended ——
-  // 静默丢弃用户刚才的进度，或者让两份未完成会话并行写排期，都是更糟的选择。
+  // 「每个项目至多一份未完成会话」这条不变量要在这里一并守住，见 mergeReviewSessions。
   const sessions = await source.reviewSessions.toArray()
   if (sessions.length > 0) {
-    const openByProject = new Map<Id, number>()
-    for (const row of sessions) {
-      if (row.open === 1) openByProject.set(row.projectId, (openByProject.get(row.projectId) ?? 0) + 1)
-    }
-    const migrated = sessions.map((row) => {
-      if (row.open !== 1) return row
-      if ((openByProject.get(row.projectId) ?? 0) <= 1) return row
-      openByProject.set(row.projectId, (openByProject.get(row.projectId) ?? 1) - 1)
-      return { ...row, status: 'ended' as const, finishedAt: row.finishedAt ?? Date.now(), open: 0 as const }
-    })
+    const migrated = await mergeReviewSessions(target, sessions)
     await target.reviewSessions.bulkPut(migrated)
     count += migrated.length
   }
@@ -170,6 +161,65 @@ export async function importRecordsInto(
   }
 
   return count
+}
+
+/**
+ * 把源库的复习会话并入目标库，并守住「每个项目至多一份未完成会话」。
+ *
+ * 目标库里可能本来就有这个项目的未完成会话：这台设备上次登录过、退出到游客态又复习到
+ * 一半，这次再登录合并 —— 两边都是 open。两份并行会各自往同一个节点写排期，`findOpen`
+ * 也只能随机返回其中一份，另一份成了打不开的僵尸进度。
+ *
+ * 做法：按项目把「目标库已有的 + 这次要搬的」放在一起，按最后活动时间倒序，只留最新的
+ * 一份 open，其余转 `ended`（内容全保留，历史仍可查看）。转 ended 的行版本 +1 ——
+ * 仓储的 `save` 见状会拒绝内存里的旧副本覆盖，避免又被改回 active。
+ *
+ * @returns 源库里这些会话该写进目标库的样子（已转 ended 的已就地改好）
+ */
+async function mergeReviewSessions(
+  target: AppDatabase,
+  sessions: ReviewSessionRow[],
+): Promise<ReviewSessionRow[]> {
+  const openByProject = new Map<Id, ReviewSessionRow[]>()
+  for (const row of sessions) {
+    if (row.open !== 1) continue
+    const bucket = openByProject.get(row.projectId)
+    if (bucket) bucket.push(row)
+    else openByProject.set(row.projectId, [row])
+  }
+  if (openByProject.size === 0) return sessions
+
+  const now = Date.now()
+  const close = (row: ReviewSessionRow): ReviewSessionRow => ({
+    ...row,
+    status: 'ended',
+    finishedAt: row.finishedAt ?? now,
+    open: 0,
+    version: row.version + 1,
+  })
+
+  const closedFromSource = new Map<Id, ReviewSessionRow>()
+  const closedInTarget: ReviewSessionRow[] = []
+
+  for (const [projectId, incoming] of openByProject) {
+    const existing = await target.reviewSessions
+      .where('[projectId+open]')
+      .equals([projectId, 1])
+      .toArray()
+
+    const candidates = [
+      ...existing.map((row) => ({ row, incoming: false })),
+      ...incoming.map((row) => ({ row, incoming: true })),
+    ].sort((a, b) => b.row.updatedAt - a.row.updatedAt)
+
+    for (const candidate of candidates.slice(1)) {
+      if (candidate.incoming) closedFromSource.set(candidate.row.id, close(candidate.row))
+      else closedInTarget.push(close(candidate.row))
+    }
+  }
+
+  if (closedInTarget.length > 0) await target.reviewSessions.bulkPut(closedInTarget)
+  return sessions.map((row) => closedFromSource.get(row.id) ?? row)
 }
 
 export function createSyncLocal(db: AppDatabase) {

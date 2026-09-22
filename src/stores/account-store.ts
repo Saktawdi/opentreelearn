@@ -4,6 +4,7 @@ import { errorMessage } from '@/lib/utils'
 import { bindAccountDatabase } from './data-session'
 import {
   AccountApiError,
+  clearAccountIdentity,
   clearAccountToken,
   fetchAccountUser,
   login as requestLogin,
@@ -11,6 +12,7 @@ import {
   readAccountToken,
   refreshAccountToken,
   register as requestRegister,
+  saveAccountIdentity,
   saveAccountToken,
   type AccountUser,
   type LoginInput,
@@ -60,6 +62,7 @@ export const useAccountStore = create<AccountState>()(
       if (!stored) {
         // 没登录：确保回到游客库（首次启动时本来就停在游客库，不会真的切）
         await bindAccountDatabase(null)
+        clearAccountIdentity()
         set((draft) => {
           draft.status = 'anonymous'
           draft.restoreError = null
@@ -75,6 +78,8 @@ export const useAccountStore = create<AccountState>()(
       try {
         const { token, user } = await loadUser(stored)
         saveAccountToken(token)
+        // 账号名与 token 一起留在本机：下次冷启动就能不等网络先绑对库
+        saveAccountIdentity(user.loginName)
         // 换库 + 重载 store 先做完再公布「已登录」：否则界面会先拿到上一个账号的数据
         await bindAccountDatabase(user.loginName ?? null)
         set((draft) => {
@@ -85,6 +90,7 @@ export const useAccountStore = create<AccountState>()(
       } catch (error) {
         if (error instanceof AccountApiError && error.code === 401) {
           clearAccountToken()
+          clearAccountIdentity()
           await bindAccountDatabase(null)
           set((draft) => {
             draft.token = null
@@ -94,7 +100,9 @@ export const useAccountStore = create<AccountState>()(
           return
         }
         // 服务不可用时保留本地 token：可能只是断网，重试或下次进来还能恢复。
+        // token 同时放回内存 —— 库已经按它绑好了，网络恢复后自动同步才有凭据可用。
         set((draft) => {
+          draft.token = stored
           draft.status = 'anonymous'
           draft.restoreError = errorMessage(error)
         })
@@ -105,6 +113,7 @@ export const useAccountStore = create<AccountState>()(
       const token = await requestLogin(input)
       const user = await fetchAccountUser(token)
       saveAccountToken(token)
+      saveAccountIdentity(user.loginName)
       await bindAccountDatabase(user.loginName ?? null)
       set((draft) => {
         draft.token = token
@@ -151,6 +160,7 @@ export const useAccountStore = create<AccountState>()(
         }
       }
       clearAccountToken()
+      clearAccountIdentity()
       // 回到游客库：账号库原样留在浏览器里，下次登录还能用
       await bindAccountDatabase(null)
       set((draft) => {

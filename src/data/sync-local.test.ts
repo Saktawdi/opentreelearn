@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Node, Project } from '@/domain/models'
 import { createDefaultSettings } from '@/domain/defaults'
+import { createReviewSession, type ReviewSessionRecord } from '@/domain/review/session'
 import type { WireChange } from '@/domain/sync'
 import { AppDatabase } from './dexie/db'
 import { createDexieRepositories } from './dexie/repos'
@@ -37,6 +38,21 @@ function remote(change: Partial<WireChange> & Pick<WireChange, 'entity' | 'id'>)
     data: {},
     ...change,
   }
+}
+
+/** 一份未完成（open）会话：`at` 同时决定它的最后活动时间。 */
+function makeSession(projectId: string, nodeId: string, at: number): ReviewSessionRecord {
+  return createReviewSession({
+    projectId,
+    items: [{ nodeId, title: `主题 ${nodeId}`, mode: 'review' }],
+    origin: 'overview',
+    now: at,
+  })
+}
+
+/** 某项目当前未完成的会话（走仓储的索引查询，与实际读路径一致）。 */
+async function openSessions(target: AppDatabase, projectId: string) {
+  return target.reviewSessions.where('[projectId+open]').equals([projectId, 1]).toArray()
 }
 
 beforeEach(async () => {
@@ -258,5 +274,83 @@ describe('首次登录搬运游客数据', () => {
     expect(await sync.readOutbox()).toHaveLength(0)
 
     guest.close()
+  })
+})
+
+describe('复习会话（本机数据）', () => {
+  it('合并本机数据时同项目只留一份未完成会话，较早的转 ended 且内容不丢', async () => {
+    const guest = new AppDatabase(`test-guest-${Math.random().toString(36).slice(2)}`)
+    const guestRepos = createDexieRepositories(guest)
+
+    // 账号库里已经有一份这个项目的未完成会话：上次在这台设备登录时留下的
+    const existing = makeSession('p1', 'n-old', 1)
+    await repositories.reviewSessions.save(existing)
+
+    // 游客库：退出登录期间又复习了一轮（更近的一次活动）
+    const fresh = makeSession('p1', 'n-new', 2)
+    await guestRepos.reviewSessions.save(fresh)
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
+
+    await importRecordsInto(db, guest)
+
+    const open = await openSessions(db, 'p1')
+    expect(open).toHaveLength(1)
+    expect(open[0].id).toBe(fresh.id)
+
+    // 被顶掉的那份转 ended：内容保留（历史可查看），版本 +1 挡住内存里的旧副本复活
+    const closed = await db.reviewSessions.get(existing.id)
+    expect(closed).toMatchObject({ status: 'ended', open: 0, version: existing.version + 1 })
+    expect(closed?.items[0].title).toBe('主题 n-old')
+    expect(closed?.finishedAt).toBeTypeOf('number')
+
+    // 搬运不记账：会话没有云同步实体，写进台账只会推一个服务端不认识的 entity
+    expect(await sync.readOutbox()).toHaveLength(0)
+
+    guest.close()
+  })
+
+  it('三个候选（目标库一份 + 游客库两份）也只留最近的一份 open', async () => {
+    const guest = new AppDatabase(`test-guest-${Math.random().toString(36).slice(2)}`)
+
+    await repositories.reviewSessions.save(makeSession('p1', 'n-in-target', 5))
+    const middle = makeSession('p1', 'n-middle', 7)
+    const newest = makeSession('p1', 'n-newest', 9)
+    // 直接写表而不是走仓储：仓储会拦住「同一个库里两份 open」，而这里要造的正是
+    // 「跨库各自一份 open」在合并时叠成多份的情形（历史脏数据同样长这样）
+    await guest.reviewSessions.bulkPut([
+      { ...middle, open: 1 },
+      { ...newest, open: 1 },
+    ])
+
+    await importRecordsInto(db, guest)
+
+    const open = await openSessions(db, 'p1')
+    expect(open.map((row) => row.id)).toEqual([newest.id])
+    expect((await db.reviewSessions.get(middle.id))?.status).toBe('ended')
+    expect(await db.reviewSessions.count()).toBe(3)
+
+    guest.close()
+  })
+
+  it('「以云端为准」清库时连会话一起清掉', async () => {
+    await repositories.reviewSessions.save(makeSession('p1', 'n1', 1))
+
+    await sync.clearLocalData()
+
+    expect(await db.reviewSessions.count()).toBe(0)
+  })
+
+  it('远端项目 tombstone 级联清掉该项目的会话', async () => {
+    await repositories.projects.create(makeProject('p1'))
+    await repositories.reviewSessions.save(makeSession('p1', 'n1', 1))
+    await repositories.reviewSessions.save(makeSession('p2', 'n2', 1))
+
+    await sync.applyRemote(
+      remote({ entity: 'project', id: 'p1', updatedAt: 200, deletedAt: 200, data: {} }),
+    )
+
+    expect(await openSessions(db, 'p1')).toHaveLength(0)
+    // 别的项目的会话不受影响
+    expect(await openSessions(db, 'p2')).toHaveLength(1)
   })
 })
