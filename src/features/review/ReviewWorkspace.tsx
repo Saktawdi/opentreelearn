@@ -17,6 +17,7 @@ import { ReviewPractice } from './ReviewPractice'
 import { ReviewSummary } from './ReviewSummary'
 import { ReviewSourcePanel } from './ReviewSourcePanel'
 import { LegacyReviewCenterDialog } from './LegacyReviewCenterDialog'
+import { FreeAskPanel } from './FreeAskPanel'
 import { legacyReviewCenters } from '@/domain/review/center'
 
 interface ReviewWorkspaceProps {
@@ -30,6 +31,8 @@ interface ReviewWorkspaceProps {
  * - 顶部骨架稳定：返回学习 / 稍后继续、当前主题、批次进度；
  * - 原资料按需展开：桌面右侧侧边栏、窄屏抽屉；
  * - 刷新、浏览器后退都保留进度与草稿；
+ * - 概览另提供「自由问答」面板：随口问进度（今天学了什么）不必走一遍练习流程，
+ *   问答只在内存里，不写节点、不改排期；
  * - 与学习工作区完全解耦，不创建 kind: 'review' 节点。
  */
 export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
@@ -72,6 +75,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   // 查阅资料的节点 ID（默认为当前练习节点）
   const [inspectedNodeId, setInspectedNodeId] = useState<Id | null>(null)
   const [legacyHistoryOpen, setLegacyHistoryOpen] = useState(false)
+  const [freeAskOpen, setFreeAskOpen] = useState(false)
 
   // 历史复习中心节点列表（兼容旧数据）
   const centerNodes = useMemo(() => legacyReviewCenters(nodes), [nodes])
@@ -265,6 +269,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
               }}
               hasLegacyCenters={centerNodes.length > 0}
               onOpenLegacyHistory={() => setLegacyHistoryOpen(true)}
+              onOpenFreeAsk={() => setFreeAskOpen(true)}
             />
           )}
         </main>
@@ -284,6 +289,14 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
           />
         </div>
       )}
+
+      {/* 自由问答面板：随口问进度用，问答不落库、不写节点 */}
+      <FreeAskPanel
+        open={freeAskOpen}
+        onOpenChange={setFreeAskOpen}
+        projectId={projectId}
+        hasChatModel={hasChatModel}
+      />
 
       {/* 旧复习中心历史记录弹窗 */}
       <LegacyReviewCenterDialog

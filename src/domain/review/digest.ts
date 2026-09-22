@@ -50,8 +50,13 @@ function daysAgo(now: number, timestamp: number): number {
   return Math.max(0, Math.round((startOfDay(now) - startOfDay(timestamp)) / DAY_MS))
 }
 
-/** 按树的顺序（父 → 子，同级按创建时间）深度优先展开，缩进即结构。 */
-function treeOrder(nodes: Node[]): Array<{ node: Node; depth: number }> {
+/**
+ * 按树的顺序（父 → 子，同级按创建时间）深度优先展开，缩进即结构。
+ *
+ * 复习中心的自由问答清单也用这个顺序（`domain/context/free-ask`）：两处的层级
+ * 读法必须一致，否则模型在同一份上下文里会看到两种结构。
+ */
+export function treeOrder(nodes: Node[]): Array<{ node: Node; depth: number }> {
   const index = buildTreeIndex(nodes)
   const ordered: Array<{ node: Node; depth: number }> = []
   const seen = new Set<Id>()

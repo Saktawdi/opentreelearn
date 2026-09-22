@@ -3,6 +3,7 @@ import {
   BookOpen,
   CheckCircle2,
   Play,
+  Sparkles,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Id, Node } from '@/domain/models'
@@ -28,6 +29,8 @@ interface ReviewOverviewProps {
   onEndActiveSession: () => void
   onInspectNodeSource?: (nodeId: Id) => void
   onOpenLegacyHistory?: () => void
+  /** 打开「自由问答」面板：随口问进度的那类问题不进练习流程 */
+  onOpenFreeAsk?: () => void
   hasLegacyCenters?: boolean
 }
 
@@ -48,6 +51,7 @@ export function ReviewOverview({
   onEndActiveSession,
   onInspectNodeSource,
   onOpenLegacyHistory,
+  onOpenFreeAsk,
   hasLegacyCenters = false,
 }: ReviewOverviewProps) {
   const now = useDecayClock()
@@ -127,17 +131,33 @@ export function ReviewOverview({
       )}
 
       {/* 标题说明 */}
-      <div className="mb-6">
-        <h2 className="text-lg font-bold tracking-tight text-ink">
-          {dueQueue.length > 0
-            ? `今天有 ${dueQueue.length} 个主题适合巩固`
-            : '当前没有到期的复习主题'}
-        </h2>
-        <p className="mt-1 text-xs text-muted">
-          {dueQueue.length > 0
-            ? '默认推荐前 3 个开始，你可以根据需要勾选调整。'
-            : '可以查看已加入计划的安排，或选择已学过的主题提前复习。'}
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold tracking-tight text-ink">
+            {dueQueue.length > 0
+              ? `今天有 ${dueQueue.length} 个主题适合巩固`
+              : '当前没有到期的复习主题'}
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            {dueQueue.length > 0
+              ? '默认推荐前 3 个开始，你可以根据需要勾选调整。'
+              : '可以查看已加入计划的安排，或选择已学过的主题提前复习。'}
+          </p>
+        </div>
+
+        {/* 自由问答入口：不需要走一遍练习流程的那类问题（今天学了什么 / 哪些快忘了） */}
+        {onOpenFreeAsk ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onOpenFreeAsk}
+            title="随时问问进度：今天学了什么、哪些主题快忘了（不写入节点、不影响排期）"
+            className="shrink-0 gap-1.5 text-xs"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            自由问答
+          </Button>
+        ) : null}
       </div>
 
       {/* 候选列表 */}
