@@ -74,15 +74,26 @@ export function isLocalOrPrivateUrl(requestUrl: string): boolean {
   return false
 }
 
-/** 厂商 SDK 只会把绝对地址交给自定义 fetch，所以取地址的这种写法不会吞掉 init 里的 body。 */
-function makeRequest(input: RequestInfo | URL, init?: RequestInit): Request {
-  if (input instanceof Request && !init) return input
+/**
+ * 解析请求地址和请求头，但保留 SDK 传进来的原始 body。
+ *
+ * 不要只从 `Request.body` 取 body 再交给下一次 fetch：在部分浏览器/开发代理组合里，这会把
+ * 原本的 JSON 字符串变成一个已经被消费的空流，最终只剩下
+ * `Content-Type: application/json`，上游 Fastify 就会报 FST_ERR_CTP_EMPTY_JSON_BODY。
+ */
+function makeRequest(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): { request: Request; body: BodyInit | null | undefined } {
+  if (input instanceof Request && !init) {
+    return { request: input, body: input.body }
+  }
 
   const merged: RequestInit & { duplex?: 'half' } = { ...init }
   // 流式请求体必须显式声明 half duplex；`duplex` 目前不在 TS 的 DOM 类型里（vite.config.ts 同样处理）
   if (merged.body && !merged.duplex) merged.duplex = 'half'
 
-  return new Request(input, merged)
+  return { request: new Request(input, merged), body: init?.body }
 }
 
 /**
@@ -100,7 +111,7 @@ export function createLlmProxyFetch(): typeof fetch {
     const origin = browserOrigin()
     if (!origin) return fetch(input, init)
 
-    const request = makeRequest(input, init)
+    const { request, body } = makeRequest(input, init)
     const proxyUrl = toProxyRequestUrl(request.url, origin)
     if (proxyUrl === request.url) return fetch(request)
     // 本机 / 局域网推理服务直连（服务端会拒掉私网目标，见 isLocalOrPrivateUrl）
@@ -114,9 +125,10 @@ export function createLlmProxyFetch(): typeof fetch {
     return fetch(proxyUrl, {
       method: request.method,
       headers,
-      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+      // 保留 SDK 原始的 JSON body；request.body 是一次性流，不能作为可靠的中转源。
+      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : body,
       // 请求体走流式透传，需要 half duplex（同上：类型里还没有这个字段）
-      duplex: 'half',
+      duplex: body ? 'half' : undefined,
       signal: request.signal,
     } as RequestInit & { duplex: 'half' })
   }

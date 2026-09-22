@@ -695,4 +695,44 @@ describe('note actions', () => {
     expect(useWorkspaceStore.getState().notesByMessage[messageId]).toBeUndefined()
     expect(await getRepositories().notes.listByProject('p1')).toEqual([])
   })
+
+  it('记录并恢复项目最后打开的节点；失效时自动回退', async () => {
+    const storeMap = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storeMap.get(key) ?? null,
+      setItem: (key: string, value: string) => void storeMap.set(key, value),
+      removeItem: (key: string) => void storeMap.delete(key),
+    })
+
+    try {
+      await seedProject()
+      const n1 = await useWorkspaceStore.getState().startRootNode('节点一')
+      const n2 = await useWorkspaceStore.getState().applyAction('child', n1!.id)
+      const n3 = await useWorkspaceStore.getState().applyAction('diverge', n1!.id)
+
+      expect(useWorkspaceStore.getState().selectedNodeId).toBe(n3!.id)
+      expect(storeMap.get('otl:last-node:p1')).toBe(n3!.id)
+
+      // 用户切换选中到 n1
+      useWorkspaceStore.getState().selectNode(n1!.id)
+      expect(storeMap.get('otl:last-node:p1')).toBe(n1!.id)
+
+      // 重新打开项目，应该恢复到 n1 而不是最新更新的 n3
+      await useWorkspaceStore.getState().openProject('p1')
+      expect(useWorkspaceStore.getState().selectedNodeId).toBe(n1!.id)
+
+      // 删除 n2 时，n1 和 n3 仍存在，删除 n2 后失效记录依然是 n1
+      await useWorkspaceStore.getState().deleteNode(n2!.id)
+      expect(storeMap.get('otl:last-node:p1')).toBe(n1!.id)
+
+      // 删除 n1 时（包含子树），记录的 n1 被清理，再次打开降级到剩下的最新活跃节点 n3
+      await useWorkspaceStore.getState().deleteNode(n1!.id)
+      expect(storeMap.get('otl:last-node:p1')).toBeUndefined()
+
+      await useWorkspaceStore.getState().openProject('p1')
+      expect(useWorkspaceStore.getState().selectedNodeId).toBe(n3!.id)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })

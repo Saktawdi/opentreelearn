@@ -154,4 +154,36 @@ describe('createLlmProxyFetch', () => {
       Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true })
     }
   })
+
+  it('保留 SDK 传入的 JSON 字符串 body，不会只剩 Content-Type', async () => {
+    const calls: { url: string; init: RequestInit }[] = []
+    const originalWindow = globalThis.window
+    const originalFetch = globalThis.fetch
+    Object.defineProperty(globalThis, 'window', {
+      value: { location: { protocol: 'https:', origin: ORIGIN } },
+      configurable: true,
+    })
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init })
+      return new Response('ok')
+    }) as unknown as typeof fetch
+
+    try {
+      const { createLlmProxyFetch } = await import('./proxy')
+      const proxyFetch = createLlmProxyFetch()
+      const body = JSON.stringify({ model: 'gemini-3.8-flash-api', contents: [{ role: 'user' }] })
+      await proxyFetch('https://newapi.sakta.top/v1beta/models:generateContent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      })
+
+      expect(calls).toHaveLength(1)
+      expect(calls[0].init.body).toBe(body)
+      expect(new Headers(calls[0].init.headers).get('content-type')).toBe('application/json')
+    } finally {
+      globalThis.fetch = originalFetch
+      Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true })
+    }
+  })
 })

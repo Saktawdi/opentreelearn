@@ -44,6 +44,11 @@ import {
 import { describeLlmError, formatErrorMessage } from '@/services/llm/errors'
 import { requireModel, resolveModel } from '@/services/llm/providers'
 import { loadAssetUrls } from '@/services/images'
+import {
+  clearLastOpenedNodeId,
+  getLastOpenedNodeId,
+  setLastOpenedNodeId,
+} from '@/lib/last-opened-node'
 import { touchProject } from './projects-store'
 import { useSettingsStore } from './settings-store'
 
@@ -232,9 +237,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return
       }
 
-      // 如果已有活跃节点，默认选中最新更新的节点并进入对话模式；若无节点则展示画布模式
+      // 优先恢复用户上次在本项目中打开的节点；若未记录或节点已失效（删除/归档），降级到最新活跃节点
       const activeNodes = nodes.filter((n) => n.status === 'active')
+      const lastOpenedId = getLastOpenedNodeId(projectId)
+      const rememberedNode = lastOpenedId ? activeNodes.find((n) => n.id === lastOpenedId) : null
       const latestNode = [...activeNodes].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+      const defaultNode = rememberedNode ?? latestNode
+
+      // 如果记录的节点已失效，清理无效记录以保持存储整洁
+      if (lastOpenedId && !rememberedNode) {
+        clearLastOpenedNodeId(projectId)
+      }
 
       set((state) => {
         state.project = project
@@ -242,8 +255,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.nodes = nodes
         state.messagesByNode = groupMessages(messages)
         state.notesByMessage = groupNotes(notes)
-        state.selectedNodeId = latestNode?.id ?? null
-        state.viewMode = latestNode ? 'chat' : 'canvas'
+        state.selectedNodeId = defaultNode?.id ?? null
+        state.viewMode = defaultNode ? 'chat' : 'canvas'
         state.loading = false
       })
     },
@@ -267,6 +280,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
 
     selectNode: (id) => {
+      const projectId = get().projectId
+      if (projectId) {
+        if (id) {
+          setLastOpenedNodeId(projectId, id)
+        } else {
+          clearLastOpenedNodeId(projectId)
+        }
+      }
       set((state) => {
         state.selectedNodeId = id
         if (id) {
@@ -314,6 +335,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       }
 
       await getRepositories().nodes.create(node)
+      setLastOpenedNodeId(projectId, node.id)
       set((state) => {
         state.nodes.push(node)
         state.selectedNodeId = node.id
@@ -345,6 +367,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       })
 
       await getRepositories().nodes.create(node)
+      setLastOpenedNodeId(projectId, node.id)
       set((draft) => {
         draft.nodes.push(node)
         draft.selectedNodeId = node.id
@@ -398,6 +421,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         ),
       )
       const targetSet = new Set(targets)
+      const currentProjectId = get().projectId
+      if (currentProjectId) {
+        const lastOpened = getLastOpenedNodeId(currentProjectId)
+        if (lastOpened && targetSet.has(lastOpened)) {
+          clearLastOpenedNodeId(currentProjectId)
+        }
+      }
       set((state) => {
         for (const node of state.nodes) {
           if (targetSet.has(node.id)) node.status = 'archived'
@@ -444,7 +474,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
       })
 
-      if (projectId) touchProject(projectId)
+      if (projectId) {
+        touchProject(projectId)
+        const lastOpened = getLastOpenedNodeId(projectId)
+        if (lastOpened && targetSet.has(lastOpened)) {
+          clearLastOpenedNodeId(projectId)
+        }
+      }
     },
 
     updateProjectSettings: async (patch) => {

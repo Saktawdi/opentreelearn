@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer'
 import { deleteProjectData, getRepositories } from '@/data'
 import type { Id, Project } from '@/domain/models'
 import { newId } from '@/lib/id'
+import { clearLastOpenedNodeId } from '@/lib/last-opened-node'
 
 export interface CreateProjectInput {
   name: string
@@ -73,6 +74,7 @@ export const useProjectsStore = create<ProjectsState>()(
 
     remove: async (id) => {
       await deleteProjectData(id)
+      clearLastOpenedNodeId(id)
       set((state) => {
         state.projects = state.projects.filter((project) => project.id !== id)
       })
