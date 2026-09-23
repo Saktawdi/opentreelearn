@@ -7,7 +7,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
+import { Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, Sparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -100,6 +100,8 @@ function CanvasWorkspace() {
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
+  const projectSettings = useWorkspaceStore((state) => state.projectSettings)
+  const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
 
   // 保持率热力图：按需开启（默认关闭，保持界面清爽），使用分钟级时钟
   const [showHeatMap, setShowHeatMap] = useState(false)
@@ -207,6 +209,7 @@ function CanvasWorkspace() {
 
   const activeCount = miniGraph.nodes.length
   const isEmpty = activeCount === 0
+  const writeEnabled = projectSettings?.agentWriteEnabled === true
 
   /**
    * 空白项目（一个节点都没有）的落地体验：**进来直接就是展开画布** ——
@@ -720,6 +723,30 @@ function CanvasWorkspace() {
                     <LayoutGrid className="h-3.5 w-3.5 text-muted" />
                     重新布局
                   </Button>
+                  <Tooltip
+                    label={
+                      writeEnabled
+                        ? 'AI 可以在你要求时建节点、改标题、打标签（每次改动都能撤销）'
+                        : 'AI 只能读这棵树。打开后它才能在你要求时改动'
+                    }
+                    side="top"
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      aria-pressed={writeEnabled}
+                      onClick={() =>
+                        void updateProjectSettings({ agentWriteEnabled: !writeEnabled })
+                      }
+                      className={cn(
+                        'gap-1.5 bg-surface/90 backdrop-blur',
+                        writeEnabled ? 'border-accent/40 text-accent' : '',
+                      )}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {writeEnabled ? 'AI 可改树' : 'AI 只读'}
+                    </Button>
+                  </Tooltip>
                   <Button
                     variant="secondary"
                     size="sm"

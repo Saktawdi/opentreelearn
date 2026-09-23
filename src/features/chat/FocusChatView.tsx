@@ -1,16 +1,5 @@
-import {
-  Archive,
-  // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态图标（评估中 / 已评估）
-  Brain,
-  ChevronRight,
-  GitBranch,
-  MoreHorizontal,
-  PanelRightClose,
-  PanelRightOpen,
-  RefreshCw,
-  Trash2,
-  Waypoints,
-} from 'lucide-react'
+import { // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态图标（评估中 / 已评估）
+  Brain, Archive, ChevronRight, GitBranch, MoreHorizontal, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Trash2, Waypoints, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -71,6 +60,9 @@ export function FocusChatView({
     state.summarizingNodeIds.includes(nodeId),
   )
   const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
+  const agentChange = useWorkspaceStore((state) => state.agentChange)
+  const undoAgentChange = useWorkspaceStore((state) => state.undoAgentChange)
+  const dismissAgentChange = useWorkspaceStore((state) => state.dismissAgentChange)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
 
   const providers = useSettingsStore((state) => state.settings.providers)
@@ -266,6 +258,29 @@ export function FocusChatView({
       {/* 沉浸对话主舞台（完全铺满容器宽度） */}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
         <MessageList nodeId={node.id} />
+
+        {/* Agent 刚改动了这棵树：给一条可撤销的提示。只留最近一条 —— 撤销是后悔药，不是操作历史 */}
+        {agentChange ? (
+          <div className="mx-5 mb-2 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-2xs text-ink-soft">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1 truncate">Agent {agentChange.label}</span>
+            <button
+              type="button"
+              onClick={() => void undoAgentChange()}
+              className="shrink-0 rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent transition-colors hover:bg-accent-soft"
+            >
+              撤销
+            </button>
+            <button
+              type="button"
+              aria-label="不再提示"
+              onClick={dismissAgentChange}
+              className="shrink-0 rounded-sm p-0.5 text-faint transition-colors hover:text-ink"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
 
         {hasChatModel ? (
           <>

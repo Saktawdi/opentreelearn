@@ -8,6 +8,7 @@ import {
   treeOutline,
   type ProjectSnapshot,
 } from '@/domain/agent/retrieval'
+import { messageText } from '@/domain/messages'
 import { NOTE_LABEL_MAX } from '@/domain/notes'
 import type { Id } from '@/domain/models'
 
@@ -153,3 +154,133 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
 }
 
 export type ReadOnlyToolSet = ReturnType<typeof buildReadOnlyTools>
+
+/**
+ * 写工具的系统提示：写操作必须「先说再做」且克制。
+ *
+ * 这一段只在用户打开了写开关时才附上 —— 没开写工具却告诉模型「你能建节点」，
+ * 它只会去调一个不存在的工具，或者向你描述它「已经」建好了。
+ */
+export const WRITE_TOOLS_SYSTEM = [
+  '## 改动这棵树的规则',
+  '- 你有建节点、改标题、给某段文字打标签的能力（都可在界面上撤销）。',
+  '- 用户明确要求改动时才动手（例如「帮我拆成三个子节点」「把这题标成错题」）；',
+  '  只是在讨论某个想法时，先问一句要不要真的建。',
+  '- 一次别建太多：拆解最多 3~5 个节点，且标题要短（不超过 16 字）。',
+  '- 改完用一句话说明你动了什么（建了哪些节点、改了什么标题），用户才知道去哪儿看。',
+  '- 你没有删除、归档的能力：这类要求如实说明做不到，并建议用户手动处理。',
+].join('\n')
+
+/** 待执行/已执行的一次树改动：供界面渲染「撤销」入口。 */
+export interface AgentWriteOutcome {
+  /** 给用户看的一句话：做了什么 */
+  label: string
+  nodeId?: Id
+  noteId?: Id
+}
+
+/** 写工具的执行回调：由 store 注入，工具本身不碰存储。 */
+export interface WriteToolHandlers {
+  createNode: (input: {
+    kind: AgentNodeKind
+    title: string
+    seed?: string
+    fromMessageId?: string
+  }) => Promise<AgentWriteOutcome | null>
+  renameNode: (input: { nodeId: string; title: string }) => Promise<AgentWriteOutcome | null>
+  tagSpan: (input: {
+    messageId: string
+    quote: string
+    labels: string[]
+    body?: string
+  }) => Promise<AgentWriteOutcome | null>
+}
+
+/** 可建的节点类型：与三种创建动作一一对应（见设计文档 §3）。 */
+export type AgentNodeKind = 'child' | 'branch' | 'diverge'
+
+/**
+ * 写工具（默认关闭，按项目开关）。
+ *
+ * 只提供**可逆**的三种：建节点、改标题、打标签。归档/删除这类破坏性操作不提供 ——
+ * 让模型删东西的收益远小于它删错的风险。每一次成功的改动都会通过 `handlers` 的
+ * 返回值回到界面，变成一条可撤销的记录。
+ */
+export function buildWriteTools(runtime: ToolRuntime, handlers: WriteToolHandlers) {
+  const snapshot: ProjectSnapshot = {
+    nodes: runtime.nodes,
+    messagesByNode: runtime.messagesByNode,
+    notes: runtime.notes,
+  }
+
+  return {
+    create_node: tool({
+      description:
+        '在学习树里建一个新节点。kind：child = 空白子节点（问一个全新的子问题）；branch = 从某条消息处继承上下文的分支节点；diverge = 与当前节点同级的发散节点。用户说「帮我拆成几个子节点」时用 child。',
+      inputSchema: z.object({
+        kind: z.enum(['child', 'branch', 'diverge']).describe('节点类型，默认 child'),
+        title: z.string().max(40).describe('节点标题，短一些（不超过 16 字最好）'),
+        seed: z
+          .string()
+          .optional()
+          .describe('作为这个节点第一条提问的原文；不填则是一个只有标题的空节点'),
+        fromMessageId: z
+          .string()
+          .optional()
+          .describe('branch / diverge 从哪条消息分出来；省略则用当前节点的最后一条消息'),
+      }),
+      execute: async ({ kind, title, seed, fromMessageId }) => {
+        const outcome = await handlers.createNode({ kind, title, seed, fromMessageId })
+        if (!outcome) return failure('没能建出节点：当前节点或消息可能已经不存在了')
+        return asData({ ok: true, ...outcome })
+      },
+    }),
+
+    rename_node: tool({
+      description: '改一个节点的标题。省略 nodeId 时改当前节点。',
+      inputSchema: z.object({
+        nodeId: z.string().optional().describe('节点 id；省略则改当前节点'),
+        title: z.string().max(40).describe('新标题'),
+      }),
+      execute: async ({ nodeId, title }) => {
+        const target = nodeId ?? runtime.currentNodeId
+        if (!target) return failure('没有指定节点，且当前不在任何节点里')
+        const outcome = await handlers.renameNode({ nodeId: target, title })
+        if (!outcome) return failure('这个节点不存在或已被删除')
+        return asData({ ok: true, ...outcome })
+      },
+    }),
+
+    tag_span: tool({
+      description:
+        '给某条消息里的一段原文打标签（错题 / 没懂 / 关键 / 例题 或自定义），等价于用户自己框选后打标签。需要给出被标原文 quote；正文里出现多次时用 start 指明第几次（省略则取第一处）。',
+      inputSchema: z.object({
+        messageId: z.string().describe('消息 id'),
+        quote: z.string().describe('被标注的原文（必须与正文逐字一致）'),
+        labels: z.array(z.string().max(NOTE_LABEL_MAX)).min(1).describe('标签，至少一个'),
+        body: z.string().optional().describe('可选备注'),
+        start: z.number().int().min(0).optional().describe('被标原文在正文里的起始下标'),
+      }),
+      execute: async ({ messageId, quote, labels, body, start }) => {
+        const message = (snapshot.messagesByNode.get(
+          snapshot.nodes.find((node) => node.id === runtime.currentNodeId)?.id ?? '',
+        ) ?? []).find((item) => item.id === messageId)
+        const text = message ? messageText(message) : ''
+        const at = text.indexOf(quote, start ?? 0)
+        if (!message || at < 0) {
+          return failure('这条消息里找不到这段原文：请逐字复制正文里的片段再试')
+        }
+        const outcome = await handlers.tagSpan({
+          messageId,
+          quote,
+          labels,
+          ...(body !== undefined ? { body } : {}),
+        })
+        if (!outcome) return failure('没能写入标注')
+        return asData({ ok: true, ...outcome })
+      },
+    }),
+  }
+}
+
+export type WriteToolSet = ReturnType<typeof buildWriteTools>

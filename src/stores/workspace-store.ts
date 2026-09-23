@@ -5,6 +5,7 @@ import { assembleContext, collectHistorySegments } from '@/domain/context/assemb
 import {
   deriveTitle,
   messageImageIds,
+  messageText,
   sameMessageParts,
 } from '@/domain/messages'
 import type {
@@ -28,7 +29,7 @@ import {
   type ThreadChange,
 } from '@/domain/thread/mutations'
 import { resolveThread } from '@/domain/thread/resolve'
-import { sortNotes, normalizeNoteBody, normalizeNoteLabels } from '@/domain/notes'
+import { sortNotes, normalizeNoteBody, normalizeNoteLabels, formatNoteLabels } from '@/domain/notes'
 import { createNodeFromAction, nodeActionRequiresMessage, type NodeActionKind } from '@/domain/node-ops/actions'
 import { buildTreeIndex, descendantsOf } from '@/domain/tree/tree'
 import { seedReviewCard } from '@/domain/review/schedule'
@@ -39,7 +40,11 @@ import { findProvider } from '@/services/llm/catalog'
 import {
   AGENT_STEP_LIMIT,
   TOOLS_SYSTEM,
+  WRITE_TOOLS_SYSTEM,
   buildReadOnlyTools,
+  buildWriteTools,
+  type ToolRuntime,
+  type WriteToolHandlers,
 } from '@/services/llm/tools/registry'
 import {
   buildTranscript,
@@ -116,6 +121,12 @@ export interface NewNoteInput {
   body?: string
 }
 
+/** 一次由 Agent 完成的改动：给用户看的一句话 + 撤销它的动作。 */
+export interface AgentChange {
+  label: string
+  undo: () => Promise<void>
+}
+
 interface WorkspaceState {
   projectId: Id | null
   project: Project | null
@@ -130,6 +141,11 @@ interface WorkspaceState {
   streaming: StreamingState | null
   /** 正在手动生成摘要的节点，用于在节点卡片上渲染骨架屏 */
   summarizingNodeIds: Id[]
+  /**
+   * Agent 刚做完的改动（可撤销）。只留最近一条：撤销入口是「后悔药」，
+   * 不是操作历史；堆一长串既难懂也难用（真正的历史是画布本身）。
+   */
+  agentChange: AgentChange | null
 
   openProject: (projectId: Id) => Promise<void>
   reset: () => void
@@ -173,6 +189,9 @@ interface WorkspaceState {
   enrollInReview: (nodeId: Id) => Promise<void>
   /** 移出复习计划：停止到期提醒，保留历史卡片与掌握度 */
   unenrollFromReview: (nodeId: Id) => Promise<void>
+  /** 撤销 Agent 刚做的改动（建节点 / 改标题 / 打标签） */
+  undoAgentChange: () => Promise<void>
+  dismissAgentChange: () => void
   clearError: () => void
 }
 
@@ -234,6 +253,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     error: null,
     streaming: null,
     summarizingNodeIds: [],
+    agentChange: null,
 
     openProject: async (projectId) => {
       set((state) => {
@@ -896,6 +916,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.error = null
       })
     },
+
+    undoAgentChange: async () => {
+      const change = get().agentChange
+      if (!change) return
+      set((state) => {
+        state.agentChange = null
+      })
+      await change.undo()
+    },
+
+    dismissAgentChange: () => {
+      set((state) => {
+        state.agentChange = null
+      })
+    },
   })),
 )
 
@@ -1001,6 +1036,127 @@ function assistantParts(text: string, tools: MessagePart[]): MessagePart[] {
   return [...tools, { type: 'text', text }]
 }
 
+/**
+ * Agent 的写操作落点：只做**可逆**的三件事，每件都留一条可撤销记录。
+ *
+ * 放在 store 里而不是工具里：写操作必须走既有 action（版本结构、台账、级联都在
+ * 那些函数里），工具只负责「把模型的意图翻译成一次 action 调用」。
+ */
+function createWriteHandlers(
+  store: typeof useWorkspaceStore,
+  nodeId: Id,
+): WriteToolHandlers {
+  const remember = (change: AgentChange) => {
+    store.setState((draft) => {
+      draft.agentChange = change
+    })
+  }
+
+  return {
+    createNode: async ({ kind, title, seed, fromMessageId }) => {
+      const state = store.getState()
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!node) return null
+
+      // 从某条消息分出来才需要 fork 点；child 永远是空白上下文
+      const forkPoint =
+        kind === 'child'
+          ? undefined
+          : (fromMessageId ??
+            resolveThread(node, state.messagesByNode[nodeId] ?? []).path.at(-1)?.id)
+
+      const created = await store.getState().applyAction(kind, nodeId, forkPoint)
+      if (!created) return null
+
+      const trimmed = title.trim() || '新节点'
+      await store.getState().setNodeTitle(created.id, trimmed)
+
+      // seed 只落成这个节点的第一条提问，**不触发新一轮对话** ——
+      // 在一个工具步里再发一次完整请求，成本与耗时都不可控；用户点进去继续即可
+      if (seed?.trim()) {
+        const projectId = store.getState().projectId
+        if (projectId) {
+          const message: Message = {
+            id: newId(),
+            nodeId: created.id,
+            projectId,
+            role: 'user',
+            parts: [{ type: 'text', text: seed.trim() }],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }
+          await getRepositories().messages.create(message)
+          store.setState((draft) => {
+            const bucket = draft.messagesByNode[created.id] ?? []
+            bucket.push(message)
+            draft.messagesByNode[created.id] = bucket
+          })
+        }
+      }
+
+      remember({
+        label: `新建了节点《${trimmed}》`,
+        undo: async () => {
+          await store.getState().deleteNode(created.id)
+        },
+      })
+      return { label: `新建了节点《${trimmed}》`, nodeId: created.id }
+    },
+
+    renameNode: async ({ nodeId: target, title }) => {
+      const state = store.getState()
+      const node = state.nodes.find((item) => item.id === target)
+      if (!node) return null
+      const previous = node.title
+      const trimmed = title.trim()
+      if (!trimmed || trimmed === previous) return null
+
+      await store.getState().setNodeTitle(target, trimmed)
+      remember({
+        label: `把《${previous}》改名为《${trimmed}》`,
+        undo: async () => {
+          await store.getState().setNodeTitle(target, previous)
+        },
+      })
+      return { label: `《${previous}》改名为《${trimmed}》`, nodeId: target }
+    },
+
+    tagSpan: async ({ messageId, quote, labels, body }) => {
+      const state = store.getState()
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!node) return null
+
+      const text = messageText(
+        (state.messagesByNode[nodeId] ?? []).find((message) => message.id === messageId) ?? {
+          parts: [],
+        } as unknown as Message,
+      )
+      const start = text.indexOf(quote)
+      if (start < 0) return null
+
+      const note = await store.getState().addNote({
+        nodeId,
+        messageId,
+        labels,
+        quote,
+        start,
+        end: start + quote.length,
+        ...(body !== undefined ? { body } : {}),
+      })
+      if (!note) return null
+
+      const label = formatNoteLabels(note.labels)
+      remember({
+        label: `给一段原文打了标签 ${label}`,
+        undo: async () => {
+          await store.getState().removeNote(note.id)
+        },
+      })
+      return { label: `已打标签 ${label}`, noteId: note.id }
+    },
+  }
+}
+
 async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<void> {
   const store = useWorkspaceStore
   const state = store.getState()
@@ -1060,17 +1216,30 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
 
   // 能力位：false = 明确不支持（完全不带工具，请求体与今天逐字节一致）；
   // undefined = 还没探过 —— 先按支持试一次，失败再退回无工具重试（见下方 catch）。
+  const writeRuntime: ToolRuntime = {
+    nodes,
+    messagesByNode,
+    notes: Object.values(state.notesByMessage).flat(),
+    currentNodeId: nodeId,
+  }
   const provider = findProvider(settings.providers, modelRef)
   const capabilityUnknown = provider?.capabilities?.tools === undefined
   const toolsAllowed = provider?.capabilities?.tools !== false
+  const writeEnabled = projectSettings?.agentWriteEnabled === true
   const tools = toolsAllowed
-    ? buildReadOnlyTools({
-        nodes,
-        messagesByNode,
-        notes: Object.values(state.notesByMessage).flat(),
-        currentNodeId: nodeId,
-      })
+    ? {
+        ...buildReadOnlyTools({
+          nodes,
+          messagesByNode,
+          notes: Object.values(state.notesByMessage).flat(),
+          currentNodeId: nodeId,
+        }),
+        // 写工具跟着项目开关走：默认关闭（见 ProjectSettings.agentWriteEnabled）
+        ...(writeEnabled ? buildWriteTools(writeRuntime, createWriteHandlers(store, nodeId)) : {}),
+      }
     : undefined
+  // 写工具只在真带上时才向模型承诺「你能改树」
+  const toolSystem = writeEnabled ? `${TOOLS_SYSTEM}\n\n${WRITE_TOOLS_SYSTEM}` : TOOLS_SYSTEM
 
   const abortController = new AbortController()
   activeAbort = abortController
@@ -1078,7 +1247,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
   const run = (withTools: boolean) =>
     streamReply({
       model,
-      system: withTools ? `${context.system}\n\n${TOOLS_SYSTEM}` : context.system,
+      system: withTools ? `${context.system}\n\n${toolSystem}` : context.system,
       messages: toModelMessages(context.messages),
       abortSignal: abortController.signal,
       ...(withTools && tools ? { tools, maxSteps: AGENT_STEP_LIMIT } : {}),

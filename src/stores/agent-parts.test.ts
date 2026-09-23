@@ -163,3 +163,108 @@ describe('工具记录的落库形状', () => {
     expect(withoutTools.system).not.toContain('## 工具使用')
   })
 })
+describe('写工具（默认关闭 + 撤销）', () => {
+  /** 让本轮的工具集里出现写工具：能力位支持 + 项目开关打开。 */
+  async function enableWrite(): Promise<void> {
+    useWorkspaceStore.setState((draft) => {
+      draft.projectSettings = { projectId: 'p1', agentWriteEnabled: true }
+    })
+  }
+
+  function toolsOfLastCall(): Record<string, unknown> {
+    return ((llm.calls.at(-1) as { tools?: Record<string, unknown> }).tools ?? {})
+  }
+
+  it('默认只给只读工具，写工具要等项目开关打开', async () => {
+    await seed()
+    const node = await useWorkspaceStore.getState().startRootNode('问题')
+
+    const readOnly = toolsOfLastCall()
+    expect(readOnly.search_nodes).toBeDefined()
+    expect(readOnly.create_node).toBeUndefined()
+
+    await enableWrite()
+    await useWorkspaceStore.getState().sendMessage(node!.id, [{ type: 'text', text: '再问' }])
+    const withWrite = toolsOfLastCall()
+    expect(withWrite.create_node).toBeDefined()
+    expect(withWrite.rename_node).toBeDefined()
+    expect(withWrite.tag_span).toBeDefined()
+    // 破坏性操作不提供
+    expect(withWrite.archive_node).toBeUndefined()
+    expect(withWrite.delete_node).toBeUndefined()
+
+    const system = (llm.calls.at(-1) as { system?: string }).system ?? ''
+    expect(system).toContain('改动这棵树的规则')
+  })
+
+  it('creates a node through the real action path and offers an undo that removes it', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+
+    const tools = toolsOfLastCall() as { create_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const result = await tools.create_node.execute(
+      { kind: 'child', title: '拆解一', seed: '什么叫守恒？' },
+      {},
+    )
+    expect(result).toContain('新建了节点《拆解一》')
+
+    const state = useWorkspaceStore.getState()
+    const created = state.nodes.find((item) => item.title === '拆解一')!
+    expect(created.parentId).toBe(root!.id)
+    // seed 落成第一条提问，但不触发新一轮模型调用
+    expect((state.messagesByNode[created.id] ?? []).map((message) => message.role)).toEqual(['user'])
+    expect(llm.calls).toHaveLength(1)
+
+    expect(state.agentChange?.label).toContain('拆解一')
+    await state.undoAgentChange()
+    const after = useWorkspaceStore.getState()
+    expect(after.nodes.some((item) => item.title === '拆解一')).toBe(false)
+    expect(after.agentChange).toBeNull()
+    expect(await getRepositories().nodes.get(created.id)).toBeUndefined()
+  })
+
+  it('renames a node and restores the previous title on undo', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+
+    const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    await tools.rename_node.execute({ nodeId: root!.id, title: '动量与冲量' }, {})
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '动量与冲量',
+    )
+
+    await useWorkspaceStore.getState().undoAgentChange()
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '动量守恒',
+    )
+  })
+
+  it('tags a span found in the message text and refuses a quote that is not there', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('忽略竖直方向会怎样？')
+    const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
+
+    const tools = toolsOfLastCall() as { tag_span: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const ok = await tools.tag_span.execute(
+      { messageId, quote: '忽略竖直方向', labels: ['mistake'] },
+      {},
+    )
+    expect(ok).toContain('已打标签 [错题]')
+
+    const note = (useWorkspaceStore.getState().notesByMessage[messageId] ?? [])[0]
+    expect(note).toMatchObject({ labels: ['mistake'], start: 0, end: 6 })
+
+    // 原文对不上就如实拒绝：宁可不标，也不要标到别处
+    const miss = await tools.tag_span.execute(
+      { messageId, quote: '这句话不在正文里', labels: ['mistake'] },
+      {},
+    )
+    expect(miss).toContain('找不到这段原文')
+
+    await useWorkspaceStore.getState().undoAgentChange()
+    expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+  })
+})

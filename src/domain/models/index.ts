@@ -21,6 +21,14 @@ export interface ProjectSettings {
   chatModelRef?: ModelRef
   titleModelRef?: ModelRef
   summaryModelRef?: ModelRef
+  /**
+   * 允许 Agent 改动这棵树（建节点、改标题、打标签）。
+   *
+   * 缺省（含老数据）= 关闭：只读工具随时可用，写工具必须由用户显式打开 ——
+   * 「默认不让 AI 改我的数据」是这套设计的硬约定（见设计文档 §6.3）。
+   * 打开后也只放可逆操作，破坏性的（归档、删除）不提供。
+   */
+  agentWriteEnabled?: boolean
   /** 最后修改时间；历史数据可能没有，同步时以 outbox 的变更时间为准。 */
   updatedAt?: number
 }
