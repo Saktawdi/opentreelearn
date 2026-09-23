@@ -1,7 +1,7 @@
 # OpenTreeLearn 设计文档
 
 > 版本：v2.1 · Agent 时代重构版  
-> 状态：已实现 P0+P1，P2 同步已就绪；本文为面向 Agent 升级的主设计文档  
+> 状态：P0+P1 与云端同步已实现；**Agent 化（P-A/P-B/P-C）已实现**（见 §12 分期）  
 > 关联：[Agent 工具调用设计](./llm-tool-calling.md) · [T-128 复习重构](./t128-review-experience-refactor.md)  
 > 原则：对话即内容、树即路径、Agent 即协作者——从「把上下文塞给模型」升级为「让 Agent 感知、规划、执行」
 
@@ -338,10 +338,10 @@ server/         同步 BFF（NestJS + Prisma + SQLite），独立包，仅 HTTP 
 
 - **P0+P1 已交付**：项目/画布/对话/分支/图片/背景/动效/标题摘要
 - **P1 同步已交付**：`server/` + 客户端 `outbox` + 自动同步（见 §13）；`Asset.blob` 不同步（P2 待排），`reviewSessions` 不进同步（本机按账号，见 §13.3）。
-- **Agent P-A（只读工具，不碰持久化）**：`search_nodes` / `get_node` / `get_tree_outline` + `list_note_labels` / `search_notes`（后两者依赖 P-B 的 `labels`，见 Agent 文档 §8.1 阶段依赖），`fullStream` 分流，能力探测；工具过程仅流式可见，不写 `MessagePart.tool`，因此配对撕裂风险在 P-A 不存在
-- **Agent P-B（标注修复，独立可发版）**：`Note.kind→labels`、`readNote` 归一化、打标签交互、修 `buildReviewMaterial` 死代码（`notesByMessage.get(node.id)` 错键 + 调用方未传参，见 `context/review.ts:82` / `review-session-store.ts:636`）
-- **Agent P-C（写入+持久化）**：`MessagePart.tool`、`toModelMessages` 展开、工具卡、写入工具与撤销
-- **可选**：复习流程工具化、摘要合并进对话
+- **Agent P-A 已交付（只读工具）**：`search_nodes` / `get_node` / `get_tree_outline` + `list_note_labels` / `search_notes`；`fullStream` 分流；能力探测与降级；学习对话与自由问答都已接线
+- **Agent P-B 已交付（标注修复，独立轨）**：`Note.kind→labels`、老数据归一化、打标签交互、修好 `buildReviewMaterial` 死代码、自由问答注入「用户标注」段、导入导出双向兼容
+- **Agent P-C 已交付（写入与持久化）**：工具记录随消息落库、`toModelMessages` 一对多展开（配对不变量有单测）、压缩按完整轮次、工具卡、三个可逆写工具 + 撤销入口（按项目默认关闭）
+- **未做（刻意收窄，见 Agent 文档「实现记录」）**：破坏性写工具（归档/删除）、复习流程开工具、标注清单静态注入学习对话
 
 ---
 
