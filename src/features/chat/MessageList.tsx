@@ -20,6 +20,7 @@ import {
   messagePreview,
   messageQuotes,
   messageText,
+  messageToolParts,
   replaceMessageText,
 } from '@/domain/messages'
 import type { Id, Message, MessagePart } from '@/domain/models'
@@ -32,7 +33,7 @@ import { cn } from '@/lib/utils'
 import { AGENT_STEP_LIMIT } from '@/services/llm/tools/registry'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
-import { ToolActivities } from './ToolActivities'
+import { ToolActivities, type ToolActivityItem } from './ToolActivities'
 import { bodyProps } from './note-anchor'
 import { useAssetUrls } from './useAssetUrls'
 import { useNoteHighlights } from './useNoteHighlights'
@@ -313,6 +314,15 @@ const MessageBubble = memo(function MessageBubble({
   const quotes = messageQuotes(message)
   const body = messageBodyText(message)
   const notes = useWorkspaceStore((state) => state.notesByMessage[message.id]) ?? []
+  // 落库的工具记录：渲染成工具卡（在正文容器之外），让「查过什么」在刷新后仍然可见
+  const toolItems: ToolActivityItem[] = messageToolParts(message).map((part) => ({
+    callId: part.callId,
+    name: part.name,
+    input: part.input,
+    status: part.error ? 'error' : 'done',
+    ...(part.output !== undefined ? { output: part.output } : {}),
+    ...(part.error !== undefined ? { error: part.error } : {}),
+  }))
 
   // 正文容器的 ref 同时是笔记锚点的基准：`data-message-body` 标出「正文是哪一段文本」，
   // 框选时按它数下标，渲染笔记时按它还原区间（见 note-anchor.ts）
@@ -377,6 +387,12 @@ const MessageBubble = memo(function MessageBubble({
         )}
         <MessageImages urls={assetUrls} />
       </div>
+
+      {/* 工具卡画在 data-message-body **之外**：锚点是按正文容器里的文本节点数量出来的，
+          把卡片放进去会让这条消息上已有的标注整体错位（见 note-anchor.ts） */}
+      {!isUser && toolItems.length > 0 ? (
+        <ToolActivities tools={toolItems} className="flex flex-col gap-1 self-start" />
+      ) : null}
 
       <MessageNotes notes={notes} align={isUser ? 'end' : 'start'} />
 

@@ -969,6 +969,38 @@ async function pruneDanglingMessage(nodeId: Id, messageId: Id): Promise<void> {
   })
 }
 
+/**
+ * 把本轮流式期间的完成型工具活动转成可落库的 parts。
+ *
+ * 只收 `done` / `error`：`running` 是「举手了但没等到结果」——
+ * 半截记录落库会破坏 provider 要求的配对（见设计文档 §6.2），一律丢弃。
+ */
+function collectToolParts(
+  activities: StreamingToolActivity[] | undefined,
+): MessagePart[] {
+  return (activities ?? [])
+    .filter((tool) => tool.status !== 'running')
+    .map((tool) => ({
+      type: 'tool' as const,
+      callId: tool.callId,
+      name: tool.name,
+      input: tool.input,
+      ...(tool.output !== undefined ? { output: tool.output } : {}),
+      ...(tool.error !== undefined ? { error: tool.error } : {}),
+    }))
+}
+
+/**
+ * 一条 assistant 消息的 parts：工具记录在前、正文在后。
+ *
+ * 这是一个刻意的简化：模型分步时通常是「先查、再答」，正文只出现在最后一步，
+ * 所以「工具 → 正文」与真实时序一致；中间步骤若也有正文，会被排到工具之后 ——
+ * 配对仍然完整、语义仍然成立，只是步骤边界被抹平了。
+ */
+function assistantParts(text: string, tools: MessagePart[]): MessagePart[] {
+  return [...tools, { type: 'text', text }]
+}
+
 async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<void> {
   const store = useWorkspaceStore
   const state = store.getState()
@@ -1117,7 +1149,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
       nodeId,
       projectId,
       role: 'assistant',
-      parts: [{ type: 'text', text: result.text }],
+      parts: assistantParts(result.text, collectToolParts(store.getState().streaming?.tools)),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       meta: {
@@ -1153,7 +1185,8 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
         nodeId,
         projectId,
         role: 'assistant',
-        parts: [{ type: 'text', text: partial }],
+        // 中断也保留**已完成**的工具记录：那是真实发生过的检索，只有半截的才丢
+        parts: assistantParts(partial, collectToolParts(store.getState().streaming?.tools)),
         createdAt: Date.now(),
         updatedAt: Date.now(),
         meta: {

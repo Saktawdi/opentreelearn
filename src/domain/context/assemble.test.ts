@@ -360,3 +360,105 @@ describe('assembleContext', () => {
     expect(result.stats.truncatedMessages).toBeGreaterThan(0)
   })
 })
+describe('assembleContext: 工具记录', () => {
+  const toolPart = (callId: string, output?: string, error?: string) => ({
+    type: 'tool' as const,
+    callId,
+    name: 'search_nodes',
+    input: { query: '动量守恒' },
+    ...(output !== undefined ? { output } : {}),
+    ...(error !== undefined ? { error } : {}),
+  })
+
+  it('carries complete tool records into the context, dropping half ones', () => {
+    const node = makeNode({ id: 'n1', createdAt: 1 })
+    const messages = [
+      makeMessage({ id: 'm1', nodeId: 'n1', role: 'user', parts: [{ type: 'text', text: '问' }] }),
+      makeMessage({
+        id: 'm2',
+        nodeId: 'n1',
+        role: 'assistant',
+        parts: [
+          toolPart('c1', '查到《动量守恒》'),
+          toolPart('c2', undefined, '节点不存在'),
+          toolPart('c3'),
+          { type: 'text', text: '答案' },
+        ],
+      }),
+    ]
+
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', messages]]),
+    })
+
+    const parts = result.messages[1].parts
+    // c3 没有结果也没有错误：中断留下的半截记录，不进上下文
+    expect(parts.filter((part) => part.type === 'tool').map((part) => part.callId)).toEqual([
+      'c1',
+      'c2',
+    ])
+  })
+
+  it('drops tool records entirely under hard compression, keeping the answer text', () => {
+    const node = makeNode({ id: 'n1', createdAt: 1 })
+    const messages = [
+      makeMessage({ id: 'm1', nodeId: 'n1', role: 'user', parts: [{ type: 'text', text: '问' }] }),
+      makeMessage({
+        id: 'm2',
+        nodeId: 'n1',
+        role: 'assistant',
+        parts: [toolPart('c1', longText('结果', 900)), { type: 'text', text: '答案' }],
+      }),
+    ]
+
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', messages]]),
+      budgetTokens: 600,
+      recentMessages: 4,
+    })
+
+    expect(result.messages.flatMap((message) => message.parts).some((part) => part.type === 'tool')).toBe(
+      false,
+    )
+    expect(result.stats.truncatedMessages).toBeGreaterThan(0)
+  })
+
+  it('keeps the last complete round when the budget collapses', () => {
+    const node = makeNode({ id: 'n1', createdAt: 1 })
+    const messages = [
+      ...Array.from({ length: 6 }, (_, i) => [
+        makeMessage({
+          id: `u${i}`,
+          nodeId: 'n1',
+          role: 'user',
+          createdAt: i * 2 + 1,
+          parts: [{ type: 'text', text: longText(`问${i}`, 600) }],
+        }),
+        makeMessage({
+          id: `a${i}`,
+          nodeId: 'n1',
+          role: 'assistant',
+          createdAt: i * 2 + 2,
+          parts: [{ type: 'text', text: longText(`答${i}`, 600) }],
+        }),
+      ]).flat(),
+    ]
+
+    const result = assembleContext({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', messages]]),
+      budgetTokens: 1400,
+      recentMessages: 4,
+    })
+
+    // 切点必须落在提问之前：留下的是完整的一轮（提问 + 回答），不是孤零零一条回答
+    expect(result.messages).toHaveLength(2)
+    expect(result.messages[0].role).toBe('user')
+    expect(result.messages[1].role).toBe('assistant')
+  })
+})

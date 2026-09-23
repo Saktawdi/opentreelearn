@@ -70,30 +70,116 @@ export function partsToText(parts: ContextPart[]): string {
     .join('\n\n')
 }
 
+/**
+ * 一条 app 消息展开成 provider 要求的消息序列（**承重墙**）。
+ *
+ * 厂商的硬性要求：`assistant(tool_call)` 之后必须紧跟对应的 `tool(tool_result)`，
+ * 少了任何一半接口直接 400。我们把「举手 + 结果」内联在同一个 part 里，所以
+ * 展开时只要保证「一个 tool part 一定同时产出 tool-call 与 tool-result」即可：
+ *
+ * ```
+ * parts = [text₁, tool₁(call+result), text₂]
+ *   → { role:'assistant', content:[text₁, tool-call₁] }
+ *     { role:'tool',      content:[tool-result₁] }
+ *     { role:'assistant', content:[text₂] }
+ * ```
+ *
+ * 三条规则：
+ * 1. **连续的工具调用共用一条工具结果消息**（一步里同时调两个工具是合法的）；
+ * 2. 文本出现在工具调用之后 = 新的一步开始 → 先把上一段封口；
+ * 3. 没有 `output` 也没有 `error` 的半截记录（中断产生）**整条丢弃**。
+ *
+ * 不变量（有单测锁住）：展开结果里每个 tool-call 都有紧随的 tool-result，反之亦然。
+ */
+function expandAssistantParts(parts: ContextPart[], result: ModelMessage[]): void {
+  let texts: string[] = []
+  let calls: Array<Extract<ContextPart, { type: 'tool' }>> = []
+
+  const flush = () => {
+    if (texts.length === 0 && calls.length === 0) return
+
+    if (calls.length === 0) {
+      // 纯文本段：保持与今天完全一致的形状（字符串 content），不带工具的请求体才逐字节相同
+      result.push({ role: 'assistant', content: texts.join('\n\n') })
+    } else {
+      result.push({
+        role: 'assistant',
+        content: [
+          ...texts.map((text) => ({ type: 'text' as const, text })),
+          ...calls.map((call) => ({
+            type: 'tool-call' as const,
+            toolCallId: call.callId,
+            toolName: call.name,
+            input: call.input,
+          })),
+        ],
+      })
+      result.push({
+        role: 'tool',
+        content: calls.map((call) => ({
+          type: 'tool-result' as const,
+          toolCallId: call.callId,
+          toolName: call.name,
+          output:
+            call.error !== undefined
+              ? { type: 'error-text' as const, value: call.error }
+              : { type: 'text' as const, value: call.output ?? '' },
+        })),
+      })
+    }
+
+    texts = []
+    calls = []
+  }
+
+  for (const part of parts) {
+    if (part.type === 'text') {
+      // 工具调用之后又出正文 ⇒ 新的一步，先把上一段（含它的工具结果）封口
+      if (calls.length > 0) flush()
+      texts.push(part.text)
+      continue
+    }
+    if (part.type === 'tool') {
+      if (part.output === undefined && part.error === undefined) continue
+      calls.push(part)
+    }
+  }
+
+  flush()
+}
+
 export function toModelMessages(context: ContextMessage[]): ModelMessage[] {
-  return context.map((message): ModelMessage => {
+  const result: ModelMessage[] = []
+
+  for (const message of context) {
     if (message.role === 'assistant') {
-      return { role: 'assistant', content: partsToText(message.parts) }
+      expandAssistantParts(message.parts, result)
+      continue
     }
 
     const hasImage = message.parts.some((part) => part.type === 'image')
     if (!hasImage) {
-      return { role: 'user', content: partsToText(message.parts) }
+      result.push({ role: 'user', content: partsToText(message.parts) })
+      continue
     }
 
-    return {
+    result.push({
       role: 'user',
-      content: message.parts.map((part) =>
-        part.type === 'text'
-          ? { type: 'text' as const, text: part.text }
-          : {
-              type: 'image' as const,
-              image: part.dataUrl,
-              mediaType: mediaTypeOfDataUrl(part.dataUrl),
-            },
-      ),
-    }
-  })
+      content: message.parts
+        .filter((part) => part.type === 'text' || part.type === 'image')
+        .map((part) =>
+          part.type === 'text'
+            ? { type: 'text' as const, text: part.text }
+            : {
+                type: 'image' as const,
+                image: part.dataUrl,
+                mediaType: mediaTypeOfDataUrl(part.dataUrl),
+              },
+        ),
+    })
+  }
+
+  return result
 }
 
 export function isAbortError(error: unknown): boolean {

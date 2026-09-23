@@ -213,6 +213,25 @@ export type MessagePart =
   // 以便气泡里渲染成引用块，而不是混进正文。
   | { type: 'quote'; text: string }
   | { type: 'image'; assetId: Id }
+  /**
+   * 一次工具调用与它的结果（Agent 的「举手记录」）。
+   *
+   * **内联在同一条 assistant 消息的 parts 里，不是独立消息**：厂商要求
+   * `assistant(tool_call)` 后必须紧跟 `tool(tool_result)`，而全项目的版本槽、fork、
+   * 删除级联、导出都以「一轮 = 一条 user + 一条 assistant」为单位 —— 保持这条不变量，
+   * 代价只是 `toModelMessages` 多做一层展开（见设计文档 §7.2/§7.3）。
+   *
+   * `output` 缺失 = 这一轮在工具执行完之前就中断了：**落库时整条丢弃**，
+   * 不能留下半截配对。工具记录不进 `messageText`，因此摘要/导出/预览天然不受影响。
+   */
+  | {
+      type: 'tool'
+      callId: string
+      name: string
+      input: unknown
+      output?: string
+      error?: string
+    }
 
 export interface MessageMeta {
   providerId?: Id

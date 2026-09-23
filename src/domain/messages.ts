@@ -13,6 +13,10 @@ export function quoteBlock(text: string): string {
 /**
  * 完整正文（引用片段 + 自己的话），供模型上下文 / 摘要 / 导出使用。
  * 引用块与后续正文之间留空行，否则 Markdown 会把正文并进引用里。
+ *
+ * **工具记录一律不进正文**（返回 ''）：摘要、导出、卡片预览、复习材料都读这个函数，
+ * 让「我查了一下」混进正文会污染它们。代价是工具查到的信息必须在正文里复述 ——
+ * 这条写进了系统提示（见 TOOLS_SYSTEM），是硬要求。
  */
 export function messageText(message: Message): string {
   return message.parts
@@ -51,6 +55,13 @@ export function hasImage(message: Message): boolean {
   return message.parts.some((part) => part.type === 'image')
 }
 
+/** 消息里的工具记录（按顺序）。P-C 之后它们随消息落库，气泡里渲染成工具卡。 */
+export type MessageToolPart = Extract<MessagePart, { type: 'tool' }>
+
+export function messageToolParts(message: Message): MessageToolPart[] {
+  return message.parts.filter((part): part is MessageToolPart => part.type === 'tool')
+}
+
 /** 引用/图片原样保留、只改文字时用：判断编辑后的 parts 有没有实际改动。 */
 export function sameMessageParts(a: Message, b: Message): boolean {
   if (a.parts.length !== b.parts.length) return false
@@ -60,6 +71,10 @@ export function sameMessageParts(a: Message, b: Message): boolean {
     if (part.type === 'image' && other.type === 'image') return part.assetId === other.assetId
     if (part.type === 'text' && other.type === 'text') return part.text === other.text
     if (part.type === 'quote' && other.type === 'quote') return part.text === other.text
+    // 工具记录不该被「编辑消息」改到：比到 callId 与结果就够，参数对象不深比
+    if (part.type === 'tool' && other.type === 'tool') {
+      return part.callId === other.callId && part.output === other.output && part.error === other.error
+    }
     return false
   })
 }

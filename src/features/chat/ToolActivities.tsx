@@ -1,6 +1,17 @@
 import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import type { StreamingToolActivity } from '@/stores/workspace-store'
+/**
+ * 工具卡要展示的一行：流式活动与落库的工具记录都归一到这个形状。
+ * 放在这里而不是引用 store 的类型，是为了让落库消息也能复用同一份呈现。
+ */
+export interface ToolActivityItem {
+  callId: string
+  name: string
+  input: unknown
+  status: 'running' | 'done' | 'error'
+  output?: string
+  error?: string
+}
 
 /** 工具名的中文标签：没见过的工具名原样显示（不猜、不美化）。 */
 function toolLabel(name: string, input: unknown): string {
@@ -25,7 +36,7 @@ function toolLabel(name: string, input: unknown): string {
   }
 }
 
-function statusIcon(status: StreamingToolActivity['status']) {
+function statusIcon(status: ToolActivityItem['status']) {
   if (status === 'running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
   if (status === 'error') return <AlertTriangle className="h-3.5 w-3.5 text-danger" />
   return <Check className="h-3.5 w-3.5 text-success" />
@@ -44,7 +55,7 @@ export function ToolActivities({
   tools,
   className,
 }: {
-  tools: StreamingToolActivity[]
+  tools: ToolActivityItem[]
   className?: string
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)

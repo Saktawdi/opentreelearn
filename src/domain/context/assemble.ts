@@ -8,7 +8,23 @@ import { ancestorsOf, buildTreeIndex, pathTo } from '@/domain/tree/tree'
 import { normalizeWhitespace, truncate } from '@/lib/text'
 import { estimateTokens } from './tokens'
 
-export type ContextPart = { type: 'text'; text: string } | { type: 'image'; dataUrl: string }
+export type ContextPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; dataUrl: string }
+  /**
+   * 一次工具调用与它的结果。
+   *
+   * 举手记录与结果**同在一个 part 里**，因此任何「整条 part 一起丢」的压缩都不会
+   * 撕裂配对；这也是内联方案的核心收益（见设计文档 §7.2）。
+   */
+  | {
+      type: 'tool'
+      callId: string
+      name: string
+      input: unknown
+      output?: string
+      error?: string
+    }
 
 export interface ContextMessage {
   role: 'user' | 'assistant'
@@ -91,7 +107,30 @@ const REVIEW_TUTOR_SYSTEM: Record<'review' | 'relearn', string> = {
 
 const IMAGE_TOKEN_COST = 320
 const TRUNCATE_CHARS = 480
-const MIN_KEEP_OWN_MESSAGES = 2
+
+/**
+ * 硬压缩时最少保留的本节点**完整轮次**。
+ *
+ * 单位是「轮次」而不是「条消息」：切点必须落在某条 user 消息之前，绝不能停在
+ * 提问与回答之间 —— 工具记录内联在 assistant 消息里，但「切掉提问、留下回答」
+ * 本身就会让历史读起来是断的。
+ */
+const MIN_KEEP_OWN_ROUNDS = 1
+
+/**
+ * 从尾部取最后 `rounds` 个完整轮次（每条轮次 = 一条提问 + 它之后的回答）。
+ *
+ * 提问数不足时原样返回：宁可不压，也不要切出一个半截轮次。
+ */
+function tailRounds(messages: Message[], rounds: number): Message[] {
+  let seen = 0
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role !== 'user') continue
+    seen += 1
+    if (seen === rounds) return messages.slice(index)
+  }
+  return messages
+}
 
 type SegmentMode = 'full' | 'note' | 'dropped'
 
@@ -174,6 +213,26 @@ function toContextMessages(
         continue
       }
 
+      if (part.type === 'tool') {
+        // 硬压缩时整条丢掉：举手与结果同在一个 part 里，一起消失=配对仍然完整。
+        // 丢掉的信息并不算丢答案 —— 系统提示要求工具查到的内容必须在正文里复述过。
+        if (options.maxChars >= 0) {
+          truncated += 1
+          continue
+        }
+        // 中断留下的半截记录（没有结果也没有错误）不进上下文：它还原不出一次完整调用
+        if (part.output === undefined && part.error === undefined) continue
+        parts.push({
+          type: 'tool',
+          callId: part.callId,
+          name: part.name,
+          input: part.input,
+          ...(part.output !== undefined ? { output: part.output } : {}),
+          ...(part.error !== undefined ? { error: part.error } : {}),
+        })
+        continue
+      }
+
       const dataUrl = assetUrls?.get(part.assetId)
       if (message.role === 'user' && dataUrl) {
         parts.push({ type: 'image', dataUrl })
@@ -218,10 +277,11 @@ function renderNote(segment: Segment): string {
 }
 
 function partsCost(parts: ContextPart[]): number {
-  return parts.reduce(
-    (sum, part) => sum + (part.type === 'text' ? estimateTokens(part.text) : IMAGE_TOKEN_COST),
-    0,
-  )
+  return parts.reduce((sum, part) => {
+    if (part.type === 'text') return sum + estimateTokens(part.text)
+    if (part.type === 'image') return sum + IMAGE_TOKEN_COST
+    return sum + estimateTokens(part.output ?? part.error ?? '')
+  }, 0)
 }
 
 export function assembleContext(input: AssembleInput): AssembleResult {
@@ -355,13 +415,13 @@ const materialize = (): Materialized => {
     state = materialize()
   }
 
-  if (cost(state) > budget && ownSegment.messages.length > MIN_KEEP_OWN_MESSAGES) {
+  if (cost(state) > budget && ownSegment.messages.length > MIN_KEEP_OWN_ROUNDS * 2) {
     for (let i = 0; i < historySegments.length; i += 1) {
       if (modes[i] === 'note') {
         modes[i] = 'dropped'
       }
     }
-    ownSegment.messages = ownSegment.messages.slice(-MIN_KEEP_OWN_MESSAGES)
+    ownSegment.messages = tailRounds(ownSegment.messages, MIN_KEEP_OWN_ROUNDS)
     state = materialize()
   }
 
