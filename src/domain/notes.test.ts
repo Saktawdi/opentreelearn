@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { Note } from './models'
-import { anchorOverlaps, locateQuote, sameAnchor, selectionAnchor, sortNotes } from './notes'
+import {
+  anchorOverlaps,
+  collectUsedLabels,
+  countNoteLabels,
+  formatNoteLabels,
+  isPlainHighlight,
+  labeledNotes,
+  locateQuote,
+  NOTE_LABEL_MAX,
+  normalizeNoteLabel,
+  normalizeNoteLabels,
+  noteLabelName,
+  renderNoteLegend,
+  sameAnchor,
+  selectionAnchor,
+  sortNotes,
+} from './notes'
 
 describe('selectionAnchor', () => {
   it('narrows the range onto the trimmed text', () => {
@@ -68,7 +84,7 @@ function makeNote(id: string, start: number, end: number, createdAt: number): No
     projectId: 'p1',
     nodeId: 'n1',
     messageId: 'm1',
-    kind: 'highlight',
+    labels: [],
     quote: id,
     start,
     end,
@@ -76,3 +92,55 @@ function makeNote(id: string, start: number, end: number, createdAt: number): No
     updatedAt: createdAt,
   }
 }
+
+describe('note labels', () => {
+  it('normalizes a label: trims, caps length, drops blanks', () => {
+    expect(normalizeNoteLabel('  错题 ')).toBe('错题')
+    expect(normalizeNoteLabel('')).toBeNull()
+    expect(normalizeNoteLabel('   ')).toBeNull()
+    expect(normalizeNoteLabel(42)).toBeNull()
+    expect(normalizeNoteLabel('x'.repeat(50))).toHaveLength(NOTE_LABEL_MAX)
+  })
+
+  it('normalizes a label list: dedupe, order kept, capped', () => {
+    expect(normalizeNoteLabels(['b', 'a', 'b', '  ', 'c', 'd', 'e'])).toEqual(['b', 'a', 'c', 'd'])
+    expect(normalizeNoteLabels(undefined)).toEqual([])
+    expect(normalizeNoteLabels('mistake')).toEqual([])
+  })
+
+  it('treats notes without labels as plain highlights and filters them out', () => {
+    const plain = makeNote('plain', 0, 3, 1)
+    const labeled = { ...makeNote('labeled', 4, 7, 2), labels: ['mistake'] }
+
+    expect(isPlainHighlight(plain)).toBe(true)
+    expect(isPlainHighlight(labeled)).toBe(false)
+    expect(labeledNotes([plain, labeled]).map((note) => note.id)).toEqual(['labeled'])
+  })
+
+  it('renders labels with their built-in Chinese names', () => {
+    expect(noteLabelName('mistake')).toBe('错题')
+    expect(noteLabelName('项目自定义')).toBe('项目自定义')
+    expect(formatNoteLabels(['mistake', 'confusing'])).toBe('[错题][没懂]')
+    expect(formatNoteLabels([])).toBe('')
+  })
+
+  it('collects used labels in first-seen order and counts them', () => {
+    const notes = [
+      { ...makeNote('a', 0, 1, 1), labels: ['confusing', 'mistake'] },
+      { ...makeNote('b', 2, 3, 2), labels: ['mistake'] },
+    ]
+    expect(collectUsedLabels(notes)).toEqual(['confusing', 'mistake'])
+    expect(countNoteLabels(notes)).toBe('[没懂] 1 · [错题] 2')
+  })
+
+  it('renders a legend that only explains the labels actually in use', () => {
+    const legend = renderNoteLegend(['mistake'])
+    expect(legend).toContain('## 用户标注的读法')
+    expect(legend).toContain('「错题」= 学习者确认自己做错或答错的内容')
+    expect(legend).not.toContain('没懂')
+    // 暴露规则必须写清：不带标签的高亮不外送，模型不该去猜
+    expect(legend).toContain('只有带标签的标注会给你')
+
+    expect(renderNoteLegend([])).toContain('还没有打过标签的标注')
+  })
+})

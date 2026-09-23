@@ -93,6 +93,8 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
       projectName: workspace.project?.name,
       projectDescription: workspace.project?.description,
       nodes: workspace.nodes,
+      // 标注带标签的那些会随上下文一起给模型（「我有哪些还没搞懂的」全靠它）
+      notes: Object.values(workspace.notesByMessage).flat(),
       history,
       text: trimmed,
       signal: controller.signal,
@@ -120,7 +122,9 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
         messages: [...state.messages, answer],
         streaming: null,
         error: output.aborted ? '回答被中断，内容不完整。' : null,
-        contextNote: `本次参考了 ${output.listed} / ${output.total} 个主题`,
+        contextNote: `本次参考了 ${output.listed} / ${output.total} 个主题${
+          output.notes > 0 ? `、${output.notes} 条用户标注` : ''
+        }`,
       }))
       return
     }

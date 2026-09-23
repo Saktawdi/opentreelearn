@@ -1,6 +1,11 @@
 import { z } from 'zod'
-import type { AssessmentSource, NodeStatus, NoteKind, ReviewEnrollment } from '@/domain/models'
-import { isNoteKind } from '@/domain/notes'
+import type {
+  AssessmentSource,
+  NodeStatus,
+  NoteLabel,
+  ReviewEnrollment,
+} from '@/domain/models'
+import { normalizeNoteBody, normalizeNoteLabels } from '@/domain/notes'
 
 const rawMessageSchema = z.object({
   id: z.string().optional(),
@@ -60,7 +65,10 @@ const rawCardSchema = z.object({
 const rawNoteSchema = z.object({
   id: z.string().optional(),
   messageId: z.string(),
+  /** 老文件（v1/v2）里的渲染标记；新版本只把它当兜底，语义由 labels 决定 */
   kind: z.string().optional(),
+  /** v2 可选新增：标注标签（[错题] / [没懂] / 项目自定义） */
+  labels: z.array(z.string()).optional(),
   quote: z.string().optional(),
   start: z.coerce.number().optional(),
   end: z.coerce.number().optional(),
@@ -132,7 +140,8 @@ export interface ParsedCard {
 export interface ParsedNote {
   sourceId?: string
   messageSourceId: string
-  kind: NoteKind
+  /** 标签；空数组 = 纯高亮。老文件的 `kind` 不再承担语义（见 parseNotes） */
+  labels: NoteLabel[]
   quote: string
   start: number
   end: number
@@ -211,10 +220,14 @@ function readAssessmentMeta(value: unknown): ParsedAssessmentMeta | undefined {
 }
 
 /**
- * 笔记：锚点必须是「消息内正文纯文本的 `[start, end)`」。
+ * 标注：锚点必须是「消息内正文纯文本的 `[start, end)`」。
  *
  * 起点不为负、终点不早于起点（与 `normalizeNote` 同一口径）—— 倒置的区间在渲染期会让
- * Range 直接抛错。既没有引用也没有正文的条目等于没有任何落点，丢弃。
+ * Range 直接抛错。既没有引用也没有备注的条目等于没有任何落点，丢弃。
+ *
+ * 老文件的 `kind`（highlight / annotation）在这里**只被忽略、不做映射**：标签是新的
+ * 语义层，从渲染标记里推不出「这是错题还是没懂」。老标注因此读成 `labels: []`
+ * （纯高亮），备注照旧保留 —— 内容不丢，只是不再假装自己带语义。
  */
 function parseNotes(
   rawNotes: NonNullable<z.infer<typeof treeFileSchema>['data']['notes']>,
@@ -222,7 +235,7 @@ function parseNotes(
   const notes: ParsedNote[] = []
   for (const raw of rawNotes) {
     const quote = raw.quote?.trim() ?? ''
-    const body = raw.body?.trim()
+    const body = normalizeNoteBody(raw.body)
     if (!quote && !body) continue
     const start = Math.max(Math.trunc(raw.start ?? 0), 0)
     const end = Math.max(Math.trunc(raw.end ?? start), start)
@@ -230,7 +243,7 @@ function parseNotes(
     notes.push({
       ...(raw.id ? { sourceId: raw.id } : {}),
       messageSourceId: raw.messageId,
-      kind: isNoteKind(raw.kind) ? raw.kind : 'highlight',
+      labels: normalizeNoteLabels(raw.labels),
       quote,
       start,
       end,

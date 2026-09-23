@@ -335,7 +335,7 @@ describe('regenerate', () => {
     await store().addNote({
       nodeId,
       messageId: 'm-answer',
-      kind: 'annotation',
+      labels: ['key'],
       quote: 'λ',
       start: 8,
       end: 9,
@@ -536,7 +536,7 @@ describe('editUserMessage', () => {
     await store().addNote({
       nodeId,
       messageId: 'm-answer',
-      kind: 'annotation',
+      labels: ['key'],
       quote: '旧回答',
       start: 0,
       end: 3,
@@ -637,7 +637,7 @@ describe('note actions', () => {
     const note = await store().addNote({
       nodeId: root!.id,
       messageId,
-      kind: 'annotation',
+      labels: ['key'],
       quote: '特征值',
       start: 2,
       end: 5,
@@ -668,8 +668,8 @@ describe('note actions', () => {
     const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
     const store = () => useWorkspaceStore.getState()
 
-    await store().addNote({ nodeId: root!.id, messageId, kind: 'highlight', quote: '后', start: 10, end: 11 })
-    await store().addNote({ nodeId: root!.id, messageId, kind: 'annotation', quote: '前', start: 2, end: 3 })
+    await store().addNote({ nodeId: root!.id, messageId, quote: '后', start: 10, end: 11 })
+    await store().addNote({ nodeId: root!.id, messageId, labels: ['mistake'], quote: '前', start: 2, end: 3 })
 
     expect(store().notesByMessage[messageId].map((note) => note.quote)).toEqual(['前', '后'])
   })
@@ -682,7 +682,6 @@ describe('note actions', () => {
     await useWorkspaceStore.getState().addNote({
       nodeId: root!.id,
       messageId,
-      kind: 'highlight',
       quote: '问题',
       start: 0,
       end: 2,

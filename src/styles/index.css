@@ -455,12 +455,15 @@
 }
 
 /*
- * 消息正文里的笔记标记（高亮 / 批注）。
+ * 消息正文里的标注（纯高亮 / 带标签的标注）。
  *
  * 用 CSS Custom Highlight API 的具名高亮来画：区间由 JS 登记（见 features/chat/note-anchor.ts），
  * 这里只负责长什么样。刻意不往正文里包 <mark> —— 正文是 React 渲染的 Markdown，
  * 凭空插节点会和 diff 打架。伪元素可用的属性有限：颜色、背景、text-decoration、
  * text-shadow，改别的（比如 padding、border）不会生效。
+ *
+ * 两套配色刻意不同：带标签的标注会进 AI 上下文，值得更醒目（加下划线）；
+ * 纯高亮是用户自己的书签，只做淡底。
  */
 ::highlight(otl-note-highlight) {
   background-color: color-mix(in oklab, var(--color-accent) 30%, transparent);

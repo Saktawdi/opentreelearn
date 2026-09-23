@@ -1,6 +1,13 @@
 import { DEFAULT_CONTEXT_BUDGET } from '@/domain/defaults'
 import { messageText } from '@/domain/messages'
 import type { Id, Message, Node, Note, ReviewGrade } from '@/domain/models'
+import {
+  collectUsedLabels,
+  countNoteLabels,
+  formatNoteLabels,
+  labeledNotes,
+  renderNoteLegend,
+} from '@/domain/notes'
 import { REVIEW_RATING_MARKER_HINT } from '@/domain/review/protocol'
 import type { ReviewRequestPurpose } from '@/domain/review/session'
 import { resolveThread, threadPathFingerprint } from '@/domain/thread/resolve'
@@ -43,22 +50,50 @@ export interface ReviewMaterialInput {
   node: Node
   nodes: Node[]
   messagesByNode: Map<Id, Message[]>
+  /**
+   * 按**消息**分组的标注（键是 messageId，与 `workspace-store.notesByMessage` 同口径）。
+   *
+   * 旧实现拿 nodeId 去查这张表，永远查不到 —— 那段「本主题的笔记」从未生效过
+   * （演进方案 4.1 的死代码）。这里改成先取本节点的消息、再按消息取标注。
+   */
   notesByMessage?: Map<Id, Note[]>
   budgetTokens?: number
 }
 
 const MATERIAL_HEADER = '## 学习资料（只作为出题与点评的依据，不要直接整段念给学习者）'
 
-function renderNotes(notes: Note[]): string[] {
-  return notes
-    .map((note) => {
-      const body = normalizeWhitespace(note.body ?? '').trim()
-      const quote = normalizeWhitespace(note.quote).trim()
-      if (body) return `- 笔记：${truncate(body, 120)}${quote ? `（原文：${truncate(quote, 80)}）` : ''}`
-      if (quote) return `- 高亮：${truncate(quote, 120)}`
-      return null
-    })
-    .filter((line): line is string => line !== null)
+/**
+ * 标注的渲染：`- [错题][没懂] 判断动量是否守恒时忽略了竖直方向`。
+ *
+ * 只给标签与原文，**不给备注**：备注默认不进 AI 上下文（演进方案 4.4）——
+ * 标签必须能独立表达完整意思，细节留到工具显式索取全文时再给。
+ */
+function renderLabeledNotes(notes: Note[]): string[] {
+  return notes.map((note) => {
+    const quote = truncate(normalizeWhitespace(note.quote), 120)
+    return `- ${formatNoteLabels(note.labels)} ${quote}`
+  })
+}
+
+/**
+ * 本节点**显示路径上**带标签的标注。
+ *
+ * 两道过滤都是刻意的：
+ * 1. 只认显示路径 —— 挂在被切走/淘汰的历史版本上的标注，对应的正文根本不在屏幕上；
+ * 2. 只认带标签的 —— 纯高亮是用户自己的书签，原文模型本来就看得到，送进去只是噪声。
+ */
+function collectLabeledNotes(
+  nodeId: Id,
+  path: Message[],
+  messagesByNode: Map<Id, Message[]>,
+  notesByMessage: Map<Id, Note[]> | undefined,
+): Note[] {
+  if (!notesByMessage) return []
+  const pathIds = new Set(path.map((message) => message.id))
+  const own = (messagesByNode.get(nodeId) ?? []).flatMap(
+    (message) => notesByMessage.get(message.id) ?? [],
+  )
+  return labeledNotes(own.filter((note) => pathIds.has(note.messageId)))
 }
 
 /**
@@ -78,9 +113,7 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
   const chain = [...ancestors.map((item) => item.title), node.title]
   const pathLine = chain.map((title, depth) => `${'  '.repeat(depth)}- ${title}`).join('\n')
 
-  const notes = index.byId.has(node.id)
-    ? (input.notesByMessage?.get(node.id) ?? []).flatMap((entry) => renderNotes([entry]))
-    : []
+  const notes = collectLabeledNotes(node.id, path, messagesByNode, input.notesByMessage)
 
   const transcriptLines = path.map((message, position) => {
     const speaker = message.role === 'assistant' ? '导师' : '学习者'
@@ -95,7 +128,9 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
     node.mastery?.weakPoints?.length
       ? `## 上次评估发现的薄弱点\n${node.mastery.weakPoints.map((point) => `- ${point}`).join('\n')}`
       : '',
-    notes.length > 0 ? `## 本主题的笔记\n${notes.slice(0, 20).join('\n')}` : '',
+    notes.length > 0
+      ? `## 用户标注（${countNoteLabels(notes)}）\n${renderNoteLegend(collectUsedLabels(notes))}\n${renderLabeledNotes(notes.slice(0, 20)).join('\n')}`
+      : '',
     transcriptLines.length > 0
       ? `## 原学习对话（按时间顺序）\n${transcriptLines.join('\n')}`
       : '## 原学习对话\n（这个主题还没有对话记录）',

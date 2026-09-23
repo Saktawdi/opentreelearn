@@ -281,7 +281,7 @@ describe('normalizeNote', () => {
     projectId: 'p1',
     nodeId: 'n1',
     messageId: 'm1',
-    kind: 'annotation',
+    labels: ['key'],
     quote: '特征值',
     start: 4,
     end: 7,
@@ -309,8 +309,52 @@ describe('normalizeNote', () => {
     expect(missing?.end).toBe(3)
   })
 
-  it('falls back to a highlight when the kind is unknown', () => {
-    expect(normalizeNote({ ...base, kind: '书签' })?.kind).toBe('highlight')
+  it('reads old records as unlabeled highlights without losing their body', () => {
+    // 老数据只有 kind：annotation + body 读出来是「无标签 + 备注保留」，
+    // highlight 读出来是纯高亮 —— 两者都不再声称自己带语义标签
+    const annotation = normalizeNote({
+      id: 'n-old',
+      projectId: 'p1',
+      nodeId: 'n1',
+      messageId: 'm1',
+      kind: 'annotation',
+      quote: '特征值',
+      start: 0,
+      end: 3,
+      body: '当时抄下来的解释',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    expect(annotation).toMatchObject({ labels: [], body: '当时抄下来的解释' })
+
+    const highlight = normalizeNote({
+      id: 'n-old2',
+      projectId: 'p1',
+      nodeId: 'n1',
+      messageId: 'm1',
+      kind: 'highlight',
+      quote: '特征值',
+      start: 0,
+      end: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    expect(highlight?.labels).toEqual([])
+    expect(highlight?.body).toBeUndefined()
+  })
+
+  it('normalizes labels: trims, drops blanks, dedupes and caps the count', () => {
+    expect(normalizeNote({ ...base, labels: ['  错题  ', '', '错题', 42] })?.labels).toEqual(['错题'])
+    expect(
+      normalizeNote({ ...base, labels: ['a', 'b', 'c', 'd', 'e', 'f'] })?.labels,
+    ).toHaveLength(4)
+    expect(normalizeNote({ ...base, labels: 'mistake' })?.labels).toEqual([])
+  })
+
+  it('caps the body length', () => {
+    const long = normalizeNote({ ...base, body: 'x'.repeat(500) })
+    expect(long?.body).toHaveLength(200)
+    expect(normalizeNote({ ...base, body: '   ' })?.body).toBeUndefined()
   })
 
   it('drops records that cannot be attached to a message', () => {

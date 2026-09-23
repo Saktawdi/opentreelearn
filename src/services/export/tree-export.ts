@@ -87,7 +87,21 @@ export interface RawTreeExportNote {
   id: string
   /** 锚定的消息 id（导入时重映射；映射不上就整条丢弃，不留下悬空批注） */
   messageId: string
+  /**
+   * 渲染形态标记。
+   *
+   * 新版本内部已没有 `kind` 概念（标签 + 备注就够表达），但**导出仍然写它**：
+   * 老客户端与外部工具按它决定「画淡底还是加下划线」，不写会让它们把带标签的标注
+   * 一律显示成纯高亮。取值由备注推出：有备注 = `annotation`，否则 `highlight`。
+   */
   kind: string
+  /**
+   * 标注标签（v2 可选新增字段）。
+   *
+   * 加字段不升版本：只认 v1/v2 旧解析端会忽略它，那条标注退化成「无标签高亮」——
+   * 用户仍看得见划线，只是标签没显示。反向（新端读老文件）由 `kind` 兜底。
+   */
+  labels?: string[]
   quote: string
   start: number
   end: number
@@ -209,13 +223,15 @@ export function buildTreeExportData(
     return card
   })
 
-  // 笔记：只带锚在导出消息上的（挂在被裁掉的历史版本上的批注没有落点）
+  // 标注：只带锚在导出消息上的（挂在被裁掉的历史版本上的标注没有落点）
   const mappedNotes: RawTreeExportNote[] = notes
     .filter((note) => exportedMessageIds.has(note.messageId))
     .map((note) => ({
       id: note.id,
       messageId: note.messageId,
-      kind: note.kind,
+      // 老读者的兼容字段：由备注推出渲染形态（标签是新增的可选字段）
+      kind: note.body ? 'annotation' : 'highlight',
+      ...(note.labels.length > 0 ? { labels: note.labels } : {}),
       quote: note.quote,
       start: note.start,
       end: note.end,

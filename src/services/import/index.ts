@@ -176,7 +176,7 @@ function resolveFork(
   return { nodeId, messageId }
 }
 
-/** 笔记：锚点跟着消息 id 一起重映射，映射不上就丢弃（不留下悬空批注）。 */
+/** 标注：锚点跟着消息 id 一起重映射，映射不上就丢弃（不留下悬空标注）。 */
 function importNotes(
   parsedNotes: ParsedNote[],
   projectId: string,
@@ -193,7 +193,7 @@ function importNotes(
       projectId,
       nodeId,
       messageId,
-      kind: note.kind,
+      labels: note.labels,
       quote: note.quote,
       start: note.start,
       end: note.end,

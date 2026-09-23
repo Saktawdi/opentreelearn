@@ -159,7 +159,7 @@ describe('importParsedProject', () => {
           {
             sourceId: 'note-1',
             messageSourceId: 'm1',
-            kind: 'highlight',
+            labels: ['key'],
             quote: '重点',
             start: 4,
             end: 6,

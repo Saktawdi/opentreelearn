@@ -15,7 +15,7 @@ import type {
   ReviewCardState,
 } from './models'
 import { isReviewGrade } from './models'
-import { isNoteKind } from './notes'
+import { normalizeNoteBody, normalizeNoteLabels } from './notes'
 
 /**
  * 存储读回边界的数据归一化。
@@ -108,12 +108,17 @@ export function normalizeProject(value: unknown, now = Date.now()): Project | nu
 }
 
 /**
- * 笔记的读回归一化。
+ * 标注的读回归一化。
  *
- * `start` / `end` 决定这段笔记画在正文的哪一段上，坏值（负的、倒置的、非数值的）
+ * `start` / `end` 决定这段标注画在正文的哪一段上，坏值（负的、倒置的、非数值的）
  * 会让渲染期的 Range 直接抛错，所以这里一律夹紧：起点不为负，终点不早于起点。
  * 缺少 `projectId` / `nodeId` / `messageId` 的记录无法归属到任何消息，也就永远
  * 渲染不出来，直接丢弃而不是留在库里越积越多。
+ *
+ * 旧数据的 `kind` 字段在这里被丢掉、不做映射：`annotation` + body 读出来就是
+ * `{ labels: [], body }`（标签为空、内容不丢），`highlight` 读出来是
+ * `{ labels: [] }` —— 两者都退化成「纯高亮」，只是前者仍带着备注。这正是
+ * 演进方案要的语义：老标注不丢内容，只是不再假装自己带语义标签。
  */
 export function normalizeNote(value: unknown, now = Date.now()): Note | null {
   if (!isRecord(value)) return null
@@ -128,17 +133,18 @@ export function normalizeNote(value: unknown, now = Date.now()): Note | null {
   const start = Math.max(0, Math.floor(readNumber(value.start, 0)))
   const end = Math.max(start, Math.floor(readNumber(value.end, start + quote.length)))
   const createdAt = readNumber(value.createdAt, now)
+  const body = normalizeNoteBody(value.body)
 
   return {
     id,
     projectId,
     nodeId,
     messageId,
-    kind: isNoteKind(value.kind) ? value.kind : 'highlight',
+    labels: normalizeNoteLabels(value.labels),
     quote,
     start,
     end,
-    body: readString(value.body),
+    ...(body ? { body } : {}),
     createdAt,
     updatedAt: readNumber(value.updatedAt, createdAt),
   }

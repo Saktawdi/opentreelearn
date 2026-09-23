@@ -1,5 +1,5 @@
-import type { Id, Note, NoteKind } from '@/domain/models'
-import { locateQuote, NOTE_KINDS, type Anchor } from '@/domain/notes'
+import type { Id, Note } from '@/domain/models'
+import { locateQuote, type Anchor } from '@/domain/notes'
 
 /**
  * 笔记锚点的 DOM 侧。
@@ -95,10 +95,8 @@ export function resolveNoteRange(note: Note): ResolvedRange | null {
  * 而注册表完全不碰 DOM —— 重渲染后重新登记一次即可。
  */
 
-const HIGHLIGHT_NAME: Record<NoteKind, string> = {
-  highlight: 'otl-note-highlight',
-  annotation: 'otl-note-annotation',
-}
+const PLAIN_NAME = 'otl-note-highlight'
+const LABELED_NAME = 'otl-note-annotation'
 
 const FOCUS_NAME = 'otl-note-focus'
 
@@ -107,7 +105,8 @@ export function supportsNoteHighlight(): boolean {
 }
 
 export interface RegisteredRange {
-  kind: NoteKind
+  /** 带标签的标注与纯高亮用两套配色：前者是「给 AI 的信号」，后者是自己的书签 */
+  labeled: boolean
   range: Range
 }
 
@@ -117,16 +116,17 @@ const registrations = new Map<string, RegisteredRange[]>()
 function rebuild(): void {
   if (!supportsNoteHighlight()) return
 
-  for (const kind of NOTE_KINDS) {
+  for (const labeled of [false, true] as const) {
     const ranges = [...registrations.values()]
       .flat()
-      .filter((entry) => entry.kind === kind)
+      .filter((entry) => entry.labeled === labeled)
       .map((entry) => entry.range)
+    const name = labeled ? LABELED_NAME : PLAIN_NAME
 
     if (ranges.length > 0) {
-      CSS.highlights.set(HIGHLIGHT_NAME[kind], new Highlight(...ranges))
+      CSS.highlights.set(name, new Highlight(...ranges))
     } else {
-      CSS.highlights.delete(HIGHLIGHT_NAME[kind])
+      CSS.highlights.delete(name)
     }
   }
 }

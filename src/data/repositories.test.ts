@@ -43,7 +43,7 @@ function makeNote(id: string, messageId: string, nodeId: string): Note {
     projectId: 'p1',
     nodeId,
     messageId,
-    kind: 'highlight',
+    labels: [],
     quote: id,
     start: 0,
     end: id.length,
@@ -254,7 +254,7 @@ describe('note repository', () => {
 
     const notes = await repositories.notes.listByProject('p1')
     expect(notes.map((note) => note.id)).toEqual(['broken'])
-    expect(notes[0].kind).toBe('highlight')
+    expect(notes[0].labels).toEqual([])
     expect(notes[0].start).toBe(0)
     expect(notes[0].end).toBe(0)
   })

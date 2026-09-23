@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { getRepositories } from '@/data'
-import type { Id, Node, ReviewGrade } from '@/domain/models'
+import type { Id, Node, Note, ReviewGrade } from '@/domain/models'
 import {
   advanceAfter,
   canConfirm,
@@ -605,10 +605,12 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   await getRepositories().reviewSessions.save(session)
 
   // 读取当前需要的节点和前置消息
-  const [project, nodes, messages, projectSettings] = await Promise.all([
+  const [project, nodes, messages, notes, projectSettings] = await Promise.all([
     getRepositories().projects.get(projectId),
     getRepositories().nodes.listByProject(projectId),
     getRepositories().messages.listByProject(projectId),
+    // 标注随材料一起给模型：用户标的错题 / 没懂是他本人的判断，出题与点评要优先照顾
+    getRepositories().notes.listByProject(projectId),
     getRepositories().projectSettings.get(projectId),
   ])
   const node = nodes.find((n) => n.id === item.nodeId)
@@ -627,6 +629,15 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     else messagesByNode.set(msg.nodeId, [msg])
   }
 
+  // 标注按**消息**分组（与 workspace-store.notesByMessage 同口径）：
+  // 旧实现拿 nodeId 去查这张表，导致复习材料里的「笔记」那段从未生效过
+  const notesByMessage = new Map<Id, Note[]>()
+  for (const note of notes) {
+    const bucket = notesByMessage.get(note.messageId)
+    if (bucket) bucket.push(note)
+    else notesByMessage.set(note.messageId, [note])
+  }
+
   const settings = useSettingsStore.getState().settings
 
   const total = session.items.length
@@ -641,6 +652,7 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     node,
     nodes,
     messagesByNode,
+    notesByMessage,
     item,
     purpose,
     text,

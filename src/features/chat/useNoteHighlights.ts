@@ -34,7 +34,7 @@ export function useNoteHighlights(
       const entries: RegisteredRange[] = []
       for (const note of notes) {
         const resolved = resolveNoteRange(note)
-        if (resolved) entries.push({ kind: note.kind, range: resolved.range })
+        if (resolved) entries.push({ labeled: note.labels.length > 0, range: resolved.range })
       }
       publishNoteRanges(messageId, entries)
     }

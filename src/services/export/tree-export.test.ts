@@ -232,3 +232,94 @@ describe('tree-export', () => {
     expect(exported.data.cards[0].messages.map((message) => message.id)).toEqual(['u2', 'a2'])
   })
 })
+
+describe('tree-export: notes with labels', () => {
+  const project: Project = { id: 'p-1', name: '标注项目', tags: [], createdAt: 1, updatedAt: 2 }
+  const node: Node = {
+    id: 'n-1',
+    projectId: 'p-1',
+    parentId: null,
+    forkFrom: null,
+    title: '动量守恒',
+    position: null,
+    status: 'active',
+    createdAt: 1,
+    updatedAt: 2,
+  }
+  const message: Message = {
+    id: 'm-1',
+    nodeId: 'n-1',
+    projectId: 'p-1',
+    role: 'assistant',
+    parts: [{ type: 'text', text: '判断动量是否守恒时忽略了竖直方向' }],
+    createdAt: 3,
+  }
+
+  it('writes labels and keeps a kind hint for older readers', () => {
+    const data = buildTreeExportData(project, [node], [message], [
+      {
+        id: 'note-1',
+        projectId: 'p-1',
+        nodeId: 'n-1',
+        messageId: 'm-1',
+        labels: ['mistake'],
+        quote: '忽略了竖直方向',
+        start: 8,
+        end: 16,
+        createdAt: 4,
+        updatedAt: 4,
+      },
+    ])
+
+    const raw = data.data.notes![0]
+    expect(raw.labels).toEqual(['mistake'])
+    // 没有备注 ⇒ 老读者按纯高亮渲染；有备注则按批注渲染。标签本身是老读者不认识的字段
+    expect(raw.kind).toBe('highlight')
+  })
+
+  it('round-trips labels through export → parse', () => {
+    const data = buildTreeExportData(project, [node], [message], [
+      {
+        id: 'note-1',
+        projectId: 'p-1',
+        nodeId: 'n-1',
+        messageId: 'm-1',
+        labels: ['mistake', 'confusing'],
+        quote: '忽略了竖直方向',
+        start: 8,
+        end: 16,
+        body: '当时想错了',
+        createdAt: 4,
+        updatedAt: 4,
+      },
+    ])
+
+    // 导出文件里的消息 id 会重编号吗？这里导出的是原 id，解析端按原 id 读
+    const parsed = parseTreeJson(JSON.parse(stringifyTreeExport(data)))
+    expect(parsed.notes[0]).toMatchObject({
+      labels: ['mistake', 'confusing'],
+      quote: '忽略了竖直方向',
+      body: '当时想错了',
+    })
+  })
+
+  it('omits the labels field for plain highlights', () => {
+    const data = buildTreeExportData(project, [node], [message], [
+      {
+        id: 'note-2',
+        projectId: 'p-1',
+        nodeId: 'n-1',
+        messageId: 'm-1',
+        labels: [],
+        quote: '竖直方向',
+        start: 8,
+        end: 12,
+        createdAt: 4,
+        updatedAt: 4,
+      },
+    ])
+
+    expect(data.data.notes![0].labels).toBeUndefined()
+    expect(data.data.notes![0].kind).toBe('highlight')
+  })
+})

@@ -1,6 +1,6 @@
 import type { ContextMessage } from '@/domain/context/assemble'
 import { assembleFreeAskContext } from '@/domain/context/free-ask'
-import type { GlobalSettings, Id, ModelRef, Node, ProjectSettings } from '@/domain/models'
+import type { GlobalSettings, Id, ModelRef, Node, Note, ProjectSettings } from '@/domain/models'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages, type ChatUsage } from './chat'
@@ -24,6 +24,8 @@ export interface FreeAskRequestInput {
   projectName?: string
   projectDescription?: string
   nodes: Node[]
+  /** 项目里的全部标注；只有带标签的那些会进上下文（纯高亮是用户自己的书签） */
+  notes?: Note[]
   /** 已经发生的问答，按时间顺序（不含本轮提问） */
   history: ContextMessage[]
   /** 本轮提问 */
@@ -44,6 +46,8 @@ export interface FreeAskRequestOutput {
   /** 本次上下文实际列出的主题数 / 活跃主题总数 */
   listed: number
   total: number
+  /** 本次上下文实际列出的标注条数（0 = 这个项目没有带标签的标注） */
+  notes: number
 }
 
 export interface FreeAskRequestFailure {
@@ -82,6 +86,7 @@ export async function runFreeAskRequest(
 
   const context = assembleFreeAskContext({
     nodes: input.nodes,
+    notes: input.notes,
     history,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
@@ -117,6 +122,7 @@ export async function runFreeAskRequest(
         aborted: result.aborted,
         listed: context.listed,
         total: context.total,
+        notes: context.notes,
       },
     }
   } catch (error) {

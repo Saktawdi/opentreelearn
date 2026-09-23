@@ -14,7 +14,7 @@ import type {
   MessagePart,
   Node,
   Note,
-  NoteKind,
+  NoteLabel,
   Project,
   ProjectSettings,
 } from '@/domain/models'
@@ -28,7 +28,7 @@ import {
   type ThreadChange,
 } from '@/domain/thread/mutations'
 import { resolveThread } from '@/domain/thread/resolve'
-import { sortNotes } from '@/domain/notes'
+import { sortNotes, normalizeNoteBody, normalizeNoteLabels } from '@/domain/notes'
 import { createNodeFromAction, nodeActionRequiresMessage, type NodeActionKind } from '@/domain/node-ops/actions'
 import { buildTreeIndex, descendantsOf } from '@/domain/tree/tree'
 import { seedReviewCard } from '@/domain/review/schedule'
@@ -77,11 +77,12 @@ export interface VersionWriteResult {
   pruned: boolean
 }
 
-/** 新建笔记的入参：锚点是「正文纯文本里的字符区间」，由框选那一刻算好传进来。 */
+/** 新建标注的入参：锚点是「正文纯文本里的字符区间」，由框选那一刻算好传进来。 */
 export interface NewNoteInput {
   nodeId: Id
   messageId: Id
-  kind: NoteKind
+  /** 标签；缺省或空数组 = 纯高亮（书签，默认不进 AI 上下文） */
+  labels?: NoteLabel[]
   quote: string
   start: number
   end: number
@@ -125,7 +126,7 @@ interface WorkspaceState {
   deleteNode: (id: Id) => Promise<void>
   updateProjectSettings: (patch: Partial<ProjectSettings>) => Promise<void>
   addNote: (input: NewNoteInput) => Promise<Note | null>
-  updateNote: (id: Id, patch: { body?: string }) => Promise<void>
+  updateNote: (id: Id, patch: { body?: string; labels?: NoteLabel[] }) => Promise<void>
   removeNote: (id: Id) => Promise<void>
   sendMessage: (nodeId: Id, parts: MessagePart[]) => Promise<void>
   stopStreaming: () => void
@@ -503,14 +504,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const quote = input.quote.trim()
       if (!quote) return null
 
-      const body = input.body?.trim()
+      const labels = normalizeNoteLabels(input.labels)
+      const body = normalizeNoteBody(input.body)
       const now = Date.now()
       const note: Note = {
         id: newId(),
         projectId,
         nodeId: input.nodeId,
         messageId: input.messageId,
-        kind: input.kind,
+        labels,
         quote,
         start: input.start,
         end: input.end,
@@ -532,15 +534,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const found = findNoteEntry(get().notesByMessage, id)
       if (!found) return
 
-      const body = patch.body?.trim()
-      const updated: Note = { ...found.note, updatedAt: Date.now() }
+      const body = normalizeNoteBody(patch.body)
+      const updated: Note = {
+        ...found.note,
+        // 只改传进来的那部分：改备注不该把标签抹掉，改标签也不该丢备注
+        labels: patch.labels === undefined ? found.note.labels : normalizeNoteLabels(patch.labels),
+        updatedAt: Date.now(),
+      }
       if (body) {
         updated.body = body
       } else {
         delete updated.body
       }
 
-      // 整条覆盖而不是 patch：清空批注时 body 键必须真的消失，否则「这条笔记还带批注」
+      // 整条覆盖而不是 patch：清空备注时 body 键必须真的消失，否则「这条标注还带备注」
       // 会被空字符串骗过去（`note.body` 有值但内容是空）。
       await getRepositories().notes.create(updated)
       set((draft) => {

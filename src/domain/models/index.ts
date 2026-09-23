@@ -238,25 +238,36 @@ export interface Message {
   meta?: MessageMeta
 }
 
-export type NoteKind = 'highlight' | 'annotation'
+/**
+ * 标注标签。
+ *
+ * 刻意用字符串而不是封闭枚举：内置一组（见 `domain/notes` 的 `NOTE_LABELS`），
+ * 项目里可以继续扩展。但**新增标签必须带一句释义** —— 模型读不懂标签名就只能猜，
+ * 「猜不到意思的自定义标签」正是把标注喂给 AI 时最该避免的污染。
+ */
+export type NoteLabel = string
 
 /**
- * 消息正文里的「笔记」：高亮标记与批注锚定到同一段被框选的原文。
+ * 消息正文里的「标注」：标签与可选备注锚定到同一段被框选的原文。
  *
  * 锚点存的是**字符区间**而不是 DOM 引用 —— 消息正文是 Markdown 渲染出来的，
  * 每次重渲染都会重建 DOM，只有「正文纯文本里的第 start 到 end 个字符」这种说法
  * 能在重建后重新定位。`quote` 同时用于展示与锚点自愈（渲染结果变了就按原文找回）。
+ *
+ * `labels` 空数组 = 纯高亮（用户自己的书签）：正文里照常画线，但**默认不进 AI 上下文**
+ * —— 只有带标签的标注才外送，那是用户亲口确认过的语义（错题 / 没懂）。
  */
 export interface Note {
   id: Id
   projectId: Id
   nodeId: Id
   messageId: Id
-  kind: NoteKind
+  /** 标签；空数组 = 纯高亮。旧数据的 `kind` 在读取时归一化掉（见 normalizeNote）。 */
+  labels: NoteLabel[]
   quote: string
   start: number
   end: number
-  /** 批注内容；纯高亮可以留空，留空时正文里只留一条划线。 */
+  /** 可选备注，退居次要：默认不进 AI 上下文，且限长（见 NOTE_BODY_MAX）。 */
   body?: string
   createdAt: number
   updatedAt: number

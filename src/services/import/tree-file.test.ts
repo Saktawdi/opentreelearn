@@ -118,6 +118,7 @@ describe('parseTreeJson', () => {
             id: 'n1',
             messageId: 'm2',
             kind: 'annotation',
+            labels: ['mistake', '  没懂  ', 'mistake'],
             quote: '答',
             start: 1,
             end: 2,
@@ -153,10 +154,37 @@ describe('parseTreeJson', () => {
 
     expect(parsed.notes[0]).toMatchObject({
       messageSourceId: 'm2',
-      kind: 'annotation',
+      // 标签去空白、去重；老文件的 kind 不再承担语义
+      labels: ['mistake', '没懂'],
       quote: '答',
       body: '笔记内容',
     })
+  })
+
+  it('reads a v1 note (kind only) as an unlabeled highlight, keeping its body', () => {
+    const v1Tree = {
+      type: 'project',
+      version: 1,
+      data: {
+        name: '老项目',
+        cards: [
+          {
+            id: 'c1',
+            title: '一问',
+            messages: [{ id: 'm1', role: 'user', content: '一问', timestamp: 10 }],
+            children: [],
+          },
+        ],
+        notes: [
+          { id: 'n1', messageId: 'm1', kind: 'annotation', quote: '问', start: 0, end: 1, body: '旧批注' },
+        ],
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    }
+
+    const parsed = parseTreeJson(v1Tree)
+    expect(parsed.notes[0]).toMatchObject({ labels: [], body: '旧批注' })
   })
 
   it.skipIf(!existsSync(REAL_TREE_FILE))('parses the real .gate file faithfully', () => {

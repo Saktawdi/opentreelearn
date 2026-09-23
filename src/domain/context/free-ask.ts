@@ -1,5 +1,12 @@
 import { DEFAULT_CONTEXT_BUDGET } from '@/domain/defaults'
-import type { Id, Node, ReviewGrade } from '@/domain/models'
+import type { Id, Node, Note, ReviewGrade } from '@/domain/models'
+import {
+  collectUsedLabels,
+  countNoteLabels,
+  formatNoteLabels,
+  labeledNotes,
+  renderNoteLegend,
+} from '@/domain/notes'
 import { buildStudyDigest, renderStudyDigest, treeOrder } from '@/domain/review/digest'
 import { gradeOfScore } from '@/domain/review/schedule'
 import { normalizeWhitespace, truncate } from '@/lib/text'
@@ -31,17 +38,25 @@ const SUMMARY_CHARS = 160
 /** 默认列出的主题数上限。真到超限时先按「最近编辑过」保留，再还原树序。 */
 const DEFAULT_INVENTORY_LIMIT = 80
 
+/** 列出的标注条数上限与每条原文长度：标注是补充信号，不该挤掉主题清单。 */
+const NOTE_LIMIT = 12
+const NOTE_QUOTE_CHARS = 100
+
 /**
- * 预算不够时的取舍阶梯：先砍每条摘要，再砍清单条数。
+ * 预算不够时的取舍阶梯：先砍每条摘要，再砍清单条数，最后才丢标注。
  *
- * 顺序是刻意的 —— 摘要最长、也最容易被标题代替；而快照与清单本身是这个面板的
- * 全部信息源，宁可条目少，也不能整段消失（否则模型会开始编）。
+ * 顺序是刻意的 —— 摘要最长、也最容易被标题代替；而标注是**用户亲口确认的判断**
+ * （错题 / 没懂），模型推断不出来，所以排在主题清单之后才牺牲。
  */
-const INVENTORY_LADDER: ReadonlyArray<{ limit: number; withSummary: boolean }> = [
-  { limit: DEFAULT_INVENTORY_LIMIT, withSummary: true },
-  { limit: 40, withSummary: false },
-  { limit: 16, withSummary: false },
-  { limit: 6, withSummary: false },
+const INVENTORY_LADDER: ReadonlyArray<{
+  limit: number
+  withSummary: boolean
+  withNotes: boolean
+}> = [
+  { limit: DEFAULT_INVENTORY_LIMIT, withSummary: true, withNotes: true },
+  { limit: 40, withSummary: false, withNotes: true },
+  { limit: 16, withSummary: false, withNotes: true },
+  { limit: 6, withSummary: false, withNotes: false },
 ]
 
 const FREE_ASK_BASE = [
@@ -159,8 +174,29 @@ export function renderStudyInventory(inventory: StudyInventory): string {
   return lines.join('\n')
 }
 
+/**
+ * 用户标注：只列**带标签**的（纯高亮是用户自己的书签，不外送），每条带节点定位。
+ *
+ * 没有这段，这个面板答不出「我有哪些还没搞懂的」—— 它会去猜，或者干脆说不知道。
+ * 标签释义由 `renderNoteLegend` 统一给出（与复习材料同一份口径）。
+ */
+function renderNoteSection(nodes: Node[], notes: Note[]): string | null {
+  if (notes.length === 0) return null
+
+  const titles = new Map(nodes.map((node) => [node.id, node.title]))
+  const lines = notes.map((note) => {
+    const title = titles.get(note.nodeId)
+    const where = title ? `《${title}》` : ''
+    return `- ${formatNoteLabels(note.labels)} ${where}${truncate(normalizeWhitespace(note.quote), NOTE_QUOTE_CHARS)}`
+  })
+
+  return `## 用户标注（${countNoteLabels(notes)}）\n${renderNoteLegend(collectUsedLabels(notes))}\n${lines.join('\n')}`
+}
+
 export interface FreeAskContextInput {
   nodes: Node[]
+  /** 项目里的全部标注；只有带标签的那些会进上下文（见 renderNoteSection） */
+  notes?: Note[]
   /** 已经发生的自由问答（含本轮提问），按时间顺序 */
   history: ContextMessage[]
   projectName?: string
@@ -180,6 +216,8 @@ export interface FreeAskContext {
   /** 实际列出的主题数 / 活跃主题总数，供界面如实说明「参考了多少个主题」 */
   listed: number
   total: number
+  /** 实际列出的标注条数（0 = 这个项目还没有带标签的标注） */
+  notes: number
 }
 
 function partCost(part: ContextPart): number {
@@ -194,7 +232,11 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
   const budget = input.budgetTokens ?? DEFAULT_CONTEXT_BUDGET
   const now = input.now ?? Date.now()
 
-  const buildSystem = (withSummary: boolean, limit: number): { system: string; inventory: StudyInventory } => {
+  const buildSystem = (
+    withSummary: boolean,
+    limit: number,
+    withNotes: boolean,
+  ): { system: string; inventory: StudyInventory; noteCount: number } => {
     const sections: string[] = [FREE_ASK_BASE]
 
     const background = input.projectBackground?.trim() || input.backgroundProfile?.trim()
@@ -213,6 +255,10 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
     sections.push(REVIEW_CENTER_SYSTEM)
     sections.push(DATA_LEGEND)
 
+    const labeled = withNotes ? labeledNotes(input.notes ?? []).slice(0, NOTE_LIMIT) : []
+    const noteSection = renderNoteSection(input.nodes, labeled)
+    if (noteSection) sections.push(noteSection)
+
     const digest = buildStudyDigest(input.nodes, { now })
     sections.push(`## 学习快照\n${renderStudyDigest(digest)}`)
 
@@ -221,14 +267,18 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
       `## 项目主题清单（标题 / 摘要 / 掌握度 / 创建与最后编辑时间）\n${renderStudyInventory(inventory)}`,
     )
 
-    return { system: sections.join('\n\n'), inventory }
+    return { system: sections.join('\n\n'), inventory, noteCount: labeled.length }
   }
 
   // 历史必须留位置：问答历史就是用户看得到的那部分内容，被清单挤掉比清单少几条更糟
   const historyBudget = Math.max(400, Math.floor(budget * 0.35))
-  let chosen = buildSystem(INVENTORY_LADDER[0].withSummary, INVENTORY_LADDER[0].limit)
+  let chosen = buildSystem(
+    INVENTORY_LADDER[0].withSummary,
+    INVENTORY_LADDER[0].limit,
+    INVENTORY_LADDER[0].withNotes,
+  )
   for (const step of INVENTORY_LADDER) {
-    chosen = buildSystem(step.withSummary, step.limit)
+    chosen = buildSystem(step.withSummary, step.limit, step.withNotes)
     if (estimateTokens(chosen.system) + historyBudget <= budget) break
   }
 
@@ -250,5 +300,6 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
     estimatedTokens: systemTokens + messages.reduce((sum, message) => sum + messageCost(message), 0),
     listed: chosen.inventory.entries.length,
     total: chosen.inventory.total,
+    notes: chosen.noteCount,
   }
 }

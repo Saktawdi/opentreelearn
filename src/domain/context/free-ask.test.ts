@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Node } from '@/domain/models'
+import type { Node, Note } from '@/domain/models'
 import type { ContextMessage } from './assemble'
 import { makeNode } from '@/test/fixtures'
 import {
@@ -164,5 +164,68 @@ describe('free-ask context assembly', () => {
 
     expect(context.messages).toHaveLength(1)
     expect(context.messages[0].parts[0]).toEqual({ type: 'text', text: '现在最该复习什么？' })
+  })
+})
+describe('free-ask user annotations', () => {
+  const note = (id: string, labels: string[], extra: Partial<Note> = {}): Note => ({
+    id,
+    projectId: 'p1',
+    nodeId: 'n1',
+    messageId: 'm1',
+    labels,
+    quote: id,
+    start: 0,
+    end: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    ...extra,
+  })
+
+  const node: Node = makeNode({ id: 'n1', title: '动量守恒' })
+
+  it('lists labeled annotations with their node, and keeps plain highlights out', () => {
+    const ctx = assembleFreeAskContext({
+      nodes: [node],
+      notes: [
+        note('忽略了竖直方向', ['mistake'], { nodeId: 'n1', quote: '忽略了竖直方向' }),
+        note('只是书签', [], { nodeId: 'n1', quote: '只是书签' }),
+      ],
+      history: [userMessage('我有哪些还没搞懂的？')],
+      now: NOW,
+    })
+
+    expect(ctx.system).toContain('## 用户标注（[错题] 1）')
+    expect(ctx.system).toContain('- [错题] 《动量守恒》忽略了竖直方向')
+    expect(ctx.system).toContain('「错题」= 学习者确认自己做错或答错的内容')
+    expect(ctx.system).not.toContain('只是书签')
+    expect(ctx.notes).toBe(1)
+  })
+
+  it('reports zero annotations when the project has none', () => {
+    const ctx = assembleFreeAskContext({
+      nodes: [node],
+      notes: [],
+      history: [userMessage('今天学什么？')],
+      now: NOW,
+    })
+
+    expect(ctx.notes).toBe(0)
+    expect(ctx.system).not.toContain('## 用户标注')
+  })
+
+  it('caps how many annotations are listed', () => {
+    const many = Array.from({ length: 20 }, (_, index) =>
+      note(`标注${index}`, ['mistake'], { nodeId: 'n1', quote: `标注${index}` }),
+    )
+    const ctx = assembleFreeAskContext({
+      nodes: [node],
+      notes: many,
+      history: [userMessage('我有哪些错题？')],
+      now: NOW,
+    })
+
+    expect(ctx.notes).toBe(12)
+    expect(ctx.system).toContain('标注11')
+    expect(ctx.system).not.toContain('标注12')
   })
 })
