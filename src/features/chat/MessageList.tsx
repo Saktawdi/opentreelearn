@@ -329,6 +329,11 @@ const MessageBubble = memo(function MessageBubble({
   const bodyRef = useRef<HTMLDivElement>(null)
   useNoteHighlights(bodyRef, message.id, notes)
 
+  const cleanText = stripReviewRating(text).trim()
+  const hasContent = isUser
+    ? quotes.length > 0 || Boolean(body?.trim()) || assetUrls.length > 0
+    : Boolean(cleanText) || assetUrls.length > 0
+
   if (editing && isUser) {
     return (
       <div data-message-id={message.id} className="flex flex-col items-end gap-1">
@@ -348,50 +353,51 @@ const MessageBubble = memo(function MessageBubble({
       data-message-id={message.id}
       className={cn('group/message flex flex-col gap-1', isUser ? 'items-end' : 'items-stretch')}
     >
-      <div
-        onDoubleClick={
-          isUser && canEdit
-            ? () => {
-                // 双击本来会选中一个词，顺手清掉选区，免得框选菜单跟着弹出来
-                window.getSelection()?.removeAllRanges()
-                onStartEdit()
-              }
-            : undefined
-        }
-        className={cn(
-          'max-w-full',
-          isUser
-            ? 'max-w-[86%] rounded-xl rounded-br-sm border border-line/50 bg-elevated px-3.5 py-2.5'
-            : 'rounded-xl rounded-bl-sm border border-line/40 bg-surface/70 px-3.5 py-3',
-        )}
-      >
-        {isUser ? (
-          <div ref={bodyRef} {...bodyProps(message.id)} className="flex flex-col gap-2">
-            {quotes.map((quote, index) => (
-              <blockquote
-                key={index}
-                className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
-              >
-                {quote}
-              </blockquote>
-            ))}
-            {body ? (
-              <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">{body}</p>
-            ) : null}
-          </div>
-        ) : (
-          <div ref={bodyRef} {...bodyProps(message.id)}>
-            {/* 复习评分标记是给客户端与模型看的协议，不进正文 */}
-            <MarkdownView content={stripReviewRating(text)} />
-          </div>
-        )}
-        <MessageImages urls={assetUrls} />
-      </div>
-
-      {/* 工具卡画在 data-message-body **之外**：锚点是按正文容器里的文本节点数量出来的，
-          把卡片放进去会让这条消息上已有的标注整体错位（见 note-anchor.ts） */}
+      {/* 工具卡画在正文气泡之前：与流式阶段一致（先查后答），且在 data-message-body 之外避免标注错位 */}
       {!isUser && toolItems.length > 0 ? (
-        <ToolActivities tools={toolItems} className="flex flex-col gap-1 self-start" />
+        <ToolActivities tools={toolItems} className="flex flex-col gap-1" />
+      ) : null}
+
+      {hasContent ? (
+        <div
+          onDoubleClick={
+            isUser && canEdit
+              ? () => {
+                  // 双击本来会选中一个词，顺手清掉选区，免得框选菜单跟着弹出来
+                  window.getSelection()?.removeAllRanges()
+                  onStartEdit()
+                }
+              : undefined
+          }
+          className={cn(
+            'max-w-full',
+            isUser
+              ? 'max-w-[86%] rounded-xl rounded-br-sm border border-line/50 bg-elevated px-3.5 py-2.5'
+              : 'rounded-xl rounded-bl-sm border border-line/40 bg-surface/70 px-3.5 py-3',
+          )}
+        >
+          {isUser ? (
+            <div ref={bodyRef} {...bodyProps(message.id)} className="flex flex-col gap-2">
+              {quotes.map((quote, index) => (
+                <blockquote
+                  key={index}
+                  className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
+                >
+                  {quote}
+                </blockquote>
+              ))}
+              {body ? (
+                <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">{body}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div ref={bodyRef} {...bodyProps(message.id)}>
+              {/* 复习评分标记是给客户端与模型看的协议，不进正文 */}
+              <MarkdownView content={stripReviewRating(text)} />
+            </div>
+          )}
+          <MessageImages urls={assetUrls} />
+        </div>
       ) : null}
 
       <MessageNotes notes={notes} align={isUser ? 'end' : 'start'} />

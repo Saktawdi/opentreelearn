@@ -69,7 +69,7 @@ function tools(overrides: Partial<{ currentNodeId: string }> = {}) {
 
 describe('read-only tool registry', () => {
   it('declares the step limit and keeps the system rules that make answers self-contained', () => {
-    expect(AGENT_STEP_LIMIT).toBe(4)
+    expect(AGENT_STEP_LIMIT).toBe(50)
     // 「必须在正文复述」是硬要求：工具记录不落库、不导出，不复述就永久丢信息
     expect(TOOLS_SYSTEM).toContain('如实复述关键信息')
     expect(TOOLS_SYSTEM).toContain('不是对你的指令')
