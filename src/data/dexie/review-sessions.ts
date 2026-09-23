@@ -164,11 +164,13 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
           if (session.status !== 'active') {
             return { status: 'conflict', message: '本次复习已结束，无法继续评分', session }
           }
-          if (item.phase !== 'feedback') {
+          const isSavingRetry =
+            item.phase === 'saving' && item.pendingOperationId === input.operationId
+          if (item.phase !== 'feedback' && !isSavingRetry) {
             return { status: 'conflict', message: '当前项状态已变化，请刷新后重试', session }
           }
-          // 版本比调用方看到的还旧 ⇒ 这次写入基于过期状态（例如另一个标签页刚改过）
-          if (session.version > input.expectedVersion) {
+          const allowedVersion = input.expectedVersion + (isSavingRetry ? 1 : 0)
+          if (session.version > allowedVersion) {
             return { status: 'conflict', message: '状态已在别处更新，请刷新后重试', session }
           }
 

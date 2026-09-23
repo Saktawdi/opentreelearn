@@ -116,6 +116,17 @@ interface ReviewSessionStoreState {
 
 let reviewAbort: AbortController | null = null
 
+function cloneForPublish(session: ReviewSessionRecord | null): ReviewSessionRecord | null {
+  if (!session) return null
+  return {
+    ...session,
+    items: session.items.map((item) => ({
+      ...item,
+      messages: [...item.messages],
+    })),
+  }
+}
+
 export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get) => ({
     projectId: null,
     session: null,
@@ -225,7 +236,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       if (!session || !item) return
       const now = Date.now()
       patchItem(session, item.itemId, { draft: text }, now)
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
     },
 
@@ -271,7 +282,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         },
         now,
       )
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
 
       await executeModelTurn('answer', trimmed)
@@ -282,7 +293,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { usedHint: true, interacted: true }, Date.now())
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await executeModelTurn('hint', '')
     },
 
@@ -291,7 +302,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { interacted: true }, Date.now())
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await executeModelTurn('rephrase', '')
     },
 
@@ -325,7 +336,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         },
         now,
       )
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
       await executeModelTurn('answer', '暂时想不起来。')
     },
@@ -335,7 +346,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { phase: 'answering', interacted: true }, Date.now())
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await executeModelTurn('question', '我已经看完讲解，请出一道复述题考我。')
     },
 
@@ -358,7 +369,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         },
       ]
       patchItem(session, item.itemId, { phase: 'evaluating', messages }, now)
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
       await executeModelTurn('followup', trimmed)
     },
@@ -368,7 +379,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const item = currentItem(session)
       if (!session || !item) return
       patchItem(session, item.itemId, { selectedGrade: grade }, Date.now())
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       void getRepositories().reviewSessions.save(session)
     },
 
@@ -384,13 +395,13 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         return false
       }
 
-      // 幂等键在保存前固定下来并落库：断网、刷新后重试走同一个操作 ID
       const operationId = item.pendingOperationId ?? newId()
       const expectedVersion = session.version
+      const snapshotTitle = item.title
       const now = Date.now()
 
       patchItem(session, item.itemId, { phase: 'saving', pendingOperationId: operationId }, now)
-      set({ session })
+      set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
 
       const outcome = await getRepositories().reviewSessions.grade({
@@ -408,7 +419,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         set({
           session: outcome.session,
           error: null,
-          lastUndoneNotice: `已记录「${item.title}」的掌握情况`,
+          lastUndoneNotice: `已记录「${snapshotTitle}」的掌握情况`,
         })
         // 自动出下一题
         void get().ensureCurrentItemContent()
@@ -424,11 +435,14 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         return false
       }
 
-      // conflict 或 missing：停在原地重试
-      set({
-        error: outcome.message,
-        session: 'session' in outcome && outcome.session ? (outcome.session as ReviewSessionRecord) : session,
-      })
+      if ('session' in outcome && outcome.session) {
+        set({ error: outcome.message, session: outcome.session })
+        return false
+      }
+      const rollbackNow = Date.now()
+      patchItem(session, item.itemId, { phase: 'feedback', pendingOperationId: operationId, error: outcome.message }, rollbackNow)
+      await getRepositories().reviewSessions.save(session)
+      set({ error: outcome.message, session: cloneForPublish(session)! })
       return false
     },
 
@@ -439,7 +453,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const now = Date.now()
       patchItem(session, item.itemId, { phase: 'skipped', skipReason: reason }, now)
       advanceAfter(session, item.itemId, now)
-      set({ session, error: null })
+      set({ session: cloneForPublish(session)!, error: null })
       await getRepositories().reviewSessions.save(session)
       void get().ensureCurrentItemContent()
     },
@@ -479,7 +493,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const now = Date.now()
       resumeSession(session, now)
       await getRepositories().reviewSessions.save(session)
-      set({ session, error: null })
+      set({ session: cloneForPublish(session)!, error: null })
       void get().ensureCurrentItemContent()
     },
 
@@ -493,7 +507,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       pauseSession(session, now)
       await getRepositories().reviewSessions.save(session)
       set({
-        session: session ? ({ ...session } as ReviewSessionRecord) : null,
+        session: cloneForPublish(session),
         streaming: null,
       })
     },
@@ -508,7 +522,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       endSessionWithPending(session, now)
       await getRepositories().reviewSessions.save(session)
       set({
-        session: session ? ({ ...session } as ReviewSessionRecord) : null,
+        session: cloneForPublish(session),
         streaming: null,
       })
     },
@@ -581,13 +595,13 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     error: null,
   })
 
-  // 补上本项标记
   patchItem(
     session,
     item.itemId,
     { pendingRequestId: requestId, pendingPurpose: purpose },
     Date.now(),
   )
+  store.setState({ session: cloneForPublish(session)! })
   await getRepositories().reviewSessions.save(session)
 
   // 读取当前需要的节点和前置消息
@@ -675,7 +689,9 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
       nextPhase = 'feedback'
     }
 
-    const messagesList = [...item.messages, assistantMessage]
+    const liveItem = currentSession.items.find((entry) => entry.itemId === item.itemId)
+    const baseMessages = liveItem ? liveItem.messages : item.messages
+    const messagesList = [...baseMessages, assistantMessage]
     const patch: Parameters<typeof patchItem>[2] = {
       phase: nextPhase,
       messages: messagesList,
@@ -686,17 +702,21 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
       pendingPurpose: undefined,
       error: undefined,
     }
-    // 反馈完成后若有建议档位，自动预选（但不覆盖用户之前已经手选的值）
-    if ((purpose === 'answer' || purpose === 'followup') && !item.selectedGrade) {
+    const liveSelectedGrade = liveItem?.selectedGrade
+    if ((purpose === 'answer' || purpose === 'followup') && !liveSelectedGrade && !item.selectedGrade) {
       const suggested = suggestionFromMessages(messagesList)
       if (suggested) patch.selectedGrade = suggested
+    } else if (liveSelectedGrade) {
+      patch.selectedGrade = liveSelectedGrade
+    } else if (item.selectedGrade) {
+      patch.selectedGrade = item.selectedGrade
     }
 
     patchItem(currentSession, item.itemId, patch, now)
     await getRepositories().reviewSessions.save(currentSession)
 
     store.setState({
-      session: currentSession,
+      session: cloneForPublish(currentSession)!,
       streaming: null,
     })
   } else {
@@ -718,7 +738,7 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     await getRepositories().reviewSessions.save(currentSession)
 
     store.setState({
-      session: currentSession,
+      session: cloneForPublish(currentSession)!,
       streaming: null,
       error: failure.message,
     })
