@@ -287,6 +287,19 @@ export interface Asset {
 
 export type ProviderKind = 'openai' | 'anthropic' | 'google' | 'openai-compatible'
 
+/**
+ * 探测出来的 provider 能力。
+ *
+ * 工具调用走各家原生 function calling，而自建中转（new-api / one-api / LM Studio /
+ * Ollama）**可能直接忽略 `tools` 字段**：模型永远不举手，却一声不响 —— 用户会以为
+ * 「AI 不想用工具」。所以要在连接测试时主动探测一次，把结论存在这里。
+ *
+ * `undefined` = 还没探过（不是「不支持」）：运行时先按支持试一次，失败再退回无工具。
+ */
+export interface ProviderCapabilities {
+  tools?: boolean
+}
+
 export interface ProviderConfig {
   id: Id
   label: string
@@ -294,6 +307,8 @@ export interface ProviderConfig {
   apiKey: string
   baseURL?: string
   models: string[]
+  /** 连接测试时探测出的能力；缺省 = 未探测（见 ProviderCapabilities） */
+  capabilities?: ProviderCapabilities
 }
 
 export interface GlobalSettings {

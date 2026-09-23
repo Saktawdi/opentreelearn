@@ -1,11 +1,19 @@
 import type { ContextMessage } from '@/domain/context/assemble'
 import { assembleFreeAskContext } from '@/domain/context/free-ask'
-import type { GlobalSettings, Id, ModelRef, Node, Note, ProjectSettings } from '@/domain/models'
+import type { GlobalSettings, Id, Message, ModelRef, Node, Note, ProjectSettings } from '@/domain/models'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
-import { streamReply, toModelMessages, type ChatUsage } from './chat'
+import {
+  streamReply,
+  toModelMessages,
+  type ChatUsage,
+  type ToolActivity,
+  type ToolOutcome,
+} from './chat'
 import { describeLlmError, formatErrorMessage } from './errors'
+import { findProvider } from './catalog'
 import { requireReviewModel } from './review'
+import { AGENT_STEP_LIMIT, TOOLS_SYSTEM, buildReadOnlyTools } from './tools/registry'
 
 /**
  * 复习工作区「自由问答」的模型服务。
@@ -26,12 +34,18 @@ export interface FreeAskRequestInput {
   nodes: Node[]
   /** 项目里的全部标注；只有带标签的那些会进上下文（纯高亮是用户自己的书签） */
   notes?: Note[]
+  /** 按节点分组的消息：工具要按对话内容检索时需要 */
+  messagesByNode?: Map<Id, Message[]>
   /** 已经发生的问答，按时间顺序（不含本轮提问） */
   history: ContextMessage[]
   /** 本轮提问 */
   text: string
   signal: AbortSignal
   onDelta?: (delta: string) => void
+  /** 模型举手（工具调用开始） */
+  onToolCall?: (activity: ToolActivity) => void
+  /** 工具执行结束（成功或失败） */
+  onToolResult?: (outcome: ToolOutcome) => void
   now?: number
 }
 
@@ -99,16 +113,31 @@ export async function runFreeAskRequest(
 
   let partial = ''
 
+  // 只读工具：自由问答是「按需取数」最典型的一条链路 ——
+  // 「我有哪些还没搞懂的」不必靠把全部标注塞进 system，让模型自己查更准也更省
+  const provider = findProvider(input.settings.providers, ref)
+  const toolsAllowed = provider?.capabilities?.tools !== false
+  const tools = toolsAllowed
+    ? buildReadOnlyTools({
+        nodes: input.nodes,
+        messagesByNode: input.messagesByNode ?? new Map(),
+        notes: input.notes ?? [],
+      })
+    : undefined
+
   try {
     const result = await streamReply({
       model,
-      system: context.system,
+      system: tools ? `${context.system}\n\n${TOOLS_SYSTEM}` : context.system,
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
+      ...(tools ? { tools, maxSteps: AGENT_STEP_LIMIT } : {}),
       onDelta: (delta) => {
         partial += delta
         input.onDelta?.(delta)
       },
+      onToolCall: input.onToolCall,
+      onToolResult: input.onToolResult,
     })
 
     return {

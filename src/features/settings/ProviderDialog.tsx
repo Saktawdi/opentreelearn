@@ -68,8 +68,14 @@ export function ProviderDialog({
     }
     setTesting(true)
     try {
-      await testProviderConnection(draft, draft.models[0])
-      toast.success(`连接成功：${draft.models[0]} 已响应`)
+      const probe = await testProviderConnection(draft, draft.models[0])
+      // 探测结论写回草稿，保存时一并落库 —— 运行时据此决定带不带工具
+      patch({ capabilities: { tools: probe.tools } })
+      toast.success(
+        probe.tools
+          ? `连接成功：${draft.models[0]} 已响应，支持工具调用`
+          : `连接成功：${draft.models[0]} 已响应，但未探测到工具调用能力（对话将按无工具模式进行）`,
+      )
     } catch (error) {
       toast.error(`连接失败：${errorMessage(error)}`)
     } finally {

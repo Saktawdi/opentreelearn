@@ -29,8 +29,10 @@ import { resolveThread, summarizeSlotVersions } from '@/domain/thread/resolve'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { AGENT_STEP_LIMIT } from '@/services/llm/tools/registry'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
+import { ToolActivities } from './ToolActivities'
 import { bodyProps } from './note-anchor'
 import { useAssetUrls } from './useAssetUrls'
 import { useNoteHighlights } from './useNoteHighlights'
@@ -484,8 +486,24 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
     )
   }
 
+  const tools = streaming.tools ?? []
+  const running = tools.some((tool) => tool.status === 'running')
+
   return (
     <div className="flex flex-col gap-1">
+      {tools.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 px-0.5 text-2xs text-faint">
+            <span>
+              第 {Math.min(tools.length + (running ? 0 : 1), AGENT_STEP_LIMIT)} / {AGENT_STEP_LIMIT} 步
+            </span>
+            <span>·</span>
+            <span>本轮查了 {tools.length} 次项目数据</span>
+          </div>
+          <ToolActivities tools={tools} />
+        </div>
+      ) : null}
+
       <div className="rounded-xl rounded-bl-sm border border-accent/20 bg-surface/70 px-3.5 py-3">
         {text ? (
           // 流式期间也把（可能写到一半的）评分标记收掉
@@ -497,7 +515,7 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:150ms]" />
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:300ms]" />
             </span>
-            正在思考…
+            {running ? '正在查项目数据…' : '正在思考…'}
           </div>
         )}
         {text ? (

@@ -7,6 +7,7 @@ import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatRelativeTime } from '@/lib/time'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { ToolActivities } from '@/features/chat/ToolActivities'
 import { useFreeAskStore } from '@/stores/free-ask-store'
 
 interface FreeAskPanelProps {
@@ -162,15 +163,20 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           ))}
 
           {/* 流式回答：正文用与落库前一致的剥离规则，避免判定标记一闪而过 */}
-          {isStreaming ? (
+          {streaming ? (
             <div className="rounded-xl border border-line/60 bg-elevated/40 p-3.5">
               <div className="mb-1.5 flex items-center justify-between text-2xs text-faint">
                 <span>导师</span>
                 <span className="flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  正在查阅学习记录…
+                  {streaming.tools.length > 0 ? '正在查项目数据…' : '正在查阅学习记录…'}
                 </span>
               </div>
+              {streaming.tools.length > 0 ? (
+                <div className="mb-2">
+                  <ToolActivities tools={streaming.tools} />
+                </div>
+              ) : null}
               {streamingText ? (
                 <MarkdownView content={streamingText} />
               ) : (

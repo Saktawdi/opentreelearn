@@ -1,9 +1,30 @@
-import { streamText, type LanguageModel, type ModelMessage } from 'ai'
+import {
+  stepCountIs,
+  streamText,
+  type LanguageModel,
+  type ModelMessage,
+  type ToolSet,
+} from 'ai'
 import type { ContextMessage, ContextPart } from '@/domain/context/assemble'
 
 export interface ChatUsage {
   inputTokens?: number
   outputTokens?: number
+}
+
+/** 一次工具调用的「举手」：模型给了参数、还没执行。 */
+export interface ToolActivity {
+  callId: string
+  name: string
+  input: unknown
+}
+
+/** 一次工具调用的结局：结果或失败。两者必居其一。 */
+export interface ToolOutcome {
+  callId: string
+  name: string
+  output?: string
+  error?: string
 }
 
 export interface StreamReplyParams {
@@ -12,6 +33,17 @@ export interface StreamReplyParams {
   messages: ModelMessage[]
   abortSignal?: AbortSignal
   onDelta?: (delta: string) => void
+  /**
+   * 本轮可用的工具。
+   *
+   * **缺省 = 完全不带工具**：请求体与不带工具的今天逐字节一致（回归底线）。
+   * 只读工具的 P-A 阶段，工具记录不落库，因此这里不需要关心消息配对。
+   */
+  tools?: ToolSet
+  /** 最多走几步（含工具步）；只在给了工具时生效。缺省 4。 */
+  maxSteps?: number
+  onToolCall?: (activity: ToolActivity) => void
+  onToolResult?: (outcome: ToolOutcome) => void
 }
 
 export interface StreamReplyResult {
@@ -19,6 +51,10 @@ export interface StreamReplyResult {
   usage?: ChatUsage
   finishReason?: string
   aborted: boolean
+  /** 本轮实际发生的工具调用次数 */
+  toolCalls: number
+  /** 是否在「最后一步还在调工具」时停下（步数用尽，答案可能不完整） */
+  hitStepLimit: boolean
 }
 
 export function mediaTypeOfDataUrl(dataUrl: string): string | undefined {
@@ -65,12 +101,40 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-export async function streamReply(params: StreamReplyParams): Promise<StreamReplyResult> {
-  const result = streamText({
+/** 工具输出统一转成字符串：我们的工具返回字符串，但别对第三方工具的输出做假设。 */
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output
+  if (output === undefined || output === null) return ''
+  try {
+    return JSON.stringify(output)
+  } catch {
+    return String(output)
+  }
+}
+
+/**
+ * 组装 `streamText` 的参数（纯函数，可单测）。
+ *
+ * **回归底线**：不带工具时**不能出现** `tools` / `stopWhen` 任何一个键 ——
+ * 这样请求体与「还没有工具调用能力」的今天逐字节一致，任何意外都会在 diff 里露出来。
+ */
+export function buildStreamOptions(params: {
+  model: LanguageModel
+  system: string
+  messages: ModelMessage[]
+  abortSignal?: AbortSignal
+  tools?: ToolSet
+  maxSteps?: number
+}): Parameters<typeof streamText>[0] {
+  const hasTools = params.tools !== undefined && Object.keys(params.tools).length > 0
+  const maxSteps = params.maxSteps ?? 4
+
+  return {
     model: params.model,
     system: params.system,
     messages: params.messages,
     abortSignal: params.abortSignal,
+    ...(hasTools ? { tools: params.tools, stopWhen: stepCountIs(maxSteps) } : {}),
     // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。
     // streamText 把 `result.usage.then(() => {})` 当作遥测的「完成信号」，只有 Node 分支
     // （openTelemetryChannelSpanContext 里 isNodeRuntime() 为真）会顺手 .catch 掉它；
@@ -79,15 +143,56 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
     // 「Uncaught (in promise) DOMException: The operation was aborted.」——中断是正常操作，
     // 不该报成未捕获异常。isEnabled: false 时 SDK 根本不建这个完成信号，问题消失。
     telemetry: { isEnabled: false },
-  })
+  }
+}
+
+export async function streamReply(params: StreamReplyParams): Promise<StreamReplyResult> {
+  const maxSteps = params.maxSteps ?? 4
+  const hasTools = params.tools !== undefined && Object.keys(params.tools).length > 0
+
+  const result = streamText(buildStreamOptions(params))
 
   let text = ''
   let aborted = false
+  let toolCalls = 0
 
   try {
-    for await (const delta of result.textStream) {
-      text += delta
-      params.onDelta?.(delta)
+    // 必须读 fullStream 而不是 textStream：后者只吐 text-delta，
+    // 工具调用与结果都不在里面（见设计文档 6.4）。
+    for await (const part of result.fullStream) {
+      switch (part.type) {
+        case 'text-delta':
+          text += part.text
+          params.onDelta?.(part.text)
+          break
+        case 'tool-call':
+          toolCalls += 1
+          params.onToolCall?.({
+            callId: part.toolCallId,
+            name: part.toolName,
+            input: part.input,
+          })
+          break
+        case 'tool-result':
+          params.onToolResult?.({
+            callId: part.toolCallId,
+            name: part.toolName,
+            output: stringifyToolOutput(part.output),
+          })
+          break
+        case 'tool-error':
+          params.onToolResult?.({
+            callId: part.toolCallId,
+            name: part.toolName,
+            error: part.error instanceof Error ? part.error.message : String(part.error),
+          })
+          break
+        case 'error':
+          // 交给下面统一的 catch：厂商错误、网络错误都从这一条路径出去
+          throw part.error
+        default:
+          break
+      }
     }
   } catch (error) {
     if (isAbortError(error)) {
@@ -110,5 +215,16 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
     () => undefined,
   )
 
-  return { text, usage, finishReason, aborted }
+  // 步数用尽：最后一步仍在举手 —— 答案可能不完整，界面要如实提示
+  const steps = await result.steps.then(
+    (value) => value,
+    () => undefined,
+  )
+  const hitStepLimit =
+    hasTools &&
+    steps !== undefined &&
+    steps.length >= maxSteps &&
+    (steps[steps.length - 1]?.toolCalls?.length ?? 0) > 0
+
+  return { text, usage, finishReason, aborted, toolCalls, hitStepLimit }
 }

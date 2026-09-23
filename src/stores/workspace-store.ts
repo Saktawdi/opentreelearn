@@ -35,6 +35,12 @@ import { seedReviewCard } from '@/domain/review/schedule'
 import { threadPathFingerprint } from '@/domain/thread/resolve'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages } from '@/services/llm/chat'
+import { findProvider } from '@/services/llm/catalog'
+import {
+  AGENT_STEP_LIMIT,
+  TOOLS_SYSTEM,
+  buildReadOnlyTools,
+} from '@/services/llm/tools/registry'
 import {
   buildTranscript,
   generateSummary,
@@ -54,10 +60,31 @@ import { useSettingsStore } from './settings-store'
 
 export type WorkspaceViewMode = 'chat' | 'canvas'
 
+/** 本轮发生的一次只读工具调用（P-A 只在流式期间可见，不落库）。 */
+export interface StreamingToolActivity {
+  callId: string
+  name: string
+  /** 模型给的参数（已过 zod 校验） */
+  input: unknown
+  status: 'running' | 'done' | 'error'
+  /** 工具返回值（已限长）；展开卡片时展示 */
+  output?: string
+  error?: string
+}
+
 export interface StreamingState {
   nodeId: Id
   messageId: Id
   text: string
+  /**
+   * 本轮的只读工具调用，按发生顺序。
+   *
+   * P-A 阶段**不落库**：工具过程只在流式期间可见，落库仍然只有正文 —— 于是历史里
+   * 不存在半截的「举手记录」，配对撕裂的风险在这一期不存在（见设计文档 §9 一期 A）。
+   */
+  tools: StreamingToolActivity[]
+  /** 步数用尽就停下（最后一步还在调工具）：答案可能不完整，界面要如实提示 */
+  hitStepLimit?: boolean
   startedAt: number
   error?: string
 }
@@ -954,7 +981,13 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
   const modelRef = projectSettings?.chatModelRef ?? settings.defaultChatModelRef
 
   store.setState((draft) => {
-    draft.streaming = { nodeId, messageId, text: '', startedAt: Date.now() }
+    draft.streaming = {
+      nodeId,
+      messageId,
+      text: '',
+      tools: [],
+      startedAt: Date.now(),
+    }
   })
 
   let model
@@ -993,15 +1026,30 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
     now: Date.now(),
   })
 
+  // 能力位：false = 明确不支持（完全不带工具，请求体与今天逐字节一致）；
+  // undefined = 还没探过 —— 先按支持试一次，失败再退回无工具重试（见下方 catch）。
+  const provider = findProvider(settings.providers, modelRef)
+  const capabilityUnknown = provider?.capabilities?.tools === undefined
+  const toolsAllowed = provider?.capabilities?.tools !== false
+  const tools = toolsAllowed
+    ? buildReadOnlyTools({
+        nodes,
+        messagesByNode,
+        notes: Object.values(state.notesByMessage).flat(),
+        currentNodeId: nodeId,
+      })
+    : undefined
+
   const abortController = new AbortController()
   activeAbort = abortController
 
-  try {
-    const result = await streamReply({
+  const run = (withTools: boolean) =>
+    streamReply({
       model,
-      system: context.system,
+      system: withTools ? `${context.system}\n\n${TOOLS_SYSTEM}` : context.system,
       messages: toModelMessages(context.messages),
       abortSignal: abortController.signal,
+      ...(withTools && tools ? { tools, maxSteps: AGENT_STEP_LIMIT } : {}),
       onDelta: (delta) => {
         store.setState((draft) => {
           if (draft.streaming?.messageId === messageId) {
@@ -1009,7 +1057,60 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
           }
         })
       },
+      onToolCall: (activity) => {
+        store.setState((draft) => {
+          if (draft.streaming?.messageId !== messageId) return
+          draft.streaming.tools.push({
+            callId: activity.callId,
+            name: activity.name,
+            input: activity.input,
+            status: 'running',
+          })
+        })
+      },
+      onToolResult: (outcome) => {
+        store.setState((draft) => {
+          if (draft.streaming?.messageId !== messageId) return
+          const entry = draft.streaming.tools.find((item) => item.callId === outcome.callId)
+          if (!entry) return
+          if (outcome.error !== undefined) {
+            entry.status = 'error'
+            entry.error = outcome.error
+          } else {
+            entry.status = 'done'
+            entry.output = outcome.output
+          }
+        })
+      },
     })
+
+  try {
+    let result: Awaited<ReturnType<typeof run>>
+    let usedTools = tools !== undefined
+
+    try {
+      result = await run(usedTools)
+    } catch (error) {
+      // 能力未知时的静默降级：带工具失败就退回无工具重试一次，并把结论记下来。
+      // 探过一次之后不再重试（capabilities.tools 会被写成 false）。
+      const canRetry = usedTools && capabilityUnknown && !abortController.signal.aborted
+      if (!canRetry) throw error
+      usedTools = false
+      store.setState((draft) => {
+        if (draft.streaming?.messageId === messageId) {
+          draft.streaming.tools = []
+          draft.streaming.text = ''
+        }
+      })
+      result = await run(false)
+      // 不带工具能成功 ⇒ 问题出在工具这一路，把这个结论落进 provider 能力位
+      void rememberToolCapability(provider?.id, false)
+    }
+
+    // 真的调过工具 ⇒ 这个提供商支持工具调用，把结论记下来（省掉下次的探测）
+    if (result.toolCalls > 0 && provider?.capabilities?.tools !== true) {
+      void rememberToolCapability(provider?.id, true)
+    }
 
     const assistantMessage: Message = {
       id: messageId,
@@ -1025,6 +1126,11 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
         usage: result.usage,
         incomplete: result.aborted,
       },
+    }
+    if (result.hitStepLimit) {
+      store.setState((draft) => {
+        if (draft.streaming?.messageId === messageId) draft.streaming.hitStepLimit = true
+      })
     }
 
     await repositories.messages.create(assistantMessage)
@@ -1079,5 +1185,23 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
     }
   } finally {
     activeAbort = null
+  }
+}
+
+/**
+ * 把探测结论写进 provider 的能力位（失败忽略：能力位是优化，不是必需）。
+ *
+ * 写在对话流程里而不是只在连接测试时探：真实对话里「调没调过工具」是最硬的证据，
+ * 顺手记下来，用户就不必为了能力位专门去点一次「测试连接」。
+ */
+async function rememberToolCapability(
+  providerId: Id | undefined,
+  tools: boolean,
+): Promise<void> {
+  if (!providerId) return
+  try {
+    await useSettingsStore.getState().updateProvider(providerId, { capabilities: { tools } })
+  } catch {
+    // ignore：能力位写失败不影响这一轮对话
   }
 }

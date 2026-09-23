@@ -80,6 +80,13 @@ export function normalizeProvider(value: unknown): ProviderConfig | null {
     ? (value.kind as ProviderKind)
     : 'openai-compatible'
 
+  // 能力位：只有明确的布尔值才算「探测过」；坏值一律退回未探测（undefined）
+  const capabilities = isRecord(value.capabilities)
+    ? typeof value.capabilities.tools === 'boolean'
+      ? { tools: value.capabilities.tools as boolean }
+      : undefined
+    : undefined
+
   return {
     id,
     label: readString(value.label) ?? '未命名提供商',
@@ -87,6 +94,7 @@ export function normalizeProvider(value: unknown): ProviderConfig | null {
     apiKey: readString(value.apiKey) ?? '',
     baseURL: readString(value.baseURL),
     models: readStringArray(value.models),
+    ...(capabilities ? { capabilities } : {}),
   }
 }
 

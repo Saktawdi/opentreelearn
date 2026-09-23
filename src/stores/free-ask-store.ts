@@ -5,7 +5,7 @@ import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
 import { runFreeAskRequest } from '@/services/llm/free-ask'
 import { useSettingsStore } from './settings-store'
-import { useWorkspaceStore } from './workspace-store'
+import { useWorkspaceStore, type StreamingToolActivity } from './workspace-store'
 
 /**
  * 复习工作区「自由问答」的会话状态。
@@ -32,7 +32,7 @@ interface FreeAskState {
   /** 当前对话所属项目；与传入项目不一致时整段丢弃 */
   projectId: Id | null
   messages: FreeAskMessage[]
-  streaming: { text: string } | null
+  streaming: { text: string; tools: StreamingToolActivity[] } | null
   error: string | null
   /** 如实说明本次参考了多少个主题：清单会按上下文预算裁剪，用户有权知道 */
   contextNote: string | null
@@ -82,7 +82,7 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
     set((state) => ({
       projectId: state.projectId ?? workspace.projectId,
       messages: [...state.messages, asked],
-      streaming: { text: '' },
+      streaming: { text: '', tools: [] },
       error: null,
       contextNote: null,
     }))
@@ -98,11 +98,47 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
       history,
       text: trimmed,
       signal: controller.signal,
+      onToolCall: (activity) => {
+        if (freeAskAbort !== controller) return
+        const current = get().streaming
+        if (!current) return
+        set({
+          streaming: {
+            ...current,
+            tools: [
+              ...current.tools,
+              {
+                callId: activity.callId,
+                name: activity.name,
+                input: activity.input,
+                status: 'running' as const,
+              },
+            ],
+          },
+        })
+      },
+      onToolResult: (outcome) => {
+        if (freeAskAbort !== controller) return
+        const current = get().streaming
+        if (!current) return
+        set({
+          streaming: {
+            ...current,
+            tools: current.tools.map((tool) =>
+              tool.callId !== outcome.callId
+                ? tool
+                : outcome.error !== undefined
+                  ? { ...tool, status: 'error' as const, error: outcome.error }
+                  : { ...tool, status: 'done' as const, output: outcome.output },
+            ),
+          },
+        })
+      },
       onDelta: (delta) => {
         // 迟到的回调（已被取消 / 已被新请求替换）直接丢弃
         if (freeAskAbort !== controller) return
         const current = get().streaming
-        if (current) set({ streaming: { text: current.text + delta } })
+        if (current) set({ streaming: { ...current, text: current.text + delta } })
       },
     })
 

@@ -616,7 +616,7 @@ describe('review scheduling', () => {
 })
 
 describe('isStreamingIn', () => {
-  const round = { nodeId: 'n1', messageId: 'm1', text: '', startedAt: 0 }
+  const round = { nodeId: 'n1', messageId: 'm1', text: '', tools: [], startedAt: 0 }
 
   it('counts only the node’s own unfinished round', () => {
     expect(isStreamingIn(round, 'n1')).toBe(true)

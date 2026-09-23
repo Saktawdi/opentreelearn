@@ -50,6 +50,7 @@ export function SettingsPage() {
   const patch = useSettingsStore((state) => state.patch)
   const setModelRef = useSettingsStore((state) => state.setModelRef)
   const removeProvider = useSettingsStore((state) => state.removeProvider)
+  const updateProvider = useSettingsStore((state) => state.updateProvider)
 
   const [budget, setBudget] = useState(() => String(settings.contextBudget))
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -77,8 +78,14 @@ export function SettingsPage() {
   const testProvider = async (provider: ProviderConfig) => {
     setTestingId(provider.id)
     try {
-      await testProviderConnection(provider, provider.models[0])
-      toast.success(`${provider.label} 连接正常`)
+      const probe = await testProviderConnection(provider, provider.models[0])
+      // 探测结论跟着 provider 走（会随设置同步到云端），运行时据此决定带不带工具
+      await updateProvider(provider.id, { capabilities: { tools: probe.tools } })
+      toast.success(
+        probe.tools
+          ? `${provider.label} 连接正常，支持工具调用`
+          : `${provider.label} 连接正常，但没有探测到工具调用能力：后续对话按无工具模式进行`,
+      )
     } catch (error) {
       toast.error(`连接失败：${errorMessage(error)}`)
     } finally {

@@ -1,6 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
-import { streamReply } from './chat'
+import type { LanguageModel } from 'ai'
+import { buildStreamOptions, streamReply } from './chat'
+import { buildReadOnlyTools } from './tools/registry'
 
 /**
  * 中断（abort）不该在浏览器里留下未处理的 promise rejection。
@@ -95,5 +97,33 @@ describe('streamReply 的中断处理', () => {
     // 未处理的 rejection 在微任务队列排空后才上报
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(unhandled).toEqual([])
+  })
+})
+
+describe('buildStreamOptions（带不带工具的请求体差异）', () => {
+  const base = {
+    model: {} as LanguageModel,
+    system: '系统提示',
+    messages: [{ role: 'user' as const, content: '问' }],
+  }
+  const tools = buildReadOnlyTools({ nodes: [], messagesByNode: new Map(), notes: [] })
+
+  it('不带工具时完全不出现 tools / stopWhen（回归底线：请求体与今天逐字节一致）', () => {
+    const options = buildStreamOptions(base)
+    expect('tools' in options).toBe(false)
+    expect('stopWhen' in options).toBe(false)
+    expect(options.telemetry).toEqual({ isEnabled: false })
+  })
+
+  it('把空工具集当成没有工具', () => {
+    const options = buildStreamOptions({ ...base, tools: {} })
+    expect('tools' in options).toBe(false)
+    expect('stopWhen' in options).toBe(false)
+  })
+
+  it('带工具时同时给出 tools 与步数上限', () => {
+    const options = buildStreamOptions({ ...base, tools, maxSteps: 3 })
+    expect(options.tools).toBe(tools)
+    expect(options.stopWhen).toBeDefined()
   })
 })
