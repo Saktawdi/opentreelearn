@@ -117,7 +117,6 @@ export const MessageNotes = memo(function MessageNotes({
       {editing ? (
         <NoteDialog
           key={editing.id}
-          mode={editing.labels.length > 0 ? 'label' : 'highlight'}
           quote={editing.quote}
           labels={editing.labels}
           body={editing.body}

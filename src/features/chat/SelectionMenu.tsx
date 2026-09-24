@@ -5,7 +5,6 @@ import {
   Highlighter,
   Loader2,
   MessageSquareQuote,
-  Tags,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -44,15 +43,15 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * 「月牙盘」排布：五枚圆形图标按钮沿一段**竖直**的弧线铺开 —— 弧顶（中轴那一枚）拱在最右，
- * 上下两枚依次向左侧内收，整体是一弯竖起来的月牙。容器尺寸只用于定位与量尺寸。
+ * 「月牙盘」排布：四枚圆形图标按钮沿一段**竖直**的弧线铺开 —— 弧顶（中轴）拱在最右，
+ * 上下依次向左侧内收，整体是一弯竖起来的月牙。容器尺寸只用于定位与量尺寸。
  *
- * 半径与张角由「相邻两枚不能叠在一起」定：相邻圆心距 `2R·sin(步长/2)` 要大于按钮直径。
+ * 合二为一后共 4 槽（标注/高亮、引用、新建分支、复制）。
  */
 const BUTTON = 30
 const ARC_RADIUS = 68
-const ARC_SPREAD = 62
-const SLOTS = 5
+const ARC_SPREAD = 52
+const SLOTS = 4
 const ARC_STEP = (ARC_SPREAD * 2) / (SLOTS - 1)
 const ARC_WIDTH = Math.round(ARC_RADIUS * (1 - Math.cos((ARC_SPREAD * Math.PI) / 180)) + BUTTON)
 const ARC_HEIGHT = Math.round(2 * ARC_RADIUS * Math.sin((ARC_SPREAD * Math.PI) / 180) + BUTTON)
@@ -219,8 +218,8 @@ function ArcAction({
 }
 
 /**
- * 消息正文框选后的悬浮菜单（月牙盘）：五枚圆形图标按钮沿竖直弧线 ——
- * 高亮（书签）/ 打标签 / 引用到对话 / 新建子分支节点 / 复制。
+ * 消息正文框选后的悬浮菜单（月牙盘）：四枚圆形图标按钮沿竖直弧线 ——
+ * 标注（高亮/打标签合二为一）/ 引用到对话 / 新建子分支节点 / 复制。
  *
  * 菜单常驻挂载（隐藏态）而不是按需挂载 —— 位置要按自身实际宽高算，先量再定位，
  * 才能在视口边缘正确避让；量尺寸必须在事件里做（不能在 render/effect 里读 DOM）。
@@ -245,8 +244,9 @@ export function SelectionMenu({
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  // 打标签的弹窗：框选一进弹窗就没了，所以锚点在这里连同原文一起被捕获下来
-  const [labeling, setLabeling] = useState<{
+  // 标注弹窗的状态：框选一进弹窗就没了，所以锚点在这里连同原文一起被捕获下来。
+  // 一段文字至多一条标注（高亮就是「不带标签的标注」），已有则进入编辑、没有则新建。
+  const [annotating, setAnnotating] = useState<{
     anchor: SelectionAnchor & { messageId: Id }
     noteId?: Id
     labels?: NoteLabel[]
@@ -345,48 +345,17 @@ export function SelectionMenu({
   }
 
   /**
-   * 高亮（书签）：同一段文字再点一次就是取消 —— 高亮是开关语义，堆两条一模一样的高亮
-   * 除了让正文颜色更深没有任何意义。纯高亮不带标签，因此**不会**进入 AI 上下文。
+   * 标注（高亮与打标签合二为一）：同一段文字至多一条标注。
+   * 已有标注（无论带不带标签）就打开它继续改；没有则新建，弹窗里不选标签直接保存就是纯高亮书签。
    */
-  const toggleHighlight = async () => {
+  const openAnnotate = () => {
     if (!menu || busy) return
     const target = menu
     const existing = (
       useWorkspaceStore.getState().notesByMessage[target.messageId] ?? []
-    ).find((note) => note.labels.length === 0 && sameAnchor(note, target))
+    ).find((note) => sameAnchor(note, target))
 
-    setBusy(true)
-    try {
-      if (existing) {
-        await removeNote(existing.id)
-        toast.success('已取消高亮')
-      } else {
-        const created = await addNote({
-          nodeId,
-          messageId: target.messageId,
-          quote: target.quote,
-          start: target.start,
-          end: target.end,
-        })
-        if (!created) throw new Error('未能写入标注')
-      }
-      close()
-    } catch (error) {
-      toast.error(`高亮失败：${errorMessage(error)}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /** 打标签：这一段已经有带标签的标注就直接打开它继续改，不再叠第二条。 */
-  const openLabelPicker = () => {
-    if (!menu || busy) return
-    const target = menu
-    const existing = (
-      useWorkspaceStore.getState().notesByMessage[target.messageId] ?? []
-    ).find((note) => note.labels.length > 0 && sameAnchor(note, target))
-
-    setLabeling({
+    setAnnotating({
       anchor: {
         messageId: target.messageId,
         quote: target.quote,
@@ -400,43 +369,43 @@ export function SelectionMenu({
     close()
   }
 
-  const saveLabels = async (input: { labels: NoteLabel[]; body?: string }) => {
-    if (!labeling) return
+  const saveAnnotation = async (input: { labels: NoteLabel[]; body?: string }) => {
+    if (!annotating) return
     try {
-      if (labeling.noteId) {
-        await updateNote(labeling.noteId, {
+      if (annotating.noteId) {
+        await updateNote(annotating.noteId, {
           labels: input.labels,
           ...(input.body !== undefined ? { body: input.body } : {}),
         })
       } else {
         const created = await addNote({
           nodeId,
-          messageId: labeling.anchor.messageId,
+          messageId: annotating.anchor.messageId,
           labels: input.labels,
-          quote: labeling.anchor.quote,
-          start: labeling.anchor.start,
-          end: labeling.anchor.end,
+          quote: annotating.anchor.quote,
+          start: annotating.anchor.start,
+          end: annotating.anchor.end,
           ...(input.body !== undefined ? { body: input.body } : {}),
         })
         if (!created) throw new Error('未能写入标注')
       }
-      setLabeling(null)
+      setAnnotating(null)
     } catch (error) {
       toast.error(`保存标注失败：${errorMessage(error)}`)
     }
   }
 
-  const deleteLabeledNote = async (id: Id) => {
+  const deleteAnnotation = async (id: Id) => {
     try {
       await removeNote(id)
     } catch (error) {
       toast.error(`删除标注失败：${errorMessage(error)}`)
     } finally {
-      setLabeling(null)
+      setAnnotating(null)
     }
   }
 
-  const labeledNoteId = labeling?.noteId ?? null
+  const annotatingNoteId = annotating?.noteId ?? null
 
   const quoteToComposer = () => {
     if (!menu) return
@@ -477,20 +446,13 @@ export function SelectionMenu({
         <ArcAction
           index={0}
           icon={<Highlighter className="h-4 w-4" />}
-          label="高亮（自己的书签）"
+          label="标注 / 高亮"
           busy={busy}
-          onSelect={() => void toggleHighlight()}
+          onSelect={openAnnotate}
         />
+        <ArcAction index={1} icon={<MessageSquareQuote className="h-4 w-4" />} label="引用到对话" onSelect={quoteToComposer} />
         <ArcAction
-          index={1}
-          icon={<Tags className="h-4 w-4" />}
-          label="打标签（告诉 AI）"
-          busy={busy}
-          onSelect={openLabelPicker}
-        />
-        <ArcAction index={2} icon={<MessageSquareQuote className="h-4 w-4" />} label="引用到对话" onSelect={quoteToComposer} />
-        <ArcAction
-          index={3}
+          index={2}
           icon={
             busy ? (
               <Loader2 className="h-4 w-4 animate-spin text-accent" />
@@ -503,26 +465,25 @@ export function SelectionMenu({
           onSelect={() => void createBranch()}
         />
         <ArcAction
-          index={4}
+          index={3}
           icon={copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
           label={copied ? '已复制' : '复制'}
           onSelect={() => void copy()}
         />
       </div>
 
-      {labeling ? (
+      {annotating ? (
         <NoteDialog
-          key={labeling.noteId ?? `${labeling.anchor.messageId}:${labeling.anchor.start}`}
-          mode="label"
-          quote={labeling.anchor.quote}
-          labels={labeling.labels}
-          body={labeling.body}
+          key={annotating.noteId ?? `${annotating.anchor.messageId}:${annotating.anchor.start}`}
+          quote={annotating.anchor.quote}
+          labels={annotating.labels}
+          body={annotating.body}
           suggestions={collectUsedLabels(
             Object.values(useWorkspaceStore.getState().notesByMessage).flat(),
           )}
-          onCancel={() => setLabeling(null)}
-          onSubmit={saveLabels}
-          onDelete={labeledNoteId ? () => void deleteLabeledNote(labeledNoteId) : undefined}
+          onCancel={() => setAnnotating(null)}
+          onSubmit={saveAnnotation}
+          onDelete={annotatingNoteId ? () => void deleteAnnotation(annotatingNoteId) : undefined}
         />
       ) : null}
     </>
