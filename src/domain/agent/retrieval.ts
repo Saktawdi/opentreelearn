@@ -1,4 +1,4 @@
-import { messageText } from '@/domain/messages'
+import { messageSource } from '@/domain/messages'
 import type { Id, Message, Node, Note, Role } from '@/domain/models'
 import { formatNoteLabels, labeledNotes, noteLabelName } from '@/domain/notes'
 import { resolveThread } from '@/domain/thread/resolve'
@@ -44,7 +44,7 @@ function nodeMessages(snapshot: ProjectSnapshot, nodeId: Id): Message[] {
 /** 一个节点的全部对话正文（用于「按内容搜」）。 */
 function conversationText(snapshot: ProjectSnapshot, nodeId: Id): string {
   return nodeMessages(snapshot, nodeId)
-    .map((message) => messageText(message))
+    .map((message) => messageSource(message))
     .join('\n')
     .toLowerCase()
 }
@@ -149,7 +149,7 @@ export function getNodeDetail(
   const recent = path
     .slice(-Math.max(1, Math.min(maxMessages, 10)))
     .map((message): NodeDetailMessage => {
-      const text = normalizeWhitespace(messageText(message))
+      const text = normalizeWhitespace(messageSource(message))
       return { role: message.role, text: truncate(text || '［图片］', 300) }
     })
 

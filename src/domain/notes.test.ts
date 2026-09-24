@@ -14,27 +14,36 @@ import {
   noteLabelName,
   renderNoteLegend,
   sameAnchor,
-  selectionAnchor,
+  selectionAnchorSpan,
   sortNotes,
 } from './notes'
 
-describe('selectionAnchor', () => {
+describe('selectionAnchorSpan', () => {
   it('narrows the range onto the trimmed text', () => {
-    // 选区从正文第 10 个字符开始，内容是「 特征值 」：两侧空白不该进锚点
-    expect(selectionAnchor(' 特征值 ', 10)).toEqual({ quote: '特征值', start: 11, end: 14 })
+    // 源文里第 10 到 15 个字符是「 特征值 」：两侧空白不该进锚点
+    const source = '0123456789 特征值 尾'
+    expect(selectionAnchorSpan(source, 10, 15)).toEqual({ quote: '特征值', start: 11, end: 14 })
   })
 
   it('keeps the anchor self-consistent for multi-line selections', () => {
-    const raw = '第一行\n第二行\n'
-    const anchor = selectionAnchor(raw, 3)
+    const source = '前文第一行\n第二行\n尾部'
+    const anchor = selectionAnchorSpan(source, 2, 9)
 
-    expect(anchor).toEqual({ quote: '第一行\n第二行', start: 3, end: 10 })
+    expect(anchor).toEqual({ quote: '第一行\n第二行', start: 2, end: 9 })
     expect(anchor!.end - anchor!.start).toBe(anchor!.quote.length)
   })
 
+  it('keeps the LaTeX source intact (公式不被打平)', () => {
+    const source = '面积为 $A$，体积 $V = \\frac{2}{3}\\pi r^3$。'
+    const start = source.indexOf('$V')
+    const anchor = selectionAnchorSpan(source, start, start + '$V = \\frac{2}{3}\\pi r^3$'.length)
+
+    expect(anchor?.quote).toBe('$V = \\frac{2}{3}\\pi r^3$')
+  })
+
   it('refuses blank selections', () => {
-    expect(selectionAnchor('   \n ', 5)).toBeNull()
-    expect(selectionAnchor('', 0)).toBeNull()
+    expect(selectionAnchorSpan('   \n 尾', 0, 5)).toBeNull()
+    expect(selectionAnchorSpan('正文', 1, 1)).toBeNull()
   })
 })
 

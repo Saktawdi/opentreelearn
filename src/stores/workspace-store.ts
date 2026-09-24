@@ -5,7 +5,7 @@ import { assembleContext, collectHistorySegments } from '@/domain/context/assemb
 import {
   deriveTitle,
   messageImageIds,
-  messageText,
+  messageSource,
   sameMessageParts,
 } from '@/domain/messages'
 import type {
@@ -1135,17 +1135,19 @@ function createWriteHandlers(
       return { label: `《${previous}》改名为《${trimmed}》`, nodeId: target }
     },
 
-    tagSpan: async ({ messageId, quote, labels, body }) => {
+    tagSpan: async ({ messageId, quote, labels, body, start: hint }) => {
       const state = store.getState()
       const node = state.nodes.find((item) => item.id === nodeId)
       if (!node) return null
 
-      const text = messageText(
+      // 按**源文**定位（与框选标注同一坐标系，见 domain/messages.messageSource）：
+      // 正文渲染后的公式是排版字形，拿它当坐标会把 LaTeX 记成 `r2=2a2cos2θ`
+      const text = messageSource(
         (state.messagesByNode[nodeId] ?? []).find((message) => message.id === messageId) ?? {
           parts: [],
         } as unknown as Message,
       )
-      const start = text.indexOf(quote)
+      const start = text.indexOf(quote, hint ?? 0)
       if (start < 0) return null
 
       const note = await store.getState().addNote({

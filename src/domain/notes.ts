@@ -151,12 +151,14 @@ export function renderNoteLegend(usedLabels: NoteLabel[]): string {
 /**
  * 把一次框选换算成标注锚点。
  *
- * `start` 是选区起点在正文纯文本里的下标，而用户想记下来的那段文字不该带首尾空白
- * （框选很容易多拖半个空格或一个换行），所以按 trim 后的结果收窄区间。终点由
- * `quote.length` 推出而不是另传一个 end：三个口径（选区文本、字符下标、渲染时还原的
- * 区间）必须完全一致，与其逐个校验，不如让它们只可能来自同一个长度。
+ * 输入是选区在**源文**里的 `[start, end)`（DOM 侧换算见 features/chat/note-anchor.ts），
+ * 而用户想记下来的那段文字不该带首尾空白（框选很容易多拖半个空格或一个换行），
+ * 所以按 trim 后的结果收窄区间。终点由 `quote.length` 推出而不是用选区终点：
+ * 三个口径（选区文字、字符下标、渲染时还原的区间）必须完全一致，与其逐个校验，
+ * 不如让它们只可能来自同一个长度。
  */
-export function selectionAnchor(raw: string, start: number): SelectionAnchor | null {
+export function selectionAnchorSpan(source: string, start: number, end: number): SelectionAnchor | null {
+  const raw = source.slice(start, end)
   const lead = raw.length - raw.trimStart().length
   const quote = raw.trim()
   if (!quote) return null

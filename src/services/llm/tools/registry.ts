@@ -8,7 +8,7 @@ import {
   treeOutline,
   type ProjectSnapshot,
 } from '@/domain/agent/retrieval'
-import { messageText } from '@/domain/messages'
+import { messageSource } from '@/domain/messages'
 import { NOTE_LABEL_MAX } from '@/domain/notes'
 import type { Id } from '@/domain/models'
 
@@ -189,6 +189,8 @@ export interface WriteToolHandlers {
     messageId: string
     quote: string
     labels: string[]
+    /** 已定好的出现位置（源文下标）；省掉时由 handlers 自己找第一处 */
+    start?: number
     body?: string
   }) => Promise<AgentWriteOutcome | null>
 }
@@ -262,15 +264,18 @@ export function buildWriteTools(runtime: ToolRuntime, handlers: WriteToolHandler
         const message = (snapshot.messagesByNode.get(
           snapshot.nodes.find((node) => node.id === runtime.currentNodeId)?.id ?? '',
         ) ?? []).find((item) => item.id === messageId)
-        const text = message ? messageText(message) : ''
+        // 按**源文**匹配：正文渲染后公式会变成排版字形（见 lib/markdown/source-map.ts），
+        // 模型只有引用原文才能对上号
+        const text = message ? messageSource(message) : ''
         const at = text.indexOf(quote, start ?? 0)
         if (!message || at < 0) {
-          return failure('这条消息里找不到这段原文：请逐字复制正文里的片段再试')
+          return failure('这条消息里找不到这段原文：请逐字复制正文里的片段（公式连同 $ 一起）再试')
         }
         const outcome = await handlers.tagSpan({
           messageId,
           quote,
           labels,
+          start: at,
           ...(body !== undefined ? { body } : {}),
         })
         if (!outcome) return failure('没能写入标注')

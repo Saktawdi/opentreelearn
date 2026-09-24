@@ -21,7 +21,7 @@ import {
   normalizeNoteLabel,
   normalizeNoteLabels,
 } from '@/domain/notes'
-import { normalizeWhitespace } from '@/lib/text'
+import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { cn } from '@/lib/utils'
 
 /**
@@ -109,8 +109,10 @@ export function NoteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <blockquote className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted">
-          {normalizeWhitespace(quote)}
+        <blockquote className="max-h-28 overflow-y-auto rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-muted">
+          {/* 存的是**源文**（公式连同 $ 一起），这里按 Markdown 渲染出来才好看；
+              保存与复制给模型的仍是源文本身 */}
+          <MarkdownView content={quote} className="text-xs" />
         </blockquote>
 
         <div className="mt-3">

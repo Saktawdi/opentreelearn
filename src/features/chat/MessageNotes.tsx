@@ -11,6 +11,16 @@ import { NoteDialog } from './NoteDialog'
 import { revealNote } from './note-anchor'
 
 /**
+ * 标注条里的单行预览。
+ *
+ * quote 存的是**源文**（公式连同 `$…$` 一起，见 note-anchor.ts），一行里塞 `$` 只会更挤；
+ * 展示时把公式定界符收掉，里面的 LaTeX 仍照原样 —— 这是预览，不是可以复制的正文。
+ */
+function quotePreview(quote: string): string {
+  return normalizeWhitespace(quote.replace(/\$\$?/g, ''))
+}
+
+/**
  * 消息下方的标注条：这条消息上的高亮与带标签的标注都在这里回看。
  *
  * 正文里的标记只画出「哪一段被标了」，标签、序号与备注放这里 —— 正文是 Markdown 渲染的，
@@ -91,7 +101,7 @@ export const MessageNotes = memo(function MessageNotes({
                   {noteLabelName(label)}
                 </Badge>
               ))}
-              <span className="max-w-[240px] truncate">{normalizeWhitespace(note.quote)}</span>
+              <span className="max-w-[240px] truncate">{quotePreview(note.quote)}</span>
               {note.body ? (
                 <span className="max-w-[200px] truncate text-muted">
                   · {normalizeWhitespace(note.body)}

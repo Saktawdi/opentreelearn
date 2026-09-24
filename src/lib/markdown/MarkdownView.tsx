@@ -1,14 +1,25 @@
 import { Check, Copy } from 'lucide-react'
 import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Options } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { highlightCode } from './highlighter'
 import { normalizeDisplayMath } from './math-fences'
+import { rehypeSourceMap } from './source-map'
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+/** rehype 插件表的类型：从 react-markdown 的 Options 里取，避免直接依赖 unified 的类型。 */
+type RehypePlugins = NonNullable<Options['rehypePlugins']>
+
+function CodeBlock({
+  code,
+  language,
+  ...source
+}: {
+  code: string
+  language?: string
+} & SourceProps) {
   const [html, setHtml] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -48,10 +59,12 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
       >
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
+      {/* 源文区间挂在**只包住代码**的这一层：语言标签与复制按钮的文字不能算进去，
+          否则单位文字与源码就对不上了（见 note-anchor.ts 的精确单位核对） */}
       {html ? (
-        <div className="shiki-host" dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="shiki-host" dangerouslySetInnerHTML={{ __html: html }} {...source} />
       ) : (
-        <pre className="shiki-fallback">
+        <pre className="shiki-fallback" {...source}>
           <code>{code}</code>
         </pre>
       )}
@@ -69,6 +82,9 @@ function extractCodeChild(children: ReactNode): { code: string; language?: strin
   return { code: raw.replace(/\n$/, ''), language }
 }
 
+/** 源文区间属性（`data-otl-src` 等），由 rehype 插件写在代码块上，这里原样转交 DOM。 */
+type SourceProps = Record<`data-otl-${string}`, string | undefined>
+
 export const MarkdownView = memo(function MarkdownView({
   content,
   className,
@@ -79,18 +95,37 @@ export const MarkdownView = memo(function MarkdownView({
   // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
   const normalized = useMemo(() => normalizeDisplayMath(content), [content])
 
+  // 源文标注必须排在 rehype-katex **之前**：KaTeX 会把公式元素整个换成排版结果，
+  // 之后再挂就找不到它了（见 source-map.ts）
+  const rehypePlugins = useMemo(
+    () =>
+      [
+        [rehypeSourceMap, normalized],
+        [rehypeKatex, { throwOnError: false, strict: false, output: 'html' }],
+      ] as unknown as RehypePlugins,
+    [normalized],
+  )
+
   return (
     <div className={cn('md-body', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, output: 'html' }]]}
+        rehypePlugins={rehypePlugins}
         components={{
-          pre({ children }) {
+          pre({ children, node, ...props }) {
+            // `node` 是 react-markdown 附带的 hast 节点，这里只为把它挡在 DOM 之外
+            void node
             const extracted = extractCodeChild(children)
             if (extracted) {
-              return <CodeBlock code={extracted.code} language={extracted.language} />
+              return (
+                <CodeBlock
+                  code={extracted.code}
+                  language={extracted.language}
+                  {...(props as SourceProps)}
+                />
+              )
             }
-            return <pre>{children}</pre>
+            return <pre {...props}>{children}</pre>
           },
           a({ href, children, ...props }) {
             return (

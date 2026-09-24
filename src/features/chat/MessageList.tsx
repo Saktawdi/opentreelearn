@@ -19,9 +19,11 @@ import {
   messageImageIds,
   messagePreview,
   messageQuotes,
+  messageSource,
   messageText,
   messageToolParts,
   replaceMessageText,
+  userBodySpans,
 } from '@/domain/messages'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
@@ -35,7 +37,10 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
 import { ToolActivities, type ToolActivityItem } from './ToolActivities'
-import { bodyProps } from './note-anchor'
+import {
+  bodyProps,
+  sourceSpanProps,
+} from './note-anchor'
 import { useAssetUrls } from './useAssetUrls'
 import { useNoteHighlights } from './useNoteHighlights'
 import { useThrottledValue } from './useThrottledValue'
@@ -315,6 +320,12 @@ const MessageBubble = memo(function MessageBubble({
   const quotes = messageQuotes(message)
   const body = messageBodyText(message)
   const notes = useWorkspaceStore((state) => state.notesByMessage[message.id]) ?? []
+  // 标注坐标系的源文（见 domain/messages.messageSource）：渲染与锚点共用这一串
+  const source = messageSource(message)
+  const userSpans = useMemo(
+    () => (isUser ? userBodySpans(message) : null),
+    [isUser, message],
+  )
   // 落库的工具记录：渲染成工具卡（在正文容器之外），让「查过什么」在刷新后仍然可见
   const toolItems: ToolActivityItem[] = messageToolParts(message).map((part) => ({
     callId: part.callId,
@@ -326,9 +337,10 @@ const MessageBubble = memo(function MessageBubble({
   }))
 
   // 正文容器的 ref 同时是笔记锚点的基准：`data-message-body` 标出「正文是哪一段文本」，
-  // 框选时按它数下标，渲染笔记时按它还原区间（见 note-anchor.ts）
+  // 框选时按它数下标，渲染笔记时按它还原区间（见 note-anchor.ts）。
+  // 源文也由这个钩子登记：框选、高亮与写工具都要它把选区换回原文坐标
   const bodyRef = useRef<HTMLDivElement>(null)
-  useNoteHighlights(bodyRef, message.id, notes)
+  useNoteHighlights(bodyRef, message.id, notes, source)
 
   const cleanText = stripReviewRating(text).trim()
   const hasContent = isUser
@@ -382,19 +394,27 @@ const MessageBubble = memo(function MessageBubble({
               {quotes.map((quote, index) => (
                 <blockquote
                   key={index}
+                  {...(userSpans?.quotes[index]
+                    ? sourceSpanProps(userSpans.quotes[index])
+                    : {})}
                   className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
                 >
                   {quote}
                 </blockquote>
               ))}
               {body ? (
-                <p className="whitespace-pre-wrap text-base leading-relaxed text-ink">{body}</p>
+                <p
+                  {...(userSpans?.body ? sourceSpanProps(userSpans.body, userSpans.bodyExact) : {})}
+                  className="whitespace-pre-wrap text-base leading-relaxed text-ink"
+                >
+                  {body}
+                </p>
               ) : null}
             </div>
           ) : (
             <div ref={bodyRef} {...bodyProps(message.id)}>
               {/* 复习评分标记是给客户端与模型看的协议，不进正文 */}
-              <MarkdownView content={stripReviewRating(text)} />
+              <MarkdownView content={source} />
             </div>
           )}
           <MessageImages urls={assetUrls} />

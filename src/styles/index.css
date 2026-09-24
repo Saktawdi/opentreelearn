@@ -267,6 +267,22 @@
     vertical-align: bottom;
   }
 
+  /*
+   * 正文里的**源文标注**（data-otl-src，见 lib/markdown/source-map.ts）。
+   *
+   * 行内单位只是包在文字外的一层 span、块级公式单位是一个不设样式的 div：它们本身
+   * 不该有任何盒子表现，所以这里只处理一件事 —— **首尾 margin 归零要穿过这层**。
+   * `.md-body > *:first-child` 只看 DOM 直接子元素，公式被包一层后就落不到了，
+   * 消息以行间公式开头 / 结尾时会凭空多出一段空白。
+   */
+  .md-body > [data-otl-src]:first-child > *:first-child {
+    margin-top: 0;
+  }
+
+  .md-body > [data-otl-src]:last-child > *:last-child {
+    margin-bottom: 0;
+  }
+
   .md-body .code-shell {
     margin: 0.95em 0;
   }

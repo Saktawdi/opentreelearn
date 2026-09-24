@@ -1,14 +1,21 @@
 import type { Id, Note } from '@/domain/models'
 import { locateQuote, type Anchor } from '@/domain/notes'
+import { EXACT_ATTR, SRC_ATTR, parseSourceAttr, type SourceUnit } from '@/lib/markdown/source-map'
 
 /**
  * 笔记锚点的 DOM 侧。
  *
- * 锚点说的是「正文纯文本里的第 start 到 end 个字符」，而选区来自真实 DOM，
- * 所以进出两个方向都要有一套换算：
- *  - 框选那一刻：Range 端点 → 字符下标（`offsetInBody`）；
- *  - 渲染笔记时：字符下标 → 新的 Range（`rangeFromAnchor`）。
- * 两侧都按「正文容器下所有文本节点顺序拼接」这一个口径来数，结果才对得上。
+ * 锚点说的是「**源文**里的第 start 到 end 个字符」—— 源文是喂给 Markdown 渲染的那串原文，
+ * 也就是模型输出的原样（见 lib/markdown/source-map.ts 里为什么不能拿渲染后的文字当坐标）。
+ * 于是进出两个方向各要一套换算：
+ *
+ *  - 框选那一刻：Range 端点 → 源文下标（`sourceOffsetAt`）；
+ *  - 渲染笔记时：源文下标 → 新的 Range（`rangeFromSource`）。
+ *
+ * 两侧都按**源文标注单位**（`data-otl-src`）来对齐：精确单位按字符偏移算，
+ * 公式 / 代码 / 图片这类原子单位整段吸附 —— 宁可粗，也不要错位。
+ *
+ * 源文本身不落在 DOM 上，由渲染正文的组件登记进来（`registerMessageSource`）。
  */
 
 /** 消息正文容器上的标记属性，值是该消息 id；同时用于锚点失效后反查容器。 */
@@ -23,42 +30,277 @@ export function bodyElement(messageId: Id): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[${BODY_ATTR}="${CSS.escape(messageId)}"]`)
 }
 
-/** 选区端点 → 正文纯文本里的字符下标。调用前必须确认 container 在 root 之内。 */
-export function offsetInBody(root: Element, container: globalThis.Node, offset: number): number {
-  const range = document.createRange()
-  range.setStart(root, 0)
-  range.setEnd(container, offset)
-  return range.toString().length
+/**
+ * 写在正文元素上的源文区间。用户气泡的引用 / 正文是直接渲染的（不走 Markdown），
+ * 它们的可标注单位由 JSX 自己标注，口径与 rehype 插件一致，所以在这里给出同一套属性。
+ */
+export function sourceSpanProps(
+  span: { start: number; end: number },
+  exact = false,
+): Record<string, string> {
+  return {
+    [SRC_ATTR]: `${span.start},${span.end}`,
+    ...(exact ? { [EXACT_ATTR]: '1' } : {}),
+  }
 }
 
-/** 字符区间 → Range：沿文本节点累加长度，走到覆盖 `[start, end)` 的两个端点。 */
-export function rangeFromAnchor(root: Element, anchor: Anchor): Range | null {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const range = document.createRange()
+/* -------------------------------------------------------------- 源文登记表
+ * 锚点要两端对齐，缺了源文就没法把「第 n 个字符」落到 DOM 上；而正文是 Markdown
+ * 渲染出来的，源文只在 React 组件手里。按 messageId 登记，随消息卸载清掉。
+ */
 
-  let position = 0
-  let started = false
+const sources = new Map<Id, string>()
+
+export function registerMessageSource(messageId: Id, source: string): void {
+  sources.set(messageId, source)
+}
+
+export function releaseMessageSource(messageId: Id): void {
+  sources.delete(messageId)
+}
+
+/** 这条消息的源文；没有登记（例如正文不在屏上）时返回 null。 */
+export function registeredSource(messageId: Id): string | null {
+  return sources.get(messageId) ?? null
+}
+
+/* ------------------------------------------------------------ 标注单位遍历 */
+
+interface Unit {
+  element: Element
+  span: SourceUnit
+}
+
+function readUnit(element: Element): Unit | null {
+  const span = parseSourceAttr(
+    element.getAttribute(SRC_ATTR),
+    element.getAttribute(EXACT_ATTR) === '1',
+  )
+  return span ? { element, span } : null
+}
+
+/** 正文里的全部标注单位，按文档序（querySelectorAll 就是文档序）。 */
+function collectUnits(root: Element): Unit[] {
+  const units: Unit[] = []
+  for (const element of root.querySelectorAll(`[${SRC_ATTR}]`)) {
+    const unit = readUnit(element)
+    if (unit) units.push(unit)
+  }
+  return units
+}
+
+/** 端点所属的最近标注单位；落在没标注的合成节点上时返回 null。 */
+function unitAt(node: Node | null, root: Element): Element | null {
+  let element = node instanceof Element ? node : (node?.parentElement ?? null)
+  while (element) {
+    if (element.hasAttribute(SRC_ATTR)) return element
+    if (element === root) return null
+    element = element.parentElement
+  }
+  return null
+}
+
+function isText(node: Node | null): node is Text {
+  return node !== null && node.nodeType === Node.TEXT_NODE
+}
+
+/** 子树里第一个 / 最后一个文字节点；没有文字（图片等）返回 null。 */
+function edgeText(node: Node, edge: 'first' | 'last'): { node: Text; offset: number } | null {
+  if (isText(node)) {
+    return { node, offset: edge === 'first' ? 0 : (node.nodeValue ?? '').length }
+  }
+  if (!node.childNodes.length) return null
+
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+  let found: Text | null = null
+  let current = walker.nextNode()
+  while (current) {
+    found = current as Text
+    if (edge === 'first') break
+    current = walker.nextNode()
+  }
+  return found ? { node: found, offset: edge === 'first' ? 0 : (found.nodeValue ?? '').length } : null
+}
+
+/**
+ * 把选区端点换算成文字位置。
+ *
+ * 浏览器多半直接给文字节点，但「拖选整块」时端点会落在元素上（offset 是子节点下标）。
+ * 那时按方向找相邻的文字：起点向后找、终点向前找，与「端点贴着块的哪一侧」一致。
+ */
+function textPoint(container: Node, offset: number, side: 'start' | 'end'): { node: Text; offset: number } | null {
+  if (isText(container)) return { node: container, offset }
+
+  const children = container.childNodes
+  const from = side === 'start' ? Math.max(0, Math.min(offset, children.length)) : Math.min(offset, children.length) - 1
+  const step = side === 'start' ? 1 : -1
+
+  for (let index = from; index >= 0 && index < children.length; index += step) {
+    const found = edgeText(children[index] as Node, side === 'start' ? 'first' : 'last')
+    if (found) return found
+  }
+  // 这一侧没有文字（例如块末尾的图片）：反向再找一次
+  const back = side === 'start' ? children.length - 1 : 0
+  for (let index = back; index >= 0 && index < children.length; index += -step) {
+    const found = edgeText(children[index] as Node, side === 'start' ? 'last' : 'first')
+    if (found) return found
+  }
+  return null
+}
+
+/** 与点位相邻的标注单位：没落在任何单位里时，按文档序就近取一个。 */
+function neighbourUnit(
+  root: Element,
+  point: { node: Text; offset: number },
+  side: 'start' | 'end',
+): Unit | null {
+  const units = collectUnits(root)
+  const follows = (unit: Unit) =>
+    (point.node.compareDocumentPosition(unit.element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+
+  // 起点落在没标注的空隙里：向后取第一个单位，把空隙并进选区
+  if (side === 'start') return units.find(follows) ?? null
+
+  let found: Unit | null = null
+  for (const unit of units) {
+    if (!follows(unit)) found = unit
+  }
+  return found
+}
+
+/** 单位内全部文本按文档序拼起来（代码高亮会把一行切成许多 span，字符仍连续）。 */
+function unitText(unit: Element): string {
+  const walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT)
+  let text = ''
   let node = walker.nextNode()
+  while (node) {
+    text += node.nodeValue ?? ''
+    node = walker.nextNode()
+  }
+  return text
+}
+
+/** 单位内某个文字位置的**单位内**偏移；不在这个单位里就返回 null。 */
+function offsetInUnitText(unit: Element, node: Text, offset: number): number | null {
+  const walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT)
+  let total = 0
+  let current = walker.nextNode()
+  while (current) {
+    if (current === node) return total + offset
+    total += current.nodeValue?.length ?? 0
+    current = walker.nextNode()
+  }
+  return null
+}
+
+/** 单位内偏移 → 具体的文字位置（与 `offsetInUnitText` 互逆）。 */
+function textPointInUnit(unit: Element, offset: number): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(unit, NodeFilter.SHOW_TEXT)
+  let total = 0
+  let node = walker.nextNode() as Text | null
+  let last: Text | null = null
 
   while (node) {
     const length = node.nodeValue?.length ?? 0
-    const next = position + length
+    if (offset <= total + length) return { node, offset: Math.max(0, offset - total) }
+    total += length
+    last = node
+    node = walker.nextNode() as Text | null
+  }
+  return last ? { node: last, offset: last.nodeValue?.length ?? 0 } : null
+}
 
-    if (!started && next >= anchor.start) {
-      range.setStart(node, Math.min(length, anchor.start - position))
-      started = true
-    }
-    if (started && next >= anchor.end) {
-      range.setEnd(node, Math.min(length, anchor.end - position))
-      return range
-    }
+/**
+ * 精确单位是否仍然对得上源文。正文的 DOM 会自己变（代码块异步高亮、字体加载后重排），
+ * 对不上就当原子单位整段吸附 —— **宁可粗，也不要给出错位的下标**。
+ */
+function exactUnitText(unit: Element, span: SourceUnit, source: string): boolean {
+  return span.exact && unitText(unit) === source.slice(span.start, span.end)
+}
 
-    position = next
-    node = walker.nextNode()
+/**
+ * 精确单位里按字符偏移对齐（单位文字已核对与源文一致）；原子单位整段 ——
+ * 起点取单位头、终点取单位尾，部分落在公式里也扩成整段公式（记全比记错好）。
+ */
+export function sourceOffsetAt(
+  root: Element,
+  container: Node,
+  offset: number,
+  side: 'start' | 'end',
+  source: string,
+): number | null {
+  const point = textPoint(container, offset, side)
+  if (!point) return null
+
+  const unit = unitAt(point.node, root)
+  if (!unit) {
+    const fallback = neighbourUnit(root, point, side)
+    if (!fallback) return null
+    return side === 'start' ? fallback.span.start : fallback.span.end
   }
 
-  // 正文比记录时短了（内容被改过 / 渲染有出入），区间落不到实处
-  return null
+  const parsed = readUnit(unit)
+  if (!parsed) return null
+
+  if (exactUnitText(unit, parsed.span, source)) {
+    const inner = offsetInUnitText(unit, point.node, point.offset)
+    if (inner !== null) {
+      const at = parsed.span.start + inner
+      return Math.min(Math.max(at, parsed.span.start), parsed.span.end)
+    }
+  }
+  // 原子单位、或精确单位已经对不上源文（正文变了）：整段吸附
+  return side === 'start' ? parsed.span.start : parsed.span.end
+}
+
+/** 选区 → 源文区间；两端有一端对不上就返回 null（宁可不记，也不记一条错位的）。 */
+export function selectionSourceSpan(root: Element, range: Range, source: string): Anchor | null {
+  const start = sourceOffsetAt(root, range.startContainer, range.startOffset, 'start', source)
+  const end = sourceOffsetAt(root, range.endContainer, range.endOffset, 'end', source)
+  if (start === null || end === null) return null
+  return { start: Math.min(start, end), end: Math.max(start, end) }
+}
+
+/** 源文下标 → Range 端点：精确单位按偏移切，原子单位取整段的头 / 尾。 */
+function boundary(
+  unit: Unit,
+  offset: number,
+  side: 'start' | 'end',
+  source: string,
+): { node: Node; offset: number } | null {
+  if (exactUnitText(unit.element, unit.span, source)) {
+    const inner = textPointInUnit(unit.element, offset - unit.span.start)
+    if (inner) return inner
+  }
+
+  const text = edgeText(unit.element, side === 'start' ? 'first' : 'last')
+  if (text) return text
+  return side === 'start'
+    ? { node: unit.element, offset: 0 }
+    : { node: unit.element, offset: unit.element.childNodes.length }
+}
+
+/** 源文区间 → Range：与区间相交的第一 / 最后一个标注单位定出两端。 */
+export function rangeFromSource(root: Element, start: number, end: number, source: string): Range | null {
+  let first: Unit | null = null
+  let last: Unit | null = null
+
+  for (const unit of collectUnits(root)) {
+    if (unit.span.end <= start) continue
+    if (unit.span.start >= end) break
+    if (!first) first = unit
+    last = unit
+  }
+  if (!first || !last) return null
+
+  const head = boundary(first, start, 'start', source)
+  const tail = boundary(last, end, 'end', source)
+  if (!head || !tail) return null
+
+  const range = document.createRange()
+  range.setStart(head.node, head.offset)
+  range.setEnd(tail.node, tail.offset)
+  return range
 }
 
 export interface ResolvedRange {
@@ -70,22 +312,29 @@ export interface ResolvedRange {
 /**
  * 笔记 → 当前渲染结果里的 Range。
  *
- * 先按存下来的字符区间定位，区间上的文字与 `quote` 对得上就直接用；对不上说明正文
- * 的渲染结果变了（代码块异步高亮、KaTeX 重排、消息被改过），退回「用原文在正文里
- * 就近找一次」。两者都失败就是彻底失效：返回 null，笔记仍留在笔记条里可读可删。
+ * 先按存下来的源文区间定位；定位到的区间**逐字等于** `quote` 就直接用 —— 不等说明
+ * 正文变了（消息被改过、模型重答过）或这条笔记来自旧版本（那时记的是渲染后的文字，
+ * 公式已经是 `r2=2a2cos2θ` 这种字形），退回「用原文在源文里就近找一次」。
+ * 两者都失败就是彻底失效：返回 null，笔记仍留在笔记条里可读可删。
  */
 export function resolveNoteRange(note: Note): ResolvedRange | null {
   const root = bodyElement(note.messageId)
   if (!root) return null
 
-  const stored: Anchor = { start: note.start, end: note.end }
-  const exact = rangeFromAnchor(root, stored)
-  if (exact && exact.toString() === note.quote) return { range: exact, anchor: stored }
+  const source = registeredSource(note.messageId)
+  if (source === null) return null
 
-  const located = locateQuote(root.textContent ?? '', note.quote, note.start)
+  const stored: Anchor = { start: note.start, end: note.end }
+
+  const exact = rangeFromSource(root, stored.start, stored.end, source)
+  if (exact && source.slice(stored.start, stored.end) === note.quote) {
+    return { range: exact, anchor: stored }
+  }
+
+  const located = locateQuote(source, note.quote, note.start)
   if (!located) return null
 
-  const healed = rangeFromAnchor(root, located)
+  const healed = rangeFromSource(root, located.start, located.end, source)
   return healed ? { range: healed, anchor: located } : null
 }
 

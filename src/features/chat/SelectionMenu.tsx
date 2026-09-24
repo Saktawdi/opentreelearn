@@ -10,11 +10,16 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { Id, NoteLabel } from '@/domain/models'
-import { collectUsedLabels, sameAnchor, selectionAnchor, type SelectionAnchor } from '@/domain/notes'
+import {
+  collectUsedLabels,
+  sameAnchor,
+  selectionAnchorSpan,
+  type SelectionAnchor,
+} from '@/domain/notes'
 import { cn, errorMessage } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { NoteDialog } from './NoteDialog'
-import { BODY_ATTR, offsetInBody } from './note-anchor'
+import { BODY_ATTR, registeredSource, selectionSourceSpan } from './note-anchor'
 
 interface SelectionTarget extends SelectionAnchor {
   messageId: Id
@@ -140,9 +145,6 @@ function readSelection(): SelectionTarget | null {
   const selection = window.getSelection()
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
 
-  const raw = selection.toString()
-  if (!raw.trim()) return null
-
   const range = selection.getRangeAt(0)
   const body = ownerBody(range.startContainer)
   // 跨气泡的选区没有单一的正文基准，算不出可信的下标 —— 宁可不弹菜单，
@@ -152,11 +154,16 @@ function readSelection(): SelectionTarget | null {
   const messageId = body.getAttribute(BODY_ATTR)
   if (!messageId) return null
 
-  // 锚点必须在框选当场算：菜单一收、选区一清，就再也还原不出这段文字在正文里的位置了
-  const anchor = selectionAnchor(
-    raw,
-    offsetInBody(body, range.startContainer, range.startOffset),
-  )
+  const source = registeredSource(messageId)
+  if (source === null) return null
+
+  // 锚点必须在框选当场算：菜单一收、选区一清，就再也还原不出这段文字在正文里的位置了。
+  // 换算到的是**源文**下标（公式取整段 `$…$`），不是框选时看到的字形文字 —— 后者
+  // 到了 AI 上下文里会变成 `r2=2a2cos2θ` 这种乱码（见 note-anchor.ts）。
+  const span = selectionSourceSpan(body, range, source)
+  if (!span) return null
+
+  const anchor = selectionAnchorSpan(source, span.start, span.end)
   if (!anchor) return null
 
   const boxes = textBoxes(range)
