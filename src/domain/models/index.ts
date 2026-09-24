@@ -327,6 +327,13 @@ export interface ProviderCapabilities {
   tools?: boolean
 }
 
+/** 单个模型的自定义/覆盖能力配置（未在全局目录匹配到或想手工覆盖时使用）。 */
+export interface CustomModelConfig {
+  contextLimit?: number
+  hasVision?: boolean
+  reasoning?: boolean
+}
+
 export interface ProviderConfig {
   id: Id
   label: string
@@ -336,6 +343,14 @@ export interface ProviderConfig {
   models: string[]
   /** 连接测试时探测出的能力；缺省 = 未探测（见 ProviderCapabilities） */
   capabilities?: ProviderCapabilities
+  /**
+   * 推理强度：自由文本（通常来自智能匹配候选，也可手填任意档位）。
+   * `'auto'` 或缺失 = 不传参，跟随厂商默认；其余取值仅在属于 SDK 合法档位
+   * （见 model-catalog 的 ALLOWED_REASONING_LEVELS）时随请求携带。
+   */
+  reasoningEffort?: string
+  /** 针对单个模型的个性化能力配置（按模型 ID 索引）。 */
+  modelConfigs?: Record<string, CustomModelConfig>
 }
 
 export interface GlobalSettings {

@@ -146,6 +146,13 @@ interface WorkspaceState {
    * 不是操作历史；堆一长串既难懂也难用（真正的历史是画布本身）。
    */
   agentChange: AgentChange | null
+  /**
+   * 对话页在线切换的推理强度（会话级临时覆盖）。
+   * 非持久化：'auto' = 跟随提供商配置；其余为合法档位值。
+   * 与 ProviderConfig.reasoningEffort 的区别：这个是运行时状态，关掉页面即还原。
+   */
+  reasoningOverride: string
+  setReasoningOverride: (value: string) => void
 
   openProject: (projectId: Id) => Promise<void>
   reset: () => void
@@ -254,6 +261,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     streaming: null,
     summarizingNodeIds: [],
     agentChange: null,
+    reasoningOverride: 'auto',
+
+    setReasoningOverride: (value) => {
+      set((state) => {
+        state.reasoningOverride = value
+      })
+    },
 
     openProject: async (projectId) => {
       set((state) => {
@@ -1244,6 +1258,13 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
   const abortController = new AbortController()
   activeAbort = abortController
 
+  // 推理强度：会话级覆盖（对话页在线切，非 auto）优先，否则跟提供商配置。
+  // 非法值/auto 由 chat 层过滤为不传（跟随厂商默认）。
+  const reasoningEffort =
+    state.reasoningOverride && state.reasoningOverride !== 'auto'
+      ? state.reasoningOverride
+      : provider?.reasoningEffort
+
   const run = (withTools: boolean) =>
     streamReply({
       model,
@@ -1251,6 +1272,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
       messages: toModelMessages(context.messages),
       abortSignal: abortController.signal,
       ...(withTools && tools ? { tools, maxSteps: clampAgentMaxSteps(settings.agentMaxSteps) } : {}),
+      reasoningEffort,
       onDelta: (delta) => {
         store.setState((draft) => {
           if (draft.streaming?.messageId === messageId) {

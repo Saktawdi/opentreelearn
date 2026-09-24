@@ -9,6 +9,7 @@ import type { ReviewItemPhase, ReviewRequestPurpose, ReviewSessionItem } from '@
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
 import { describeLlmError, formatErrorMessage } from './errors'
+import { findProvider } from './catalog'
 import { requireModel } from './providers'
 import { streamReply, toModelMessages, type ChatUsage } from './chat'
 import type { GlobalSettings } from '@/domain/models'
@@ -165,6 +166,8 @@ export async function runReviewRequest(
       system: context.system,
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
+      // 跟随提供商配置的推理强度；非法值/auto 由 chat 层过滤为不传
+      reasoningEffort: findProvider(input.settings.providers, ref)?.reasoningEffort,
       onDelta: (delta) => {
         partial += delta
         input.onDelta?.(delta)

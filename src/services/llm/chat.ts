@@ -6,6 +6,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type { ContextMessage, ContextPart } from '@/domain/context/assemble'
+import { isValidReasoningLevel } from './model-catalog'
 import { DEFAULT_AGENT_MAX_STEPS } from '@/domain/defaults'
 
 export interface ChatUsage {
@@ -43,6 +44,13 @@ export interface StreamReplyParams {
   tools?: ToolSet
   /** 最多走几步（含工具步）；只在给了工具时生效。**0 = 不限制**。缺省取全局默认。 */
   maxSteps?: number
+  /**
+   * 推理强度（未校验的自由文本）。
+   * 只有属于 SDK 合法档位（`model-catalog.ALLOWED_REASONING_LEVELS`）的值才会
+   * 注入请求的顶层 `reasoning` 字段；'auto'/非法值一律不传 —— API 层不认识的值
+   * 会被适配器静默忽略，与其送出假档位不如不带。
+   */
+  reasoningEffort?: string
   onToolCall?: (activity: ToolActivity) => void
   onToolResult?: (outcome: ToolOutcome) => void
 }
@@ -204,6 +212,7 @@ function stringifyToolOutput(output: unknown): string {
  *
  * **回归底线**：不带工具时**不能出现** `tools` / `stopWhen` 任何一个键 ——
  * 这样请求体与「还没有工具调用能力」的今天逐字节一致，任何意外都会在 diff 里露出来。
+ * `reasoning` 同理：只有给出合法档位时才出现该键。
  */
 export function buildStreamOptions(params: {
   model: LanguageModel
@@ -212,9 +221,13 @@ export function buildStreamOptions(params: {
   abortSignal?: AbortSignal
   tools?: ToolSet
   maxSteps?: number
+  reasoningEffort?: string
 }): Parameters<typeof streamText>[0] {
   const hasTools = params.tools !== undefined && Object.keys(params.tools).length > 0
   const maxSteps = params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS
+  const reasoningEffort = isValidReasoningLevel(params.reasoningEffort)
+    ? params.reasoningEffort
+    : undefined
 
   return {
     model: params.model,
@@ -226,6 +239,7 @@ export function buildStreamOptions(params: {
     ...(hasTools
       ? { tools: params.tools, stopWhen: maxSteps > 0 ? stepCountIs(maxSteps) : [] }
       : {}),
+    ...(reasoningEffort ? { reasoning: reasoningEffort } : {}),
     // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。
     // streamText 把 `result.usage.then(() => {})` 当作遥测的「完成信号」，只有 Node 分支
     // （openTelemetryChannelSpanContext 里 isNodeRuntime() 为真）会顺手 .catch 掉它；

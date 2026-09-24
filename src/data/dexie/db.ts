@@ -59,6 +59,22 @@ export interface SyncStateRecord {
   initialized: boolean
 }
 
+/**
+ * 模型目录缓存（models.dev 的原始 JSON + 拉取时间）。
+ *
+ * 不是业务数据：不参与云同步、不需要归一化，是「智能匹配」功能的内存外兜底。
+ * 目录很大（几千条模型），放 localStorage 有 5MB 限额风险，走 IndexedDB。
+ */
+export interface ModelCatalogRecord {
+  key: string
+  /** 目录 json 的原始对象（不经归一化，结构见 model-catalog.ts） */
+  raw: unknown
+  /** 拉取时间（epoch ms），TTL 判定的依据 */
+  fetchedAt: number
+}
+
+export const MODEL_CATALOG_KEY = 'models.dev'
+
 export class AppDatabase extends Dexie {
   projects!: Table<Project, Id>
   projectSettings!: Table<ProjectSettings, Id>
@@ -70,6 +86,7 @@ export class AppDatabase extends Dexie {
   outbox!: Table<OutboxRecord, number>
   syncState!: Table<SyncStateRecord, string>
   reviewSessions!: Table<ReviewSessionRow, Id>
+  modelCatalog!: Table<ModelCatalogRecord, string>
 
   constructor(name = 'opentreelearn') {
     super(name)
@@ -101,6 +118,11 @@ export class AppDatabase extends Dexie {
     // 「每个项目至多一份未完成会话」由仓储在事务里保证 —— 按钮禁用挡不住多标签页。
     this.version(4).stores({
       reviewSessions: 'id, projectId, [projectId+open], updatedAt',
+    })
+
+    // v5 只加模型目录缓存表（见 ModelCatalogRecord）：智能匹配的原始目录不在同步域内。
+    this.version(5).stores({
+      modelCatalog: 'key',
     })
   }
 }

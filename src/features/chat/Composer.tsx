@@ -10,10 +10,35 @@ import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { ModelPicker } from '@/features/settings/ModelPicker'
+import { ReasoningEffortInput } from '@/features/settings/ReasoningEffortInput'
+import { useSettingsStore } from '@/stores/settings-store'
 
 interface PendingImage {
   asset: Asset
   url: string
+}
+
+/** 对话页的推理强度选择器：绑定到会话级临时覆盖，跟随当前对话所用的模型做智能匹配。 */
+function ChatReasoningPicker({ chatModelRef }: { chatModelRef?: ModelRef | null }) {
+  const reasoningOverride = useWorkspaceStore((state) => state.reasoningOverride)
+  const setReasoningOverride = useWorkspaceStore((state) => state.setReasoningOverride)
+  const providers = useSettingsStore((state) => state.settings.providers)
+
+  const provider = chatModelRef
+    ? providers.find((item) => item.id === chatModelRef.providerId) ?? null
+    : null
+  // 按钮显示生效值：覆盖（非 auto）优先，否则提供商配置
+  const effective =
+    reasoningOverride !== 'auto' ? reasoningOverride : (provider?.reasoningEffort ?? 'auto')
+
+  return (
+    <ReasoningEffortInput
+      value={effective}
+      onChange={setReasoningOverride}
+      models={chatModelRef ? [chatModelRef.modelId] : []}
+      className="h-7 px-1.5 text-muted hover:text-ink"
+    />
+  )
 }
 
 export interface ComposerHandle {
@@ -227,11 +252,15 @@ export function Composer({
         <div className="flex items-center justify-between px-2 pb-1.5">
           <div className="flex items-center gap-1">
             {onChatModelChange ? (
-              <ModelPicker
-                value={chatModelRef}
-                onChange={onChatModelChange}
-                className="h-7 px-1.5 text-muted hover:text-ink"
-              />
+              <>
+                <ModelPicker
+                  value={chatModelRef}
+                  onChange={onChatModelChange}
+                  className="h-7 px-1.5 text-muted hover:text-ink"
+                />
+                {/* 模型在前，推理强度在后：跟随当前所选模型做智能匹配与在线快切 */}
+                <ChatReasoningPicker chatModelRef={chatModelRef} />
+              </>
             ) : null}
 
             <Tooltip label="插入图片">

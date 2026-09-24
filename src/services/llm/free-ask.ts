@@ -133,6 +133,8 @@ export async function runFreeAskRequest(
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
       ...(tools ? { tools, maxSteps: clampAgentMaxSteps(input.settings.agentMaxSteps) } : {}),
+      // 跟随提供商配置的推理强度；非法值/auto 由 chat 层过滤为不传
+      reasoningEffort: provider?.reasoningEffort,
       onDelta: (delta) => {
         partial += delta
         input.onDelta?.(delta)

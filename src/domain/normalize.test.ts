@@ -79,6 +79,38 @@ describe('normalizeProvider', () => {
     expect(normalizeProvider({ id: 'v1', kind: 'anthropic' })?.kind).toBe('anthropic')
     expect(normalizeProvider({ id: 'v1', kind: 'gemini' })?.kind).toBe('openai-compatible')
   })
+
+  it('carries a non-empty reasoningEffort through (trimmed)', () => {
+    expect(normalizeProvider({ id: 'v1', reasoningEffort: '  high  ' })?.reasoningEffort).toBe(
+      'high',
+    )
+    expect(normalizeProvider({ id: 'v1', reasoningEffort: 'auto' })?.reasoningEffort).toBe('auto')
+  })
+
+  it('omits reasoningEffort when empty or not a string', () => {
+    const plain = normalizeProvider({ id: 'v1' })
+    expect(plain).not.toHaveProperty('reasoningEffort')
+    expect(normalizeProvider({ id: 'v1', reasoningEffort: '' })?.reasoningEffort).toBeUndefined()
+    expect(
+      normalizeProvider({ id: 'v1', reasoningEffort: 42 })?.reasoningEffort,
+    ).toBeUndefined()
+  })
+
+  it('normalizes modelConfigs for custom per-model overrides', () => {
+    const p = normalizeProvider({
+      id: 'v1',
+      modelConfigs: {
+        'gemini-3.8-flash-api': { contextLimit: 1_000_000, hasVision: true, reasoning: true },
+        'bad-one': { invalidField: 'junk' },
+      },
+    })
+    expect(p?.modelConfigs?.['gemini-3.8-flash-api']).toEqual({
+      contextLimit: 1_000_000,
+      hasVision: true,
+      reasoning: true,
+    })
+    expect(p?.modelConfigs?.['bad-one']).toBeUndefined()
+  })
 })
 
 describe('normalizeModelRef', () => {

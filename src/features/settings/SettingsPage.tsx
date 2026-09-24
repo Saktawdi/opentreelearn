@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Section } from '@/components/ui/section'
-import type { ModelRef, ProviderConfig } from '@/domain/models'
+import type { ProviderConfig } from '@/domain/models'
 import {
   clampAgentMaxSteps,
   clampContextBudget,
@@ -19,6 +19,7 @@ import { testProviderConnection } from '@/services/llm/providers'
 import { useSettingsStore, type ModelSlot } from '@/stores/settings-store'
 import { ModelPicker } from './ModelPicker'
 import { ProviderDialog } from './ProviderDialog'
+import { ReasoningEffortInput } from './ReasoningEffortInput'
 
 const MODEL_SLOTS: { slot: ModelSlot; label: string; hint: string }[] = [
   {
@@ -176,21 +177,43 @@ export function SettingsPage() {
 
         <Section title="模型分配">
           <div className="space-y-2">
-            {MODEL_SLOTS.map(({ slot, label, hint }) => (
-              <div
-                key={slot}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm text-ink-soft">{label}</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted">{hint}</p>
+            {MODEL_SLOTS.map(({ slot, label, hint }) => {
+              const ref = settings[slot]
+              const isChatSlot = slot === 'defaultChatModelRef'
+              // 只有对话模型允许配置推理强度；模型在前，推理强度在后
+              const slotProvider =
+                isChatSlot && ref
+                  ? settings.providers.find((item) => item.id === ref.providerId) ?? null
+                  : null
+              return (
+                <div
+                  key={slot}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm text-ink-soft">{label}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted">{hint}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ModelPicker
+                      value={ref}
+                      onChange={(nextRef) => void setModelRef(slot, nextRef)}
+                    />
+                    {slotProvider ? (
+                      <ReasoningEffortInput
+                        value={slotProvider.reasoningEffort ?? 'auto'}
+                        onChange={(next) =>
+                          void updateProvider(slotProvider.id, {
+                            reasoningEffort: next === 'auto' ? undefined : next,
+                          })
+                        }
+                        models={ref ? [ref.modelId] : slotProvider.models}
+                      />
+                    ) : null}
+                  </div>
                 </div>
-                <ModelPicker
-                  value={settings[slot] as ModelRef | null}
-                  onChange={(ref) => void setModelRef(slot, ref)}
-                />
-              </div>
-            ))}
+              )
+            })}
           </div>
         </Section>
 

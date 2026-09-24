@@ -2,6 +2,7 @@ import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget } from '.
 import type {
   AssessmentMeta,
   AssessmentSource,
+  CustomModelConfig,
   GlobalSettings,
   MasterySnapshot,
   ModelRef,
@@ -71,6 +72,39 @@ export function normalizeModelRef(value: unknown): ModelRef | null {
   return { providerId, modelId }
 }
 
+function normalizeCustomModelConfig(value: unknown): CustomModelConfig | undefined {
+  if (!isRecord(value)) return undefined
+  const contextLimit = readOptionalNumber(value.contextLimit)
+  const hasVision = typeof value.hasVision === 'boolean' ? value.hasVision : undefined
+  const reasoning = typeof value.reasoning === 'boolean' ? value.reasoning : undefined
+
+  if (contextLimit === undefined && hasVision === undefined && reasoning === undefined) {
+    return undefined
+  }
+
+  return {
+    ...(contextLimit !== undefined ? { contextLimit } : {}),
+    ...(hasVision !== undefined ? { hasVision } : {}),
+    ...(reasoning !== undefined ? { reasoning } : {}),
+  }
+}
+
+function normalizeModelConfigs(value: unknown): Record<string, CustomModelConfig> | undefined {
+  if (!isRecord(value)) return undefined
+  const result: Record<string, CustomModelConfig> = {}
+  let count = 0
+  for (const [modelId, config] of Object.entries(value)) {
+    const trimmedId = modelId.trim()
+    if (!trimmedId) continue
+    const normalized = normalizeCustomModelConfig(config)
+    if (normalized) {
+      result[trimmedId] = normalized
+      count += 1
+    }
+  }
+  return count > 0 ? result : undefined
+}
+
 export function normalizeProvider(value: unknown): ProviderConfig | null {
   if (!isRecord(value)) return null
   const id = readString(value.id)
@@ -87,6 +121,11 @@ export function normalizeProvider(value: unknown): ProviderConfig | null {
       : undefined
     : undefined
 
+  // 推理强度是自由文本：去空白即可，非空才落（'auto' 也是合法值，见 ProviderConfig）
+  const reasoningEffort = readString(value.reasoningEffort)?.trim()
+
+  const modelConfigs = normalizeModelConfigs(value.modelConfigs)
+
   return {
     id,
     label: readString(value.label) ?? '未命名提供商',
@@ -95,6 +134,8 @@ export function normalizeProvider(value: unknown): ProviderConfig | null {
     baseURL: readString(value.baseURL),
     models: readStringArray(value.models),
     ...(capabilities ? { capabilities } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(modelConfigs ? { modelConfigs } : {}),
   }
 }
 

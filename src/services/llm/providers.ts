@@ -67,6 +67,83 @@ export async function requireModel(
   return model
 }
 
+/**
+ * 从提供商的真实上游接口拉取模型列表（复刻 OpenWorktree 的 probe 探测功能）。
+ *
+ * 走同源 /api-proxy 透传，避免自建中转（new-api / one-api 等）因缺少 CORS 头被浏览器拦截。
+ * - openai / openai-compatible: GET {baseURL}/models
+ * - anthropic: GET {baseURL}/v1/models (带 anthropic-version 头)
+ * - google: GET {baseURL}/models?key={apiKey}
+ */
+export async function fetchUpstreamModels(provider: ProviderConfig): Promise<string[]> {
+  const baseURL = effectiveProviderBaseUrl(provider)
+  if (!baseURL && provider.kind === 'openai-compatible') {
+    throw new Error('请先填写 Base URL')
+  }
+
+  const base = (baseURL || '').replace(/\/+$/, '')
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+  }
+
+  let targetUrl = `${base}/models`
+
+  switch (provider.kind) {
+    case 'openai':
+    case 'openai-compatible': {
+      if (provider.apiKey.trim()) {
+        headers.authorization = `Bearer ${provider.apiKey.trim()}`
+      }
+      break
+    }
+    case 'anthropic': {
+      if (provider.apiKey.trim()) {
+        headers['x-api-key'] = provider.apiKey.trim()
+        headers['anthropic-version'] = '2023-06-01'
+      }
+      targetUrl = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`
+      break
+    }
+    case 'google': {
+      targetUrl = `${base}/models${provider.apiKey.trim() ? `?key=${encodeURIComponent(provider.apiKey.trim())}` : ''}`
+      break
+    }
+  }
+
+  const proxyFetch = createLlmProxyFetch()
+  const response = await proxyFetch(targetUrl, { headers })
+  if (!response.ok) {
+    throw new Error(`上游返回 HTTP ${response.status}`)
+  }
+
+  const json: unknown = await response.json()
+  if (typeof json !== 'object' || json === null) return []
+
+  const record = json as Record<string, unknown>
+  const list = Array.isArray(record.data)
+    ? record.data
+    : Array.isArray(record.models)
+      ? record.models
+      : []
+
+  const ids: string[] = []
+  for (const item of list) {
+    if (typeof item === 'object' && item !== null) {
+      const obj = item as Record<string, unknown>
+      const id = typeof obj.id === 'string' ? obj.id : typeof obj.name === 'string' ? obj.name : null
+      if (id) {
+        // google 的 id 往往是 "models/gemini-1.5-pro"，剥掉 "models/" 前缀更干净
+        const clean = id.startsWith('models/') ? id.slice(7) : id
+        ids.push(clean)
+      }
+    } else if (typeof item === 'string') {
+      ids.push(item)
+    }
+  }
+
+  return ids.sort()
+}
+
 export interface ProviderProbe {
   /** 模型的回复文本（连通性证据） */
   text: string

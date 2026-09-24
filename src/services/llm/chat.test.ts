@@ -133,4 +133,16 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
     // 必须存在且为空数组（永不满足的停止条件）
     expect(options.stopWhen).toEqual([])
   })
+
+  it('给出合法推理强度时注入顶层 reasoning（同一回归底线：不设置就不出现该键）', () => {
+    const options = buildStreamOptions({ ...base, reasoningEffort: 'high' })
+    expect(options.reasoning).toBe('high')
+  })
+
+  it('auto / 非法档位 / 缺省都不出现 reasoning 键（回归底线不破）', () => {
+    expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'auto' })).toBe(false)
+    expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'max' })).toBe(false)
+    expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: '超强' })).toBe(false)
+    expect('reasoning' in buildStreamOptions(base)).toBe(false)
+  })
 })
