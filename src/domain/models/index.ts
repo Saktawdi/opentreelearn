@@ -344,6 +344,8 @@ export interface GlobalSettings {
   titleModelRef: ModelRef | null
   summaryModelRef: ModelRef | null
   contextBudget: number
+  /** Agent 工具循环的步数上限；0 = 不限制（归一化见 defaults.clampAgentMaxSteps） */
+  agentMaxSteps: number
   providers: ProviderConfig[]
   /** 最后修改时间（epoch ms）；0 表示从未改过，同步时以云端版本为准。 */
   updatedAt: number

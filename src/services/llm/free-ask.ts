@@ -13,7 +13,8 @@ import {
 import { describeLlmError, formatErrorMessage } from './errors'
 import { findProvider } from './catalog'
 import { requireReviewModel } from './review'
-import { AGENT_STEP_LIMIT, TOOLS_SYSTEM, buildReadOnlyTools } from './tools/registry'
+import { clampAgentMaxSteps } from '@/domain/defaults'
+import { TOOLS_SYSTEM, buildReadOnlyTools } from './tools/registry'
 
 /**
  * 复习工作区「自由问答」的模型服务。
@@ -131,7 +132,7 @@ export async function runFreeAskRequest(
       system: tools ? `${context.system}\n\n${TOOLS_SYSTEM}` : context.system,
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
-      ...(tools ? { tools, maxSteps: AGENT_STEP_LIMIT } : {}),
+      ...(tools ? { tools, maxSteps: clampAgentMaxSteps(input.settings.agentMaxSteps) } : {}),
       onDelta: (delta) => {
         partial += delta
         input.onDelta?.(delta)

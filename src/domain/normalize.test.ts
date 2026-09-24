@@ -127,6 +127,21 @@ describe('normalizeGlobalSettings', () => {
       normalizeGlobalSettings({ defaultChatModelRef: { providerId: 'v1' } }).defaultChatModelRef,
     ).toBeNull()
   })
+
+  it('normalizes agentMaxSteps: defaults to 50, allows 0 for unlimited, truncates floats, caps at 1000', () => {
+    // 默认值
+    expect(normalizeGlobalSettings({}).agentMaxSteps).toBe(50)
+    expect(normalizeGlobalSettings({ agentMaxSteps: undefined }).agentMaxSteps).toBe(50)
+    expect(normalizeGlobalSettings({ agentMaxSteps: '50' }).agentMaxSteps).toBe(50)
+    // 0 = 不限制：必须精准放行，不能被当作 falsy 退回 50
+    expect(normalizeGlobalSettings({ agentMaxSteps: 0 }).agentMaxSteps).toBe(0)
+    // 负数与小数必须安全收拢：小数截断为整数，防 stepCountIs 严格匹配失败
+    expect(normalizeGlobalSettings({ agentMaxSteps: -5 }).agentMaxSteps).toBe(0)
+    expect(normalizeGlobalSettings({ agentMaxSteps: 12.8 }).agentMaxSteps).toBe(12)
+    // 正常值与上限
+    expect(normalizeGlobalSettings({ agentMaxSteps: 80 }).agentMaxSteps).toBe(80)
+    expect(normalizeGlobalSettings({ agentMaxSteps: 9999 }).agentMaxSteps).toBe(1_000)
+  })
 })
 
 describe('normalizeMastery', () => {

@@ -126,4 +126,11 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
     expect(options.tools).toBe(tools)
     expect(options.stopWhen).toBeDefined()
   })
+
+  it('maxSteps = 0 表示不限制步数：传 stopWhen: []，绝不能不传（否则 SDK 默认 stepCountIs(1) 会变 1 步截断）', () => {
+    const options = buildStreamOptions({ ...base, tools, maxSteps: 0 })
+    expect(options.tools).toBe(tools)
+    // 必须存在且为空数组（永不满足的停止条件）
+    expect(options.stopWhen).toEqual([])
+  })
 })

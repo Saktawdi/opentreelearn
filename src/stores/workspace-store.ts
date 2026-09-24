@@ -37,8 +37,8 @@ import { threadPathFingerprint } from '@/domain/thread/resolve'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages } from '@/services/llm/chat'
 import { findProvider } from '@/services/llm/catalog'
+import { clampAgentMaxSteps } from '@/domain/defaults'
 import {
-  AGENT_STEP_LIMIT,
   TOOLS_SYSTEM,
   WRITE_TOOLS_SYSTEM,
   buildReadOnlyTools,
@@ -1250,7 +1250,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
       system: withTools ? `${context.system}\n\n${toolSystem}` : context.system,
       messages: toModelMessages(context.messages),
       abortSignal: abortController.signal,
-      ...(withTools && tools ? { tools, maxSteps: AGENT_STEP_LIMIT } : {}),
+      ...(withTools && tools ? { tools, maxSteps: clampAgentMaxSteps(settings.agentMaxSteps) } : {}),
       onDelta: (delta) => {
         store.setState((draft) => {
           if (draft.streaming?.messageId === messageId) {

@@ -6,7 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Section } from '@/components/ui/section'
 import type { ModelRef, ProviderConfig } from '@/domain/models'
-import { clampContextBudget, MAX_CONTEXT_BUDGET, MIN_CONTEXT_BUDGET } from '@/domain/defaults'
+import {
+  clampAgentMaxSteps,
+  clampContextBudget,
+  MAX_AGENT_MAX_STEPS,
+  MAX_CONTEXT_BUDGET,
+  MIN_CONTEXT_BUDGET,
+} from '@/domain/defaults'
 import { errorMessage } from '@/lib/utils'
 import { PROVIDER_KIND_LABEL, describeProviderModels } from '@/services/llm/catalog'
 import { testProviderConnection } from '@/services/llm/providers'
@@ -53,11 +59,13 @@ export function SettingsPage() {
   const updateProvider = useSettingsStore((state) => state.updateProvider)
 
   const [budget, setBudget] = useState(() => String(settings.contextBudget))
+  const [maxSteps, setMaxSteps] = useState(() => String(settings.agentMaxSteps))
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
   const budgetDirty = budget !== String(settings.contextBudget)
+  const maxStepsDirty = maxSteps !== String(settings.agentMaxSteps)
 
   const saveBudget = async () => {
     const parsed = Number.parseInt(budget, 10)
@@ -72,6 +80,21 @@ export function SettingsPage() {
       Number.isFinite(parsed) && parsed !== next
         ? `已保存（超出 ${formatBudget(MIN_CONTEXT_BUDGET)}–${formatBudget(MAX_CONTEXT_BUDGET)}，按 ${formatBudget(next)} 保存）`
         : '已保存',
+    )
+  }
+
+  const saveMaxSteps = async () => {
+    const parsed = Number.parseInt(maxSteps, 10)
+    // 与预算同一套「回填落库值」交互；非法输入回落到当前值而不是默认值
+    const next = Number.isFinite(parsed) ? clampAgentMaxSteps(parsed) : settings.agentMaxSteps
+    setMaxSteps(String(next))
+    await patch({ agentMaxSteps: next })
+    toast.success(
+      Number.isFinite(parsed) && parsed !== next
+        ? `已保存（合法区间 0–${MAX_AGENT_MAX_STEPS}，按 ${next} 保存）`
+        : next === 0
+          ? '已保存：不限制步数，生成过程中可随时手动停止'
+          : '已保存',
     )
   }
 
@@ -118,6 +141,34 @@ export function SettingsPage() {
             </label>
 
             <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>
+              保存
+            </Button>
+          </div>
+        </Section>
+
+        <Section title="智能体（Agent）">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="block max-w-lg">
+              <span className="mb-1.5 block text-sm text-ink-soft">工具调用步数上限</span>
+              <Input
+                value={maxSteps}
+                inputMode="numeric"
+                onChange={(event) => setMaxSteps(event.target.value)}
+                className="w-[150px] font-mono text-xs"
+              />
+              <span className="mt-1 block text-xs leading-relaxed text-muted">
+                一轮中模型调用工具的最大步数（一步 = 一次模型调用，含最终作答那一步）。默认 50；
+                <strong className="font-semibold text-ink-soft">填 0 表示不限制</strong>
+                （由模型自行决定何时完成，生成中可随时点击停止按钮中断）。
+              </span>
+            </label>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void saveMaxSteps()}
+              disabled={!maxStepsDirty}
+            >
               保存
             </Button>
           </div>

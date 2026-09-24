@@ -25,12 +25,13 @@ import {
 } from '@/domain/messages'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
+import { clampAgentMaxSteps } from '@/domain/defaults'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { resolveThread, summarizeSlotVersions } from '@/domain/thread/resolve'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { AGENT_STEP_LIMIT } from '@/services/llm/tools/registry'
+import { useSettingsStore } from '@/stores/settings-store'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
 import { ToolActivities, type ToolActivityItem } from './ToolActivities'
@@ -486,6 +487,7 @@ function useRegenerateAction(nodeId: Id): (messageId?: Id) => Promise<void> {
 
 function StreamingBubble({ nodeId }: { nodeId: Id }) {
   const streaming = useWorkspaceStore((state) => state.streaming)
+  const maxSteps = useSettingsStore((state) => clampAgentMaxSteps(state.settings.agentMaxSteps))
   const regenerate = useRegenerateAction(nodeId)
   const text = useThrottledValue(streaming?.text ?? '', 70)
 
@@ -517,7 +519,9 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 px-0.5 text-2xs text-faint">
             <span>
-              第 {Math.min(tools.length + (running ? 0 : 1), AGENT_STEP_LIMIT)} / {AGENT_STEP_LIMIT} 步
+              {maxSteps > 0
+                ? `第 ${Math.min(tools.length + (running ? 0 : 1), maxSteps)} / ${maxSteps} 步`
+                : `第 ${tools.length + (running ? 0 : 1)} 步`}
             </span>
             <span>·</span>
             <span>本轮查了 {tools.length} 次项目数据</span>

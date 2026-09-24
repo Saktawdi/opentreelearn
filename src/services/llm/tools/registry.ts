@@ -27,9 +27,6 @@ import type { Id } from '@/domain/models'
 /** 单条工具结果的字符上限。 */
 export const TOOL_RESULT_LIMIT = 2000
 
-/** 一轮里最多走几步（含工具步）。放宽到 50 避免模型因步数耗尽来不及收尾作答。 */
-export const AGENT_STEP_LIMIT = 50
-
 /**
  * 带工具时的系统提示补充。
  *

@@ -6,6 +6,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type { ContextMessage, ContextPart } from '@/domain/context/assemble'
+import { DEFAULT_AGENT_MAX_STEPS } from '@/domain/defaults'
 
 export interface ChatUsage {
   inputTokens?: number
@@ -40,7 +41,7 @@ export interface StreamReplyParams {
    * 只读工具的 P-A 阶段，工具记录不落库，因此这里不需要关心消息配对。
    */
   tools?: ToolSet
-  /** 最多走几步（含工具步）；只在给了工具时生效。缺省 4。 */
+  /** 最多走几步（含工具步）；只在给了工具时生效。**0 = 不限制**。缺省取全局默认。 */
   maxSteps?: number
   onToolCall?: (activity: ToolActivity) => void
   onToolResult?: (outcome: ToolOutcome) => void
@@ -213,14 +214,18 @@ export function buildStreamOptions(params: {
   maxSteps?: number
 }): Parameters<typeof streamText>[0] {
   const hasTools = params.tools !== undefined && Object.keys(params.tools).length > 0
-  const maxSteps = params.maxSteps ?? 4
+  const maxSteps = params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS
 
   return {
     model: params.model,
     system: params.system,
     messages: params.messages,
     abortSignal: params.abortSignal,
-    ...(hasTools ? { tools: params.tools, stopWhen: stepCountIs(maxSteps) } : {}),
+    // maxSteps = 0 表示不限制。注意：streamText 缺省 stopWhen 是 stepCountIs(1)（一步就停），
+    // 所以「不限制」必须显式传空数组（没有任何停止条件），而不是不传。
+    ...(hasTools
+      ? { tools: params.tools, stopWhen: maxSteps > 0 ? stepCountIs(maxSteps) : [] }
+      : {}),
     // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。
     // streamText 把 `result.usage.then(() => {})` 当作遥测的「完成信号」，只有 Node 分支
     // （openTelemetryChannelSpanContext 里 isNodeRuntime() 为真）会顺手 .catch 掉它；
@@ -233,7 +238,7 @@ export function buildStreamOptions(params: {
 }
 
 export async function streamReply(params: StreamReplyParams): Promise<StreamReplyResult> {
-  const maxSteps = params.maxSteps ?? 4
+  const maxSteps = params.maxSteps ?? DEFAULT_AGENT_MAX_STEPS
   const hasTools = params.tools !== undefined && Object.keys(params.tools).length > 0
 
   const result = streamText(buildStreamOptions(params))
@@ -301,13 +306,15 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
     () => undefined,
   )
 
-  // 步数用尽：最后一步仍在举手 —— 答案可能不完整，界面要如实提示
+  // 步数用尽：最后一步仍在举手 —— 答案可能不完整，界面要如实提示。
+  // maxSteps = 0（不限制）时没有「用尽」一说，恒为 false。
   const steps = await result.steps.then(
     (value) => value,
     () => undefined,
   )
   const hitStepLimit =
     hasTools &&
+    maxSteps > 0 &&
     steps !== undefined &&
     steps.length >= maxSteps &&
     (steps[steps.length - 1]?.toolCalls?.length ?? 0) > 0

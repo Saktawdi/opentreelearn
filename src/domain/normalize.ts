@@ -1,4 +1,4 @@
-import { createDefaultSettings, clampContextBudget } from './defaults'
+import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget } from './defaults'
 import type {
   AssessmentMeta,
   AssessmentSource,
@@ -335,6 +335,7 @@ export function normalizeGlobalSettings(value: unknown): GlobalSettings {
     contextBudget: clampContextBudget(
       readNumber(value.contextBudget, defaults.contextBudget),
     ),
+    agentMaxSteps: clampAgentMaxSteps(readNumber(value.agentMaxSteps, defaults.agentMaxSteps)),
     providers: Array.isArray(value.providers)
       ? value.providers
           .map(normalizeProvider)
