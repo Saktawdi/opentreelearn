@@ -46,16 +46,30 @@ const GRADE_SCHEMA = z
 /**
  * 构建本轮的交付工具集。
  *
- * @param kind          本轮允许的交付工具（阶段 1 每轮一个）
+ * @param kinds         本轮允许的交付工具。阶段 1/2 每轮一个（行为确定性最高）；
+ *                      阶段 3 的反馈轮给全集（submit_feedback → teach_key_points →
+ *                      pose_question 的「点评 → 补讲 → 再问」链路）
  * @param handlers      store 注入的落库回调
  * @param rephraseOf    换问法轮由 store 预绑当前开放题 id —— 消息 id 不进模型
  *                      上下文，模型无从填写；绑死后 schema 里也不再出现该参数
  */
-export function buildReviewDeliveryTool(
-  kind: ReviewDeliveryKind,
+export function buildReviewDeliveryTools(
+  kinds: ReviewDeliveryKind[],
   handlers: ReviewDeliveryHandlers,
   options: { rephraseOf?: Id } = {},
 ): ToolSet {
+  const set: ToolSet = {}
+  for (const kind of kinds) {
+    Object.assign(set, buildOne(kind, handlers, options))
+  }
+  return set
+}
+
+function buildOne(
+  kind: ReviewDeliveryKind,
+  handlers: ReviewDeliveryHandlers,
+  options: { rephraseOf?: Id },
+) {
   switch (kind) {
     case 'teach_key_points':
       return {

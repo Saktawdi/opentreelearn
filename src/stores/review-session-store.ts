@@ -27,8 +27,7 @@ import {
   canPoseQuestion,
   canSubmitFeedback,
   canTeachKeyPoints,
-  phaseAfterDelivery,
-  type DeliveryKind,
+  phaseFromTranscript,
 } from '@/domain/review/delivery'
 import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
 import { suggestionFromMessages } from '@/domain/review/protocol'
@@ -618,14 +617,8 @@ function createDeliveryHandlers(
   const store = useReviewSessionStore
   const state = { delivered: false }
 
-  const kind: DeliveryKind =
-    purpose === 'relearn'
-      ? 'relearn'
-      : purpose === 'hint'
-        ? 'hint'
-        : purpose === 'answer' || purpose === 'followup'
-          ? 'feedback'
-          : 'question'
+  // 反馈轮（answer / followup）允许点评中的补讲（阶段 3 的合并轮次）
+  const afterFeedback = purpose === 'answer' || purpose === 'followup'
 
   const liveItem = (): ReviewSessionItem | null => {
     const live = store.getState().session
@@ -654,16 +647,18 @@ function createDeliveryHandlers(
     return { ok: true }
   }
 
-  const append = (message: ReviewSessionMessage) => ({
-    messages: [...(liveItem()?.messages ?? item.messages), message],
-    phase: phaseAfterDelivery(kind),
-  })
+  const append = (message: ReviewSessionMessage) => {
+    const messages = [...(liveItem()?.messages ?? item.messages), message]
+    // 阶段从**整条转录**推导：合并轮次里一条交付可能跟着另一条（点评 → 补讲 →
+    // 再问），固定的 kind→phase 映射不再成立
+    return { messages, phase: phaseFromTranscript(messages) }
+  }
 
   const handlers: ReviewDeliveryHandlers = {
     deliverTeach: async (input) => {
       const live = liveItem()
       if (!live) return { ok: false, error: '会话已不可用' }
-      const check = canTeachKeyPoints(live)
+      const check = canTeachKeyPoints(live, { afterFeedback })
       if (!check.ok) return { ok: false, error: check.reason }
       const keyPointLines = input.keyPoints.map((point) => `- ${point}`).join('\n')
       const message: ReviewSessionMessage = {
@@ -722,9 +717,10 @@ function createDeliveryHandlers(
       // followup 改判链路依赖这一点，与散文路径的 suggestion 规则同口径
       const gradePatch =
         live.selectedGrade === undefined ? { selectedGrade: input.suggestedGrade } : {}
+      const messages = [...live.messages, message]
       return commit({
-        messages: [...live.messages, message],
-        phase: phaseAfterDelivery('feedback'),
+        messages,
+        phase: phaseFromTranscript(messages),
         ...gradePatch,
       })
     },

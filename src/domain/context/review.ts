@@ -242,8 +242,10 @@ const DELIVERY_RULES: Record<ReviewRequestPurpose, string> = {
   relearn: '本轮任务：调用 teach_key_points 交付关键点补学。',
   hint: '本轮任务：调用 give_hint 交付针对当前题的一点提示。',
   rephrase: '本轮任务：调用 pose_question 交付当前题的换问法。',
-  answer: '本轮任务：先写点评正文，再调用 submit_feedback 交付结构化反馈与建议档位。',
-  followup: '本轮任务：回答学习者的追问；如果本轮已把对错讲清楚，调用 submit_feedback 交付判定。',
+  answer:
+    '本轮任务：先调用 submit_feedback 交付点评与建议档位；只有当建议档位是 again/hard 时，才可以接着 teach_key_points 补讲缺口、再 pose_question 出一道新题（这个链路至多两轮）。顺序必须是 点评 → 补讲 → 再问。',
+  followup:
+    '本轮任务：回答学习者的追问；如果本轮已把对错讲清楚，调用 submit_feedback 交付判定。答得吃力时也可以补讲后再问，规则同上。',
 }
 
 /** Agent 主路径的交付纪律（与用途无关，每轮都带）。 */

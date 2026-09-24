@@ -44,9 +44,12 @@ export function latestQuestion(item: ReviewSessionItem): ReviewSessionMessage | 
 /**
  * 出题守卫。
  *
- * - 不带 `rephraseOf`：只允许在**没有**开放题时出题（阶段起点，或阶段 3 里旧题
+ * - 不带 `rephraseOf`：只允许在**没有**开放题时出题（阶段起点，或反馈轮里旧题
  *   已被回答闭合后的再问）；
  * - 带 `rephraseOf`：必须正好指向当前开放题 —— 换问法取代它，而不是另起一题。
+ *
+ * 反馈后的再问有三道节流（阶段 3 的反馈轮合并）：必须先有点评（selectedGrade 是
+ * 点评写入的）、只有答得吃力才值得再问、每个主题最多重问 `REASK_LIMIT_PER_ITEM` 次。
  */
 export function canPoseQuestion(item: ReviewSessionItem, rephraseOf?: Id): DeliveryCheck {
   const open = currentOpenQuestion(item)
@@ -62,6 +65,23 @@ export function canPoseQuestion(item: ReviewSessionItem, rephraseOf?: Id): Deliv
     !item.messages.some((message) => message.role === 'assistant' && message.purpose === 'relearn')
   ) {
     return { ok: false, reason: '补学主题要先讲关键点，学习者确认后再出题' }
+  }
+
+  // 反馈后的再问：点评 →（补讲）→ 再问 的顺序与节流
+  const hasAnswer = item.messages.some((message) => message.role === 'user' && message.purpose === 'answer')
+  if (hasAnswer) {
+    if (!item.selectedGrade) {
+      return { ok: false, reason: '先交付点评（submit_feedback）再考虑是否再问' }
+    }
+    if (!reAskAllowedForGrade(item.selectedGrade)) {
+      return { ok: false, reason: '这次答得不错，不需要再问；等学习者确认档位' }
+    }
+    if (reAskCount(item) >= REASK_LIMIT_PER_ITEM) {
+      return {
+        ok: false,
+        reason: `这个主题已经再问了 ${reAskCount(item)} 次，请让学习者确认档位`,
+      }
+    }
   }
   return { ok: true }
 }
@@ -85,13 +105,26 @@ export function canSubmitFeedback(item: ReviewSessionItem): DeliveryCheck {
 }
 
 /**
- * 补学守卫（阶段 1）：补学主题、且还没有任何消息 —— 也就是补学轮的起点。
- * 阶段 3 放开「反馈轮内自主补讲」时在这里扩展，先留一个调用点。
+ * 补学 / 补讲守卫。
+ *
+ * - 起点形态：补学主题、转录为空（补学轮的第一次交付）；
+ * - 反馈轮形态（阶段 3，`afterFeedback`）：学习者已提交回答，agent 在点评中
+ *   顺带补讲缺口 —— 对复习主题同样成立。顺序由 `canPoseQuestion` /
+ *   `canSubmitFeedback` 的守卫链约束（先点评，再补讲，再问）。
  */
-export function canTeachKeyPoints(item: ReviewSessionItem): DeliveryCheck {
-  if (item.mode !== 'relearn') return { ok: false, reason: '只有补学主题才讲关键点' }
-  if (item.messages.length > 0) return { ok: false, reason: '补学内容已经交付过' }
-  return { ok: true }
+export function canTeachKeyPoints(
+  item: ReviewSessionItem,
+  options: { afterFeedback?: boolean } = {},
+): DeliveryCheck {
+  if (item.mode === 'relearn' && item.messages.length === 0) return { ok: true }
+  if (options.afterFeedback) {
+    const lastUser = [...item.messages].reverse().find((message) => message.role === 'user')
+    if (lastUser && (lastUser.purpose === 'answer' || lastUser.purpose === 'followup')) {
+      return { ok: true }
+    }
+    return { ok: false, reason: '只有学习者提交回答后才可以在点评中补讲' }
+  }
+  return { ok: false, reason: '补学内容已经交付过' }
 }
 
 /**
@@ -125,6 +158,42 @@ export function phaseAfterDelivery(kind: DeliveryKind): ReviewItemPhase {
     case 'feedback':
       return 'feedback'
   }
+}
+
+/**
+ * 从转录推导当前阶段（阶段 3 起 handler 统一用它写 phase）。
+ *
+ * 合并轮次后一轮可以有多条交付（点评 → 补讲 → 再问），固定的 kind→phase 映射
+ * 不再成立 —— 阶段是**整条转录**的函数，每条交付落库后重算一遍：
+ *
+ * - `relearn`：未出现过回答 = 补学起点（relearning）；回答之后 = 反馈中的补讲
+ *   （视为点评的一部分，落回 feedback）；
+ * - `question` → answering；用户 `answer` → evaluating；助手 `answer`/`followup`
+ *   → feedback；
+ * - hint、用户 followup 不改变阶段（提示不改流向；追问在等判定）。
+ *
+ * 中间态只在流式期间可见，最终态由本轮最后一条交付决定。
+ */
+export function phaseFromTranscript(messages: ReviewSessionMessage[]): ReviewItemPhase {
+  let phase: ReviewItemPhase = 'preparing'
+  let seenAnswer = false
+  for (const message of messages) {
+    if (message.role === 'assistant') {
+      if (message.purpose === 'relearn') {
+        phase = seenAnswer ? 'feedback' : 'relearning'
+      } else if (message.purpose === 'question') {
+        phase = 'answering'
+      } else if (message.purpose === 'answer' || message.purpose === 'followup') {
+        phase = 'feedback'
+      }
+      // hint：不改变阶段流向
+    } else if (message.purpose === 'answer') {
+      seenAnswer = true
+      phase = 'evaluating'
+    }
+    // 用户 followup：不改变阶段（正在等判定，或维持既有反馈语义）
+  }
+  return phase
 }
 
 /** 阶段 3 反馈轮自主再问的档位约束：只有答得吃力才值得补讲后再问。 */

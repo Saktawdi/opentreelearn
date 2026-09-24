@@ -15,7 +15,7 @@ import { requireModel } from './providers'
 import { streamReply, toModelMessages, type ChatUsage, type ToolActivity, type ToolOutcome } from './chat'
 import type { ToolSet } from 'ai'
 import {
-  buildReviewDeliveryTool,
+  buildReviewDeliveryTools,
   type ReviewDeliveryHandlers,
   type ReviewDeliveryKind,
 } from './tools/review-delivery'
@@ -130,16 +130,19 @@ export async function requireReviewModel(
 }
 
 /** 交付阶段的步数上限：检索 1~2 步 + 交付 1 步；合并轮次在阶段 3 再评估。 */
-const REVIEW_DELIVERY_MAX_STEPS = 3
+const REVIEW_DELIVERY_MAX_STEPS = 4
 
-/** 用途 → 交付工具。 */
-const DELIVERY_KIND_BY_PURPOSE: Record<ReviewRequestPurpose, ReviewDeliveryKind> = {
-  question: 'pose_question',
-  rephrase: 'pose_question',
-  relearn: 'teach_key_points',
-  hint: 'give_hint',
-  answer: 'submit_feedback',
-  followup: 'submit_feedback',
+/**
+ * 用途 → 本轮允许的交付工具。反馈轮（answer / followup）给全集：
+ * 点评 → 补讲 → 再问 的合并链路（阶段 3），其余轮次单工具绑定。
+ */
+const DELIVERY_KINDS_BY_PURPOSE: Record<ReviewRequestPurpose, ReviewDeliveryKind[]> = {
+  question: ['pose_question'],
+  rephrase: ['pose_question'],
+  relearn: ['teach_key_points'],
+  hint: ['give_hint'],
+  answer: ['submit_feedback', 'teach_key_points', 'pose_question'],
+  followup: ['submit_feedback', 'teach_key_points', 'pose_question'],
 }
 
 /**
@@ -178,8 +181,8 @@ export async function runReviewRequest(
   if (useDelivery && input.handlers) {
     // 换问法轮由服务层预绑当前开放题：消息 id 不进模型上下文，模型无从填写
     const rephraseOf = input.purpose === 'rephrase' ? currentOpenQuestion(input.item)?.id : undefined
-    const deliveryTools = buildReviewDeliveryTool(
-      DELIVERY_KIND_BY_PURPOSE[input.purpose],
+    const deliveryTools = buildReviewDeliveryTools(
+      DELIVERY_KINDS_BY_PURPOSE[input.purpose],
       input.handlers,
       { rephraseOf },
     )
@@ -212,7 +215,7 @@ export async function runReviewRequest(
     usedHint: input.item.usedHint,
     usedSource: input.item.usedSource,
     progressNote: input.progressNote,
-    deliveryToolName: toolSet ? DELIVERY_KIND_BY_PURPOSE[input.purpose] : undefined,
+    deliveryToolName: toolSet ? DELIVERY_KINDS_BY_PURPOSE[input.purpose][0] : undefined,
   })
 
   // 已生成的部分要留着：中断的正文是内容（用户看得见），只是**不采纳其中的评分标记**

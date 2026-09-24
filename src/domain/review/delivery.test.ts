@@ -9,6 +9,7 @@ import {
   currentOpenQuestion,
   latestQuestion,
   phaseAfterDelivery,
+  phaseFromTranscript,
   reAskCount,
 } from './delivery'
 
@@ -159,9 +160,110 @@ describe('canTeachKeyPoints', () => {
     expect(canTeachKeyPoints(makeItem('relearn', []))).toEqual({ ok: true })
   })
 
-  it('复习主题拒绝；已交付过拒绝', () => {
+  it('复习主题起点拒绝；已交付过拒绝', () => {
     expect(canTeachKeyPoints(makeItem('review', [])).ok).toBe(false)
     expect(canTeachKeyPoints(makeItem('relearn', [message('assistant', 'relearn')])).ok).toBe(false)
+  })
+
+  it('反馈轮补讲：有回答就允许，复习主题同样成立', () => {
+    const answered = makeItem('review', [
+      message('assistant', 'question'),
+      message('user', 'answer'),
+    ])
+    expect(canTeachKeyPoints(answered, { afterFeedback: true })).toEqual({ ok: true })
+    const relearnAnswered = makeItem('relearn', [
+      message('assistant', 'relearn'),
+      message('assistant', 'question'),
+      message('user', 'answer'),
+    ])
+    expect(canTeachKeyPoints(relearnAnswered, { afterFeedback: true }).ok).toBe(true)
+  })
+
+  it('反馈轮补讲：没有回答时拒绝', () => {
+    const noAnswer = makeItem('review', [message('assistant', 'question')])
+    expect(canTeachKeyPoints(noAnswer, { afterFeedback: true }).ok).toBe(false)
+  })
+})
+
+describe('canPoseQuestion 反馈后重问（阶段 3）', () => {
+  function answeredItem(selectedGrade?: 'again' | 'hard' | 'good' | 'easy', reasks = 0) {
+    const messages = [message('assistant', 'question'), message('user', 'answer')]
+    for (let i = 0; i < reasks; i += 1) {
+      messages.push(message('assistant', 'question'), message('user', 'answer'))
+    }
+    const item = makeItem('review', messages)
+    return { ...item, ...(selectedGrade ? { selectedGrade } : {}) }
+  }
+
+  it('先有点评（selectedGrade）才允许再问', () => {
+    expect(canPoseQuestion(answeredItem(undefined)).ok).toBe(false)
+  })
+
+  it('只有答得吃力才值得再问', () => {
+    expect(canPoseQuestion(answeredItem('again'))).toEqual({ ok: true })
+    expect(canPoseQuestion(answeredItem('hard')).ok).toBe(true)
+    expect(canPoseQuestion(answeredItem('good')).ok).toBe(false)
+    expect(canPoseQuestion(answeredItem('easy')).ok).toBe(false)
+  })
+
+  it('重问次数到上限后拒绝', () => {
+    expect(canPoseQuestion(answeredItem('again', 1)).ok).toBe(true)
+    expect(canPoseQuestion(answeredItem('again', 2)).ok).toBe(false)
+  })
+
+  it('首次出题（无回答）不受重问节流影响', () => {
+    expect(canPoseQuestion(makeItem('review', []))).toEqual({ ok: true })
+  })
+})
+
+describe('phaseFromTranscript', () => {
+  it('复刻旧管线的阶段流转', () => {
+    expect(phaseFromTranscript([message('assistant', 'relearn')])).toBe('relearning')
+    expect(
+      phaseFromTranscript([message('assistant', 'relearn'), message('assistant', 'question')]),
+    ).toBe('answering')
+    expect(
+      phaseFromTranscript([
+        message('assistant', 'question'),
+        message('user', 'answer'),
+      ]),
+    ).toBe('evaluating')
+    expect(
+      phaseFromTranscript([
+        message('assistant', 'question'),
+        message('user', 'answer'),
+        message('assistant', 'answer'),
+      ]),
+    ).toBe('feedback')
+    expect(
+      phaseFromTranscript([message('assistant', 'question'), message('assistant', 'hint')]),
+    ).toBe('answering')
+  })
+
+  it('反馈轮合并：点评 → 补讲 → 再问 的阶段链', () => {
+    const messages = [
+      message('assistant', 'question'),
+      message('user', 'answer'),
+      message('assistant', 'answer'),
+      message('assistant', 'relearn'),
+    ]
+    expect(phaseFromTranscript(messages)).toBe('feedback')
+    messages.push(message('assistant', 'question'))
+    expect(phaseFromTranscript(messages)).toBe('answering')
+  })
+
+  it('用户 followup 不把阶段从 feedback 推走', () => {
+    const messages = [
+      message('assistant', 'question'),
+      message('user', 'answer'),
+      message('assistant', 'answer'),
+      message('user', 'followup'),
+    ]
+    expect(phaseFromTranscript(messages)).toBe('feedback')
+  })
+
+  it('空转录是 preparing', () => {
+    expect(phaseFromTranscript([])).toBe('preparing')
   })
 })
 

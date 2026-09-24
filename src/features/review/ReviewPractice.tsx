@@ -20,11 +20,12 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ReviewFeedback } from './ReviewFeedback'
 
-/** 非题目区消息的标签：复述题、换问法都是「题」，不能混进「反馈」。 */
+/** 非题目区消息的标签：复述题、换问法都是「题」，反馈轮里的补讲标「补学」，不能混进「反馈」。 */
 const OTHER_MESSAGE_LABEL: Partial<Record<ReviewRequestPurpose, string>> = {
   question: '复述题',
   hint: '提示',
   rephrase: '换个问法',
+  relearn: '补学',
 }
 
 interface ReviewPracticeProps {
