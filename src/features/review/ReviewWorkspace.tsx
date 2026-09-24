@@ -230,6 +230,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
               isLastItem={session.cursor === session.items.length - 1}
               streamingText={streaming?.text}
               streamingPurpose={streaming?.purpose}
+              streamingDelivered={streaming?.delivered}
               lastUndoneNotice={lastUndoneNotice}
               undoable={canUndo}
               onSaveDraft={(val) => void saveDraft(val)}

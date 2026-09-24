@@ -186,10 +186,14 @@ const BASE_TUTOR = [
 ].join('\n')
 
 /**
- * 各用途的规则。
+ * 各用途的规则（**回退路径**：provider 不支持工具时仍走散文协议）。
  *
  * 出题与补学**明确禁止**输出判定标记：它们发生在学习者回答之前，
  * 那时候任何「判定」都只是模型在猜。
+ *
+ * Agent 主路径不用这一组 —— 跨轮契约已搬进交付工具的 schema 与守卫
+ * （见 DELIVERY_RULES 与 review-delivery.ts）。这组为回退路径冻结保留，
+ * 不再随新交互演进。
  */
 const PURPOSE_RULES: Record<ReviewRequestPurpose, string> = {
   question: [
@@ -229,6 +233,27 @@ const PURPOSE_RULES: Record<ReviewRequestPurpose, string> = {
   ].join('\n'),
 }
 
+/**
+ * Agent 主路径的各用途规则：每轮只有一句「本轮任务」，产物细节全部在交付工具
+ * 的 schema description 里 —— 跨轮契约是工具守卫的事，不再用文案维持。
+ */
+const DELIVERY_RULES: Record<ReviewRequestPurpose, string> = {
+  question: '本轮任务：调用 pose_question 交付一道主动回忆题。',
+  relearn: '本轮任务：调用 teach_key_points 交付关键点补学。',
+  hint: '本轮任务：调用 give_hint 交付针对当前题的一点提示。',
+  rephrase: '本轮任务：调用 pose_question 交付当前题的换问法。',
+  answer: '本轮任务：先写点评正文，再调用 submit_feedback 交付结构化反馈与建议档位。',
+  followup: '本轮任务：回答学习者的追问；如果本轮已把对错讲清楚，调用 submit_feedback 交付判定。',
+}
+
+/** Agent 主路径的交付纪律（与用途无关，每轮都带）。 */
+const DELIVERY_DISCIPLINE = [
+  '## 交付纪律',
+  '- 你的可执行产物**只能**通过工具交付；工具调用成功后不要在正文里重复产物内容，简短收尾即可。',
+  '- 工具调用前的正文是给学习者的引导（会实时展示），保持简短。',
+  '- 不要输出 [[rating:...]] 标记；档位通过 submit_feedback 的参数交付。',
+].join('\n')
+
 export interface ReviewContextInput {
   node: Node
   purpose: ReviewRequestPurpose
@@ -245,6 +270,11 @@ export interface ReviewContextInput {
   usedSource?: boolean
   /** 本次会话里的主题进度说明，例如「这是本次第 2 / 3 个主题」 */
   progressNote?: string
+  /**
+   * Agent 主路径标记：本轮的交付工具名。给出时规则切换为 DELIVERY_RULES（瘦身）
+   * 并附加交付纪律；缺省 = 回退路径（散文协议，与今天一致）。
+   */
+  deliveryToolName?: string
 }
 
 export interface ReviewContext {
@@ -274,7 +304,12 @@ export function assembleReviewContext(input: ReviewContextInput): ReviewContext 
   if (projectPrompt) sections.push(`## 项目要求\n${projectPrompt}`)
 
   sections.push(input.material.text)
-  sections.push(`## 本轮规则\n${PURPOSE_RULES[input.purpose]}`)
+  if (input.deliveryToolName) {
+    sections.push(`## 本轮规则\n${DELIVERY_RULES[input.purpose]}`)
+    sections.push(DELIVERY_DISCIPLINE)
+  } else {
+    sections.push(`## 本轮规则\n${PURPOSE_RULES[input.purpose]}`)
+  }
 
   if (input.progressNote) sections.push(`## 本次进度\n${input.progressNote}`)
   if (input.usedHint || input.usedSource) {

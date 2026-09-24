@@ -18,12 +18,23 @@ import {
   type ReviewItemPhase,
   type ReviewRequestPurpose,
   type ReviewReturnTarget,
+  type ReviewSessionItem,
+  type ReviewSessionMessage,
   type ReviewSessionRecord,
 } from '@/domain/review/session'
+import {
+  canGiveHint,
+  canPoseQuestion,
+  canSubmitFeedback,
+  canTeachKeyPoints,
+  phaseAfterDelivery,
+  type DeliveryKind,
+} from '@/domain/review/delivery'
 import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
 import { suggestionFromMessages } from '@/domain/review/protocol'
 import { threadPathFingerprint, resolveThread } from '@/domain/thread/resolve'
 import { runReviewRequest } from '@/services/llm/review'
+import type { ReviewDeliveryHandlers } from '@/services/llm/tools/review-delivery'
 import { newId } from '@/lib/id'
 import { useSettingsStore } from './settings-store'
 
@@ -45,6 +56,8 @@ export interface ReviewStreamingState {
   purpose: ReviewRequestPurpose
   text: string
   startedAt: number
+  /** 本轮产物已通过交付工具落库：旁白可以停了，卡片已经就位 */
+  delivered?: boolean
 }
 
 interface ReviewSessionStoreState {
@@ -585,7 +598,168 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
  * 以及最重要的**请求归属判断** —— 产生这条消息时的请求 ID 必须记在消息上，
  * 迟到返回的回调才会被识别并安全丢弃。
  */
-async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Promise<void> {
+/**
+ * 本轮交付 handler：守卫（domain 纯函数，对**活会话**校验）→ 原子落库
+ * （消息 + 阶段 + 副作用）→ 标记已交付。
+ *
+ * 交付即持久化：流中断时已交付的卡片保留，只有未完成部分需要重试 —— 这比
+ * 散文路径「中断即全丢」更好。工具执行发生在流中途，必须解析 store 里**当前**
+ * 的会话对象来改（turn 开始时发布的 clone），不能抓旧的局部引用。
+ */
+function createDeliveryHandlers(
+  purpose: ReviewRequestPurpose,
+  item: ReviewSessionItem,
+  requestId: Id,
+): { handlers: ReviewDeliveryHandlers; state: { delivered: boolean } } {
+  const store = useReviewSessionStore
+  const state = { delivered: false }
+
+  const kind: DeliveryKind =
+    purpose === 'relearn'
+      ? 'relearn'
+      : purpose === 'hint'
+        ? 'hint'
+        : purpose === 'answer' || purpose === 'followup'
+          ? 'feedback'
+          : 'question'
+
+  const liveItem = (): ReviewSessionItem | null => {
+    const live = store.getState().session
+    return live?.items.find((entry) => entry.itemId === item.itemId) ?? null
+  }
+
+  const markDelivered = () => {
+    state.delivered = true
+    const current = store.getState().streaming
+    if (current && current.requestId === requestId) {
+      store.setState({ streaming: { ...current, delivered: true } })
+    }
+  }
+
+  const commit = async (patch: Parameters<typeof patchItem>[2]) => {
+    const live = store.getState().session
+    if (!live) return { ok: false, error: '会话已不可用' }
+    patchItem(live, item.itemId, patch, Date.now())
+    await getRepositories().reviewSessions.save(live)
+    markDelivered()
+    return { ok: true }
+  }
+
+  const append = (message: ReviewSessionMessage) => ({
+    messages: [...(liveItem()?.messages ?? item.messages), message],
+    phase: phaseAfterDelivery(kind),
+  })
+
+  const handlers: ReviewDeliveryHandlers = {
+    deliverTeach: async (input) => {
+      const live = liveItem()
+      if (!live) return { ok: false, error: '会话已不可用' }
+      const check = canTeachKeyPoints(live)
+      if (!check.ok) return { ok: false, error: check.reason }
+      const keyPointLines = input.keyPoints.map((point) => `- ${point}`).join('\n')
+      const message: ReviewSessionMessage = {
+        id: newId(),
+        role: 'assistant',
+        text: `**关键点**\n\n${keyPointLines}\n\n${input.explanation}`,
+        purpose: 'relearn',
+        createdAt: Date.now(),
+      }
+      return commit(append(message))
+    },
+
+    deliverQuestion: async (input) => {
+      const live = liveItem()
+      if (!live) return { ok: false, error: '会话已不可用' }
+      const check = canPoseQuestion(live, input.rephraseOf)
+      if (!check.ok) return { ok: false, error: check.reason }
+      const message: ReviewSessionMessage = {
+        id: newId(),
+        role: 'assistant',
+        text: input.question,
+        purpose: 'question',
+        createdAt: Date.now(),
+      }
+      return commit(append(message))
+    },
+
+    deliverHint: async (input) => {
+      const live = liveItem()
+      if (!live) return { ok: false, error: '会话已不可用' }
+      const check = canGiveHint(live)
+      if (!check.ok) return { ok: false, error: check.reason }
+      const message: ReviewSessionMessage = {
+        id: newId(),
+        role: 'assistant',
+        text: input.hint,
+        purpose: 'hint',
+        createdAt: Date.now(),
+      }
+      return commit(append(message))
+    },
+
+    deliverFeedback: async (input) => {
+      const live = liveItem()
+      if (!live) return { ok: false, error: '会话已不可用' }
+      const check = canSubmitFeedback(live)
+      if (!check.ok) return { ok: false, error: check.reason }
+      const message: ReviewSessionMessage = {
+        id: newId(),
+        role: 'assistant',
+        text: `**做对的地方**\n\n${input.strengths}\n\n**待补充 / 需要修正**\n\n${input.gaps}`,
+        purpose,
+        createdAt: Date.now(),
+      }
+      // 档位建议：已有手选/预选（含「暂时想不起来」预置的 again）时不覆盖 ——
+      // followup 改判链路依赖这一点，与散文路径的 suggestion 规则同口径
+      const gradePatch =
+        live.selectedGrade === undefined ? { selectedGrade: input.suggestedGrade } : {}
+      return commit({
+        messages: [...live.messages, message],
+        phase: phaseAfterDelivery('feedback'),
+        ...gradePatch,
+      })
+    },
+  }
+
+  return { handlers, state }
+}
+
+/**
+ * 一轮失败后的回滚：退回可重试的稳定态并留下错误说明。
+ * 阶段以**turn 开始时**的状态为基准（正在评估的退回作答，正在准备的留在准备）。
+ */
+async function rollbackTurn(
+  session: ReviewSessionRecord,
+  item: ReviewSessionItem,
+  message: string,
+  now: number,
+): Promise<void> {
+  const fallbackPhase =
+    item.phase === 'evaluating' ? 'answering' : item.phase === 'preparing' ? 'preparing' : item.phase
+  patchItem(
+    session,
+    item.itemId,
+    {
+      phase: fallbackPhase,
+      pendingRequestId: undefined,
+      pendingPurpose: undefined,
+      error: message,
+    },
+    now,
+  )
+  await getRepositories().reviewSessions.save(session)
+  useReviewSessionStore.setState({
+    session: cloneForPublish(session)!,
+    streaming: null,
+    error: message,
+  })
+}
+
+async function executeModelTurn(
+  purpose: ReviewRequestPurpose,
+  text: string,
+  options: { forceLegacy?: boolean } = {},
+): Promise<void> {
   const store = useReviewSessionStore
   const state = store.getState()
   const session = state.session
@@ -663,6 +837,12 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   const currentIdx = session.cursor + 1
   const progressNote = `第 ${currentIdx} / ${total} 个主题（《${item.title}》）`
 
+  // Agent 主路径：handler 负责守卫与交付即落库。forceLegacy（能力降级重试）时
+  // 不给 handler —— 服务层走散文协议，行为与工具化之前一致。
+  const delivery = options.forceLegacy
+    ? null
+    : createDeliveryHandlers(purpose, item, requestId)
+
   const result = await runReviewRequest({
     settings,
     projectSettings,
@@ -677,6 +857,7 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     text,
     signal: controller.signal,
     progressNote,
+    handlers: delivery?.handlers,
     onDelta: (delta) => {
       const cur = store.getState().streaming
       if (cur && cur.requestId === requestId) {
@@ -700,6 +881,32 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
 
   if (result.ok) {
     const output = result.output
+
+    // Agent 路径：产物只能来自交付工具。没交付 = 模型失职，按失败处理，可重试。
+    if (output.usedDelivery) {
+      if (!delivery?.state.delivered) {
+        await rollbackTurn(currentSession, item, '模型未交付内容，请重试', now)
+        return
+      }
+      // 交付成功：消息与阶段已由 handler 原子落库，这里补材料快照、清在途标记
+      patchItem(
+        currentSession,
+        item.itemId,
+        {
+          sourceText: output.materialText,
+          sourceVersion: output.materialVersion,
+          modelRef: output.modelRef,
+          pendingRequestId: undefined,
+          pendingPurpose: undefined,
+          error: undefined,
+        },
+        now,
+      )
+      await getRepositories().reviewSessions.save(currentSession)
+      store.setState({ session: cloneForPublish(currentSession)!, streaming: null })
+      return
+    }
+
     const assistantMessage = {
       id: newId(),
       role: 'assistant' as const,
@@ -752,26 +959,31 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
     })
   } else {
     const failure = result.failure
-    const fallbackPhase =
-      item.phase === 'evaluating' ? 'answering' : item.phase === 'preparing' ? 'preparing' : item.phase
 
-    patchItem(
-      currentSession,
-      item.itemId,
-      {
-        phase: fallbackPhase,
-        pendingRequestId: undefined,
-        pendingPurpose: undefined,
-        error: failure.message,
-      },
-      now,
-    )
-    await getRepositories().reviewSessions.save(currentSession)
+    // 能力未探测 + 工具路径请求异常 ⇒ 降级重试一次散文路径（与学习对话同一模式）；
+    // 用户主动中断不算失败，不重试。
+    if (failure.capabilityUnknown && delivery !== null && !failure.aborted && !options.forceLegacy) {
+      await executeModelTurn(purpose, text, { forceLegacy: true })
+      return
+    }
 
-    store.setState({
-      session: cloneForPublish(currentSession)!,
-      streaming: null,
-      error: failure.message,
-    })
+    // 交付已发生、请求在其后失败：产物有效，按成功收尾（材料快照缺失可接受）
+    if (delivery?.state.delivered) {
+      patchItem(
+        currentSession,
+        item.itemId,
+        {
+          pendingRequestId: undefined,
+          pendingPurpose: undefined,
+          error: undefined,
+        },
+        now,
+      )
+      await getRepositories().reviewSessions.save(currentSession)
+      store.setState({ session: cloneForPublish(currentSession)!, streaming: null })
+      return
+    }
+
+    await rollbackTurn(currentSession, item, failure.message, now)
   }
 }

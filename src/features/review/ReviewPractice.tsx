@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import type { NodeReview, ReviewGrade } from '@/domain/models'
 import type { ReviewRequestPurpose, ReviewSessionItem } from '@/domain/review/session'
+import { currentOpenQuestion, latestQuestion } from '@/domain/review/delivery'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,7 @@ interface ReviewPracticeProps {
   isLastItem: boolean
   streamingText?: string
   streamingPurpose?: string
+  streamingDelivered?: boolean
   lastUndoneNotice?: string | null
   undoable: boolean
   onSaveDraft: (draft: string) => void
@@ -64,6 +66,7 @@ export function ReviewPractice({
   isLastItem,
   streamingText,
   streamingPurpose,
+  streamingDelivered,
   lastUndoneNotice,
   undoable,
   onSaveDraft,
@@ -118,12 +121,16 @@ export function ReviewPractice({
   const isFeedback = item.phase === 'feedback'
   const isSaving = item.phase === 'saving'
 
-  // 取最新的题目消息（第 1 条助手的消息通常为题）
-  const questionMessage = item.messages.find(
-    (m) => m.role === 'assistant' && (m.purpose === 'question' || m.purpose === 'relearn'),
-  )
+  // 题目卡渲染「当前题」：开放题优先，否则（补学的讲解卡 / 尚未出题）退到最新题。
+  // 与交付守卫共用同一个不变量 —— 换问法后当前题指针后移，旧题沉入下方历史区。
+  const relearnMessage =
+    item.mode === 'relearn'
+      ? item.messages.find((m) => m.role === 'assistant' && m.purpose === 'relearn')
+      : undefined
+  const questionMessage =
+    currentOpenQuestion(item) ?? (item.mode === 'relearn' ? relearnMessage : null) ?? latestQuestion(item)
 
-  // 伴随的其它交互消息（提示、用户回答、反馈等）
+  // 伴随的其它交互消息（提示、换问法、用户回答、反馈等）
   const otherMessages = item.messages.filter((m) => m !== questionMessage)
 
   // 补学确认后、复述题尚未到达的空窗（在途 / 失败 / 刷新中断）。确认点击的那一刻
@@ -136,9 +143,12 @@ export function ReviewPractice({
   const isFollowUpStreaming = isRelearnAwaitingQuestion && streamingPurpose === 'question'
 
   // 提示 / 换问法在途：给流式占位让用户看得到动静，同时禁掉会重复发起请求的按钮 ——
-  // 否则界面毫无反应，用户只会连点（可用性反馈 2026-09）
+  // 否则界面毫无反应，用户只会连点（可用性反馈 2026-09）。产物一旦落位（delivered）
+  // 旁白就让位给正式卡片。
   const isAssistStreaming =
-    isAnswering && (streamingPurpose === 'hint' || streamingPurpose === 'rephrase')
+    isAnswering &&
+    !streamingDelivered &&
+    (streamingPurpose === 'hint' || streamingPurpose === 'rephrase')
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full">

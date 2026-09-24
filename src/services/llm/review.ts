@@ -5,13 +5,20 @@ import {
   buildReviewMaterial,
   type ReviewContextMessage,
 } from '@/domain/context/review'
+import { currentOpenQuestion } from '@/domain/review/delivery'
 import type { ReviewItemPhase, ReviewRequestPurpose, ReviewSessionItem } from '@/domain/review/session'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
 import { describeLlmError, formatErrorMessage } from './errors'
 import { findProvider } from './catalog'
 import { requireModel } from './providers'
-import { streamReply, toModelMessages, type ChatUsage } from './chat'
+import { streamReply, toModelMessages, type ChatUsage, type ToolActivity, type ToolOutcome } from './chat'
+import type { ToolSet } from 'ai'
+import {
+  buildReviewDeliveryTool,
+  type ReviewDeliveryHandlers,
+  type ReviewDeliveryKind,
+} from './tools/review-delivery'
 import type { GlobalSettings } from '@/domain/models'
 
 /**
@@ -40,6 +47,14 @@ export interface ReviewRequestInput {
   text: string
   signal: AbortSignal
   onDelta?: (delta: string) => void
+  /**
+   * Agent 主路径的交付 handler。给出且供应商支持工具时，本轮产物通过交付工具
+   * 落库（消息 + 阶段由 handler 原子写入）；缺省或能力为 false 时走回退散文路径。
+   */
+  handlers?: ReviewDeliveryHandlers
+  /** 工具活动回调（阶段 2 的检索活动行用；阶段 1 可不传） */
+  onToolCall?: (activity: ToolActivity) => void
+  onToolResult?: (outcome: ToolOutcome) => void
   /** 本次是第几个主题 / 共几个，写进上下文帮模型掌握节奏 */
   progressNote?: string
   now?: number
@@ -48,7 +63,7 @@ export interface ReviewRequestInput {
 export interface ReviewRequestOutput {
   requestId: Id
   text: string
-  /** 剥掉判定标记后的正文（会话消息里存这个） */
+  /** 剥掉判定标记后的正文（会话消息里存这个；agent 路径它是旁白，不落库） */
   clean: string
   usage?: ChatUsage
   modelRef?: ModelRef
@@ -57,6 +72,8 @@ export interface ReviewRequestOutput {
   materialText: string
   materialVersion: string
   materialTruncated: boolean
+  /** 本轮是否走了交付工具路径（true 时消息与阶段由 handler 落库，正文是旁白） */
+  usedDelivery: boolean
 }
 
 export interface ReviewRequestFailure {
@@ -66,6 +83,11 @@ export interface ReviewRequestFailure {
   message: string
   hint?: string
   aborted: boolean
+  /**
+   * 供应商能力未探测（capabilities.tools === undefined）时发起的工具请求失败。
+   * 调用方据此决定降级重试一次散文路径 —— 与学习对话的探测-回退模式一致。
+   */
+  capabilityUnknown?: boolean
 }
 
 /** 把会话项里已有的消息转成模型能读的对话（判定标记剥掉，模型不需要看到两遍）。 */
@@ -105,6 +127,19 @@ export async function requireReviewModel(
   return { model, ref }
 }
 
+/** 交付阶段 1 的步数上限：一步交付（或先引导再交付）足够；合并轮次在阶段 3 放宽。 */
+const REVIEW_DELIVERY_MAX_STEPS = 2
+
+/** 用途 → 交付工具。 */
+const DELIVERY_KIND_BY_PURPOSE: Record<ReviewRequestPurpose, ReviewDeliveryKind> = {
+  question: 'pose_question',
+  rephrase: 'pose_question',
+  relearn: 'teach_key_points',
+  hint: 'give_hint',
+  answer: 'submit_feedback',
+  followup: 'submit_feedback',
+}
+
 /**
  * 跑一次复习请求。
  *
@@ -131,6 +166,21 @@ export async function runReviewRequest(
     }
   }
 
+  // 能力门控：明确不支持工具的供应商直接走回退散文路径；未探测过的先试工具，
+  // 失败时 failure.capabilityUnknown 让调用方降级重试（与学习对话同一模式）。
+  const provider = findProvider(input.settings.providers, ref)
+  const toolsCapability = provider?.capabilities?.tools
+  const useDelivery = input.handlers !== undefined && toolsCapability !== false
+
+  let toolSet: ToolSet | undefined
+  if (useDelivery && input.handlers) {
+    // 换问法轮由服务层预绑当前开放题：消息 id 不进模型上下文，模型无从填写
+    const rephraseOf = input.purpose === 'rephrase' ? currentOpenQuestion(input.item)?.id : undefined
+    toolSet = buildReviewDeliveryTool(DELIVERY_KIND_BY_PURPOSE[input.purpose], input.handlers, {
+      rephraseOf,
+    })
+  }
+
   const material = buildReviewMaterial({
     node: input.node,
     nodes: input.nodes,
@@ -155,6 +205,7 @@ export async function runReviewRequest(
     usedHint: input.item.usedHint,
     usedSource: input.item.usedSource,
     progressNote: input.progressNote,
+    deliveryToolName: toolSet ? DELIVERY_KIND_BY_PURPOSE[input.purpose] : undefined,
   })
 
   // 已生成的部分要留着：中断的正文是内容（用户看得见），只是**不采纳其中的评分标记**
@@ -166,12 +217,15 @@ export async function runReviewRequest(
       system: context.system,
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
+      ...(toolSet ? { tools: toolSet, maxSteps: REVIEW_DELIVERY_MAX_STEPS } : {}),
       // 跟随提供商配置的推理强度；非法值/auto 由 chat 层过滤为不传
       reasoningEffort: findProvider(input.settings.providers, ref)?.reasoningEffort,
       onDelta: (delta) => {
         partial += delta
         input.onDelta?.(delta)
       },
+      onToolCall: input.onToolCall,
+      onToolResult: input.onToolResult,
     })
 
     return {
@@ -186,6 +240,7 @@ export async function runReviewRequest(
         materialText: material.text,
         materialVersion: material.versionId,
         materialTruncated: material.truncated,
+        usedDelivery: toolSet !== undefined,
       },
     }
   } catch (error) {
@@ -198,6 +253,7 @@ export async function runReviewRequest(
         message: formatErrorMessage(info),
         hint: info.hint,
         aborted: false,
+        ...(toolsCapability === undefined ? { capabilityUnknown: true } : {}),
       },
     }
   }
