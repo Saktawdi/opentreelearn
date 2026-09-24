@@ -141,7 +141,7 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
 
   it('auto / 非法档位 / 缺省都不出现 reasoning 键（回归底线不破）', () => {
     expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'auto' })).toBe(false)
-    expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'max' })).toBe(false)
+    expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'unknown_effort' })).toBe(false)
     expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: '超强' })).toBe(false)
     expect('reasoning' in buildStreamOptions(base)).toBe(false)
   })

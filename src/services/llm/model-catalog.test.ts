@@ -90,9 +90,9 @@ describe('matchModel 归一化天梯', () => {
 })
 
 describe('reasoningCandidatesFor 档位提取', () => {
-  it('effort values 与 SDK 合法档位求交（丢弃 max 这类超集值）', () => {
+  it('effort values 与合法档位求交（支持 max 等主流大模型档位）', () => {
     const result = reasoningCandidatesFor('gpt-5.1-chat-latest', entries)
-    expect(result?.levels).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(result?.levels).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(result?.sourceId).toBe('openai/gpt-5.1-chat-latest')
   })
 
@@ -146,8 +146,9 @@ describe('reasoningCandidatesFor 档位提取', () => {
 describe('unionReasoningCandidates 多模型合并', () => {
   it('取并集并记录来源，不支持推理的模型被跳过', () => {
     const result = unionReasoningCandidates(['deepseek-chat', 'gpt-5.1-chat-latest'], entries)
-    expect(result.levels).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(result.levels).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(result.sources.get('xhigh')).toBe('openai/gpt-5.1-chat-latest')
+    expect(result.sources.get('max')).toBe('openai/gpt-5.1-chat-latest')
   })
 
   it('支持合并传入各模型的自定义 modelConfigs', () => {
@@ -170,11 +171,12 @@ describe('unionReasoningCandidates 多模型合并', () => {
 })
 
 describe('生效值与合法性', () => {
-  it('isValidReasoningLevel：7 档合法，auto/超集值/undefined 非法', () => {
+  it('isValidReasoningLevel：8 档合法（含 max），auto/超集值/undefined 非法', () => {
     expect(isValidReasoningLevel('low')).toBe(true)
     expect(isValidReasoningLevel('xhigh')).toBe(true)
+    expect(isValidReasoningLevel('max')).toBe(true)
     expect(isValidReasoningLevel('auto')).toBe(false)
-    expect(isValidReasoningLevel('max')).toBe(false)
+    expect(isValidReasoningLevel('invalid_val')).toBe(false)
     expect(isValidReasoningLevel(undefined)).toBe(false)
   })
 
@@ -189,7 +191,7 @@ describe('生效值与合法性', () => {
 
   it('双方都没有/非法值时返回 undefined（不传参）', () => {
     expect(effectiveReasoningEffort('auto', 'auto')).toBeUndefined()
-    expect(effectiveReasoningEffort(undefined, 'max')).toBeUndefined()
+    expect(effectiveReasoningEffort(undefined, 'invalid_val')).toBeUndefined()
     expect(effectiveReasoningEffort(undefined, undefined)).toBeUndefined()
   })
 })

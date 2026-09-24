@@ -26,6 +26,7 @@ import {
   loadModelCatalog,
   matchModel,
   modelTags,
+  reasoningCandidatesFor,
   type CatalogSnapshot,
 } from '@/services/llm/model-catalog'
 import { fetchUpstreamModels, testProviderConnection } from '@/services/llm/providers'
@@ -94,12 +95,14 @@ export function ProviderDialog({
     return draft.models.map((modelId) => {
       const online = matchModel(modelId, entries)
       const custom = draft.modelConfigs?.[modelId]
+      const onlineCandidates = online ? reasoningCandidatesFor(modelId, entries) : null
       // 融合规则：线上有的字段保留，用户手改的优先覆盖
       const merged = {
         entryId: online?.entryId ?? modelId,
         reasoning: custom?.reasoning ?? online?.reasoning ?? false,
         reasoningOptions: online?.reasoningOptions ?? [],
-        reasoningLevels: custom?.reasoningLevels,
+        // 若用户未手动覆盖，则回填线上匹配出来的档位列表
+        reasoningLevels: custom?.reasoningLevels ?? onlineCandidates?.levels,
         contextLimit: custom?.contextLimit ?? online?.contextLimit,
         hasVision: custom?.hasVision ?? online?.hasVision,
       }

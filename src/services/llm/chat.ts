@@ -239,7 +239,7 @@ export function buildStreamOptions(params: {
     ...(hasTools
       ? { tools: params.tools, stopWhen: maxSteps > 0 ? stepCountIs(maxSteps) : [] }
       : {}),
-    ...(reasoningEffort ? { reasoning: reasoningEffort } : {}),
+    ...(reasoningEffort ? { reasoning: reasoningEffort as unknown as Parameters<typeof streamText>[0]['reasoning'] } : {}),
     // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。
     // streamText 把 `result.usage.then(() => {})` 当作遥测的「完成信号」，只有 Node 分支
     // （openTelemetryChannelSpanContext 里 isNodeRuntime() 为真）会顺手 .catch 掉它；

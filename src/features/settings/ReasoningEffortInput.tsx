@@ -15,7 +15,6 @@ import { cn } from '@/lib/utils'
 import {
   isValidReasoningLevel,
   loadModelCatalog,
-  REASONING_LEVEL_LABEL,
   type CatalogSnapshot,
   unionReasoningCandidates,
 } from '@/services/llm/model-catalog'
@@ -48,7 +47,6 @@ function ensureCatalog(): Promise<CatalogSnapshot> {
 
 function labelOf(value: string): string {
   if (!value || value === 'auto') return '自动'
-  if (isValidReasoningLevel(value)) return REASONING_LEVEL_LABEL[value] ?? value
   return value
 }
 
@@ -149,7 +147,7 @@ export function ReasoningEffortInput({
             <DropdownMenuLabel className="text-2xs">该模型支持的档位</DropdownMenuLabel>
             {candidates.levels.map((level) => (
               <DropdownMenuItem key={level} onSelect={() => commit(level)}>
-                <span className="flex-1 text-xs">{REASONING_LEVEL_LABEL[level] ?? level}</span>
+                <span className="flex-1 text-xs font-mono">{level}</span>
                 <span className="mr-2 max-w-[120px] truncate font-mono text-2xs text-faint">
                   {candidates.sources.get(level)}
                 </span>

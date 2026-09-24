@@ -15,7 +15,7 @@ import type { CustomModelConfig } from '@/domain/models'
  * 匹配不到就退回自由输入 —— 目录只是增强，不是门槛。
  */
 
-/** SDK 顶层 `reasoning` 设置的全部合法取值（见 @ai-sdk/provider 的 LanguageModelV4CallOptions）。 */
+/** SDK 顶层 `reasoning` 设置及主流大模型网关支持的推理档位。 */
 export const ALLOWED_REASONING_LEVELS = [
   'provider-default',
   'none',
@@ -24,6 +24,7 @@ export const ALLOWED_REASONING_LEVELS = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ] as const
 
 export type ReasoningLevel = (typeof ALLOWED_REASONING_LEVELS)[number]
@@ -36,16 +37,18 @@ export const REASONING_LEVEL_ORDER: readonly ReasoningLevel[] = [
   'medium',
   'high',
   'xhigh',
+  'max',
 ]
 
 /** 面向用户的档位文案；'provider-default' 不出现在候选里（「自动」语义由值 'auto' 表达）。 */
 export const REASONING_LEVEL_LABEL: Partial<Record<ReasoningLevel, string>> = {
-  none: '关闭推理',
-  minimal: '极简',
-  low: '低',
-  medium: '中',
-  high: '高',
-  xhigh: '最高',
+  none: 'none (关闭推理)',
+  minimal: 'minimal (极简)',
+  low: 'low (低)',
+  medium: 'medium (中)',
+  high: 'high (高)',
+  xhigh: 'xhigh (超高)',
+  max: 'max (最大)',
 }
 
 export const MODELS_DEV_URL = 'https://models.dev/api.json'
