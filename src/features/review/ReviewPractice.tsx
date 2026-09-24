@@ -12,12 +12,19 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { NodeReview, ReviewGrade } from '@/domain/models'
-import type { ReviewSessionItem } from '@/domain/review/session'
+import type { ReviewRequestPurpose, ReviewSessionItem } from '@/domain/review/session'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ReviewFeedback } from './ReviewFeedback'
+
+/** 非题目区消息的标签：复述题、换问法都是「题」，不能混进「反馈」。 */
+const OTHER_MESSAGE_LABEL: Partial<Record<ReviewRequestPurpose, string>> = {
+  question: '复述题',
+  hint: '提示',
+  rephrase: '换个问法',
+}
 
 interface ReviewPracticeProps {
   item: ReviewSessionItem
@@ -116,8 +123,22 @@ export function ReviewPractice({
     (m) => m.role === 'assistant' && (m.purpose === 'question' || m.purpose === 'relearn'),
   )
 
-  // 伴随的其它交互消息（提示、换问法、用户回答、反馈等）
+  // 伴随的其它交互消息（提示、用户回答、反馈等）
   const otherMessages = item.messages.filter((m) => m !== questionMessage)
+
+  // 补学确认后、复述题尚未到达的空窗（在途 / 失败 / 刷新中断）。确认点击的那一刻
+  // 阶段就进了 answering，若不给这段空窗自己的加载态，用户会把补学卡片结尾的
+  // 「请复述…」当成题目开始打字，题目生成完又突然插进来一张卡。
+  const isRelearnAwaitingQuestion =
+    item.mode === 'relearn' &&
+    isAnswering &&
+    !item.messages.some((m) => m.role === 'assistant' && m.purpose === 'question')
+  const isFollowUpStreaming = isRelearnAwaitingQuestion && streamingPurpose === 'question'
+
+  // 提示 / 换问法在途：给流式占位让用户看得到动静，同时禁掉会重复发起请求的按钮 ——
+  // 否则界面毫无反应，用户只会连点（可用性反馈 2026-09）
+  const isAssistStreaming =
+    isAnswering && (streamingPurpose === 'hint' || streamingPurpose === 'rephrase')
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full">
@@ -207,11 +228,51 @@ export function ReviewPractice({
               }`}
             >
               <div className="mb-1 text-2xs text-faint">
-                {msg.role === 'user' ? '我的回答' : msg.purpose === 'hint' ? '提示' : '反馈'}
+                {msg.role === 'user' ? '我的回答' : (OTHER_MESSAGE_LABEL[msg.purpose] ?? '反馈')}
               </div>
               <MarkdownView content={stripReviewRating(msg.text)} />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 复述题生成中：骨架与流式就位在题目将落成的同一位置，生成完原地变成「复述题」卡片。
+          失败时不渲染这张卡 —— 顶部错误横幅已带重试入口。 */}
+      {isRelearnAwaitingQuestion && (isFollowUpStreaming || !item.error) && (
+        <div className="mt-5 rounded-lg border border-line/60 bg-surface p-4 text-xs leading-relaxed text-ink-soft mr-8">
+          {isFollowUpStreaming ? (
+            <>
+              <div className="mb-1 flex items-center gap-1.5 text-2xs text-accent">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>正在出复述题…</span>
+              </div>
+              {streamingText ? (
+                <MarkdownView content={stripStreamingReviewRating(streamingText)} />
+              ) : null}
+            </>
+          ) : (
+            /* 刷新 / 暂停后请求丢了：不自动重发（重发等于替用户再付一次调用），给手动重试 */
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted">复述题没有生成出来。</span>
+              <Button variant="secondary" size="sm" onClick={onRetry} className="h-6">
+                <RefreshCw className="mr-1 h-3 w-3" />
+                重新生成
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 提示 / 换问法生成中：占位与流式就位在消息将落成的同一位置，落地后原地变成对应卡片 */}
+      {isAssistStreaming && (
+        <div className="mt-5 rounded-lg border border-line/60 bg-surface p-4 text-xs leading-relaxed text-ink-soft mr-8">
+          <div className="mb-1 flex items-center gap-1.5 text-2xs text-accent">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>{streamingPurpose === 'hint' ? '正在给一点提示…' : '正在换个问法…'}</span>
+          </div>
+          {streamingText ? (
+            <MarkdownView content={stripStreamingReviewRating(streamingText)} />
+          ) : null}
         </div>
       )}
 
@@ -228,8 +289,8 @@ export function ReviewPractice({
         </div>
       )}
 
-      {/* 回忆作答输入区 */}
-      {isAnswering && (
+      {/* 回忆作答输入区：复述题在途时先不出现，题目落成后随自动聚焦一起就位 */}
+      {isAnswering && !isRelearnAwaitingQuestion && (
         <div className="mt-5 rounded-xl border border-line/70 bg-surface p-4 shadow-sm">
           <label htmlFor="review-answer-input" className="block mb-2 text-xs font-medium text-ink">
             我的回答
@@ -257,9 +318,10 @@ export function ReviewPractice({
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={isAssistStreaming}
                 onClick={onRequestHint}
                 title="回忆卡住时，看一点小提示"
-                className="text-2xs text-muted hover:text-ink"
+                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
               >
                 <Lightbulb className="mr-1 h-3.5 w-3.5" />
                 给一点提示
@@ -267,9 +329,10 @@ export function ReviewPractice({
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={isAssistStreaming}
                 onClick={onRequestRephrase}
                 title="换一种表达方式重新问"
-                className="text-2xs text-muted hover:text-ink"
+                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
               >
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
                 换个问法

@@ -116,6 +116,9 @@ interface ReviewSessionStoreState {
 
 let reviewAbort: AbortController | null = null
 
+/** 补学确认后请求复述题的固定触发语：确认与失败重试必须走同一句；锚定刚讲的关键点，防止模型另起一题。 */
+const RELEARN_QUESTION_TRIGGER = '我已经看完讲解，请针对刚才讲的关键点出一道复述题考我。'
+
 function cloneForPublish(session: ReviewSessionRecord | null): ReviewSessionRecord | null {
   if (!session) return null
   return {
@@ -245,7 +248,18 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       const item = currentItem(session)
       if (!session || !item || session.status !== 'active') return
       // 已经有内容就不重复生成
-      if (item.messages.length > 0 && item.phase !== 'preparing') return
+      if (item.messages.length > 0 && item.phase !== 'preparing') {
+        // 补学确认后复述题还没落下来（请求失败 / 刷新中断）：重发确认请求就是重试。
+        // 题目没到不算「已有内容」，否则错误条上的重试在这个窗口里永远是空操作。
+        if (
+          item.mode === 'relearn' &&
+          item.phase === 'answering' &&
+          !item.messages.some((message) => message.role === 'assistant' && message.purpose === 'question')
+        ) {
+          await executeModelTurn('question', RELEARN_QUESTION_TRIGGER)
+        }
+        return
+      }
 
       const purpose: ReviewRequestPurpose = item.mode === 'relearn' ? 'relearn' : 'question'
       await executeModelTurn(purpose, '')
@@ -347,7 +361,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       if (!session || !item) return
       patchItem(session, item.itemId, { phase: 'answering', interacted: true }, Date.now())
       set({ session: cloneForPublish(session)! })
-      await executeModelTurn('question', '我已经看完讲解，请出一道复述题考我。')
+      await executeModelTurn('question', RELEARN_QUESTION_TRIGGER)
     },
 
     askFollowup: async (question) => {
@@ -578,6 +592,11 @@ async function executeModelTurn(purpose: ReviewRequestPurpose, text: string): Pr
   const item = currentItem(session)
   const projectId = state.projectId
   if (!session || !item || !projectId) return
+
+  // 同一主题同一用途的请求已在途：这次触发是重复点击，直接忽略。
+  // 再进来只会 abort 掉上一个同样的请求重发一遍 —— 白付一次调用，用户还以为点了没用。
+  const inFlight = state.streaming
+  if (inFlight && inFlight.itemId === item.itemId && inFlight.purpose === purpose) return
 
   reviewAbort?.abort()
   const controller = new AbortController()
