@@ -8,7 +8,6 @@ import {
   canTeachKeyPoints,
   currentOpenQuestion,
   latestQuestion,
-  phaseAfterDelivery,
   phaseFromTranscript,
   reAskCount,
 } from './delivery'
@@ -285,11 +284,3 @@ describe('reAskCount', () => {
   })
 })
 
-describe('phaseAfterDelivery', () => {
-  it('各交付类型映射到对应阶段', () => {
-    expect(phaseAfterDelivery('relearn')).toBe('relearning')
-    expect(phaseAfterDelivery('question')).toBe('answering')
-    expect(phaseAfterDelivery('hint')).toBe('answering')
-    expect(phaseAfterDelivery('feedback')).toBe('feedback')
-  })
-})

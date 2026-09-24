@@ -144,22 +144,6 @@ export function reAskCount(item: ReviewSessionItem): number {
   return count
 }
 
-export type DeliveryKind = 'relearn' | 'question' | 'hint' | 'feedback'
-
-/** 交付落库后的阶段：handler 据此原子地写消息 + 阶段。 */
-export function phaseAfterDelivery(kind: DeliveryKind): ReviewItemPhase {
-  switch (kind) {
-    case 'relearn':
-      return 'relearning'
-    case 'question':
-      return 'answering'
-    case 'hint':
-      return 'answering'
-    case 'feedback':
-      return 'feedback'
-  }
-}
-
 /**
  * 从转录推导当前阶段（阶段 3 起 handler 统一用它写 phase）。
  *
