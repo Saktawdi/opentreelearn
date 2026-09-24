@@ -77,8 +77,16 @@ function normalizeCustomModelConfig(value: unknown): CustomModelConfig | undefin
   const contextLimit = readOptionalNumber(value.contextLimit)
   const hasVision = typeof value.hasVision === 'boolean' ? value.hasVision : undefined
   const reasoning = typeof value.reasoning === 'boolean' ? value.reasoning : undefined
+  const reasoningLevels = Array.isArray(value.reasoningLevels)
+    ? readStringArray(value.reasoningLevels)
+    : undefined
 
-  if (contextLimit === undefined && hasVision === undefined && reasoning === undefined) {
+  if (
+    contextLimit === undefined &&
+    hasVision === undefined &&
+    reasoning === undefined &&
+    (reasoningLevels === undefined || reasoningLevels.length === 0)
+  ) {
     return undefined
   }
 
@@ -86,6 +94,7 @@ function normalizeCustomModelConfig(value: unknown): CustomModelConfig | undefin
     ...(contextLimit !== undefined ? { contextLimit } : {}),
     ...(hasVision !== undefined ? { hasVision } : {}),
     ...(reasoning !== undefined ? { reasoning } : {}),
+    ...(reasoningLevels && reasoningLevels.length > 0 ? { reasoningLevels } : {}),
   }
 }
 

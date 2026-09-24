@@ -208,6 +208,7 @@ export function SettingsPage() {
                           })
                         }
                         models={ref ? [ref.modelId] : slotProvider.models}
+                        modelConfigs={slotProvider.modelConfigs}
                       />
                     ) : null}
                   </div>

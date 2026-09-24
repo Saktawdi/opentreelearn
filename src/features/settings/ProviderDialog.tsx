@@ -99,6 +99,7 @@ export function ProviderDialog({
         entryId: online?.entryId ?? modelId,
         reasoning: custom?.reasoning ?? online?.reasoning ?? false,
         reasoningOptions: online?.reasoningOptions ?? [],
+        reasoningLevels: custom?.reasoningLevels,
         contextLimit: custom?.contextLimit ?? online?.contextLimit,
         hasVision: custom?.hasVision ?? online?.hasVision,
       }
@@ -505,7 +506,15 @@ export function ProviderDialog({
                               </Badge>
                             ))}
                             {merged.reasoning ? (
-                              <Badge tone="accent" className="text-2xs" title="该模型支持推理思考">
+                              <Badge
+                                tone="accent"
+                                className="text-2xs"
+                                title={
+                                  merged.reasoningLevels && merged.reasoningLevels.length > 0
+                                    ? `该模型支持推理思考（已自定义档位：${merged.reasoningLevels.join(', ')}）`
+                                    : '该模型支持推理思考'
+                                }
+                              >
                                 思考
                               </Badge>
                             ) : null}
@@ -590,6 +599,82 @@ export function ProviderDialog({
                                 />
                               </div>
                             </div>
+
+                            {/* 开启思考后，可自定义配置推理档位 */}
+                            {merged.reasoning ? (
+                              <div className="rounded-md border border-line/50 bg-surface/50 p-2 text-2xs space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-ink-soft">
+                                    推理档位（留空跟随通用/线上默认，支持自定义输入，英文逗号分隔）：
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className="rounded border border-line px-1.5 py-0.5 text-2xs text-muted hover:border-accent/40 hover:text-accent transition-colors"
+                                      onClick={() =>
+                                        patchModelConfig(modelId, {
+                                          reasoningLevels: ['low', 'medium', 'high'],
+                                        })
+                                      }
+                                      title="填入标准三档：low, medium, high"
+                                    >
+                                      标准三档
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border border-line px-1.5 py-0.5 text-2xs text-muted hover:border-accent/40 hover:text-accent transition-colors"
+                                      onClick={() =>
+                                        patchModelConfig(modelId, {
+                                          reasoningLevels: ['low', 'medium', 'high', 'xhigh'],
+                                        })
+                                      }
+                                      title="填入四档：low, medium, high, xhigh"
+                                    >
+                                      四档
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border border-line px-1.5 py-0.5 text-2xs text-muted hover:border-accent/40 hover:text-accent transition-colors"
+                                      onClick={() =>
+                                        patchModelConfig(modelId, {
+                                          reasoningLevels: ['low', 'high'],
+                                        })
+                                      }
+                                      title="填入两档：low, high"
+                                    >
+                                      两档
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border border-line px-1.5 py-0.5 text-2xs text-muted hover:border-accent/40 hover:text-accent transition-colors"
+                                      onClick={() =>
+                                        patchModelConfig(modelId, {
+                                          reasoningLevels: ['none'],
+                                        })
+                                      }
+                                      title="填入单档：none（仅开关）"
+                                    >
+                                      仅开关
+                                    </button>
+                                  </div>
+                                </div>
+                                <Input
+                                  value={merged.reasoningLevels ? merged.reasoningLevels.join(', ') : ''}
+                                  placeholder="例如：low, medium, high（或使用右侧快捷预设）"
+                                  className="h-6 font-mono text-2xs"
+                                  onChange={(e) => {
+                                    const raw = e.target.value
+                                    const parts = raw
+                                      .split(',')
+                                      .map((s) => s.trim())
+                                      .filter(Boolean)
+                                    patchModelConfig(modelId, {
+                                      reasoningLevels: parts.length > 0 ? parts : undefined,
+                                    })
+                                  }}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>

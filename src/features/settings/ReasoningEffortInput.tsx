@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import type { CustomModelConfig } from '@/domain/models'
 import { cn } from '@/lib/utils'
 import {
   isValidReasoningLevel,
@@ -22,12 +23,12 @@ import {
 /**
  * 推理强度控件：候选 + 自由输入。
  *
- * 数据源是 models.dev 模型目录（model-catalog）：用户填的模型 id 能匹配上目录条目
- * 时，候选 = 该模型自声明的 reasoning_options（每个模型支持的档位不一样）；
- * 匹配不到就退回纯自由输入 —— 目录只是增强，不是门槛。
+ * 数据源是 models.dev 模型目录（model-catalog）以及用户在单模型配置中填写的自定义档位：
+ * 用户填的模型 id 能匹配上目录条目或自定义了档位时，候选优先展示所支持的档位；
+ * 匹配不到且未配置就退回纯自由输入 —— 目录与配置只是增强，不是门槛。
  *
  * 交互：按钮显示当前值，点开是一个可输入的菜单 —— 顶部可直接键入任意档位
- * （合法档位随请求携带），下面列出「自动」与目录候选（带来源标注）。
+ * （合法档位随请求携带），下面列出「自动」与目录/配置候选（带来源标注）。
  */
 
 /** 整页多个实例（模型分配各行 + 对话页）共用一次目录拉取，避免并发重复请求。 */
@@ -55,6 +56,7 @@ export function ReasoningEffortInput({
   value,
   onChange,
   models,
+  modelConfigs,
   className,
 }: {
   /** 当前值：'auto'（跟随提供商）| 合法档位 | 自由输入文本 */
@@ -62,6 +64,8 @@ export function ReasoningEffortInput({
   onChange: (value: string) => void
   /** 智能匹配用的模型 id 列表（provider.models 或当前对话所用的模型） */
   models: string[]
+  /** 可选：该 provider 下各个模型的自定义配置（含自定义 reasoningLevels） */
+  modelConfigs?: Record<string, CustomModelConfig>
   className?: string
 }) {
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
@@ -87,8 +91,8 @@ export function ReasoningEffortInput({
   }, [])
 
   const candidates = useMemo(
-    () => unionReasoningCandidates(models, catalog?.entries ?? {}),
-    [models, catalog],
+    () => unionReasoningCandidates(models, catalog?.entries ?? {}, modelConfigs),
+    [models, catalog, modelConfigs],
   )
 
   const commit = (next: string) => {

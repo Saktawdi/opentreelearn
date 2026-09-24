@@ -36,6 +36,7 @@ function ChatReasoningPicker({ chatModelRef }: { chatModelRef?: ModelRef | null 
       value={effective}
       onChange={setReasoningOverride}
       models={chatModelRef ? [chatModelRef.modelId] : []}
+      modelConfigs={provider?.modelConfigs}
       className="h-7 px-1.5 text-muted hover:text-ink"
     />
   )

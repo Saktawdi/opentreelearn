@@ -100,7 +100,12 @@ describe('normalizeProvider', () => {
     const p = normalizeProvider({
       id: 'v1',
       modelConfigs: {
-        'gemini-3.8-flash-api': { contextLimit: 1_000_000, hasVision: true, reasoning: true },
+        'gemini-3.8-flash-api': {
+          contextLimit: 1_000_000,
+          hasVision: true,
+          reasoning: true,
+          reasoningLevels: ['low', 'medium', 'high'],
+        },
         'bad-one': { invalidField: 'junk' },
       },
     })
@@ -108,6 +113,7 @@ describe('normalizeProvider', () => {
       contextLimit: 1_000_000,
       hasVision: true,
       reasoning: true,
+      reasoningLevels: ['low', 'medium', 'high'],
     })
     expect(p?.modelConfigs?.['bad-one']).toBeUndefined()
   })

@@ -332,6 +332,8 @@ export interface CustomModelConfig {
   contextLimit?: number
   hasVision?: boolean
   reasoning?: boolean
+  /** 用户针对该模型自定义设置的推理档位列表（例如 ['low', 'medium', 'high']） */
+  reasoningLevels?: string[]
 }
 
 export interface ProviderConfig {

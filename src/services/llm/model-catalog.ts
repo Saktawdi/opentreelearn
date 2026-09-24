@@ -1,5 +1,6 @@
 import { getDatabase } from '@/data'
 import { MODEL_CATALOG_KEY } from '@/data/dexie/db'
+import type { CustomModelConfig } from '@/domain/models'
 
 /**
  * 模型目录服务（models.dev）。
@@ -305,41 +306,70 @@ export interface ReasoningCandidates {
 /**
  * 一个模型能给的推理强度候选。
  *
- * - `effort` 型 → 目录 values 与 SDK 合法集合**求交**（目录里的超集值如 `max` 会被丢弃，
- *   因为传给 SDK 顶层 `reasoning` 不在合法集合里时会被适配器静默忽略）；
- * - `toggle` 型（或支持推理但没给档位）→ 只给「关闭」；
- * - 不支持推理 → null。
+ * 优先级：
+ * 1. 用户自定义配置了 `reasoningLevels`（在 ProviderDialog 中单独配置），优先使用该档位列表；
+ * 2. 线上目录匹配：`effort` 型求交，`toggle` 型给 none；
+ * 3. 若用户明确配置了 `reasoning: true`（支持思考），但线上未匹配且未配置自定义档位：
+ *    降级兜底提供通用三档 + 关闭（'low', 'medium', 'high', 'none'），避免用户面对空档位列表；
+ * 4. 其余不支持推理情况 → null。
  */
 export function reasoningCandidatesFor(
   modelId: string,
   entries: ModelCatalogEntries,
+  customConfig?: CustomModelConfig,
 ): ReasoningCandidates | null {
-  const matched = matchModel(modelId, entries)
-  if (!matched || !matched.reasoning) return null
+  const isReasoningEnabled = customConfig?.reasoning ?? matchModel(modelId, entries)?.reasoning ?? false
+  if (!isReasoningEnabled) return null
 
   const levels = new Set<ReasoningLevel>()
-  for (const option of matched.reasoningOptions) {
-    if (!isRecord(option)) continue
-    if (option.type === 'toggle') {
-      levels.add('none')
-      continue
-    }
-    if (option.type === 'effort' && Array.isArray(option.values)) {
-      for (const value of option.values) {
-        if (typeof value === 'string' && ALLOWED_SET.has(value) && value !== 'provider-default') {
-          levels.add(value as ReasoningLevel)
-        }
+
+  // 1. 优先使用用户在单模型配置中填写的自定义档位
+  if (customConfig?.reasoningLevels && customConfig.reasoningLevels.length > 0) {
+    for (const val of customConfig.reasoningLevels) {
+      const trimmed = val.trim()
+      if (isValidReasoningLevel(trimmed)) {
+        levels.add(trimmed)
       }
     }
   }
 
-  // 支持推理但没声明任何档位位置：至少给「关闭」这一档
-  if (levels.size === 0) levels.add('none')
+  // 2. 若未自定义档位，读取线上目录匹配信息
+  const matched = matchModel(modelId, entries)
+  if (levels.size === 0 && matched && matched.reasoning) {
+    for (const option of matched.reasoningOptions) {
+      if (!isRecord(option)) continue
+      if (option.type === 'toggle') {
+        levels.add('none')
+        continue
+      }
+      if (option.type === 'effort' && Array.isArray(option.values)) {
+        for (const value of option.values) {
+          if (typeof value === 'string' && ALLOWED_SET.has(value) && value !== 'provider-default') {
+            levels.add(value as ReasoningLevel)
+          }
+        }
+      }
+    }
+    // 目录匹配成功但没声明任何档位：至少给「关闭」这一档（保持原有语义）
+    if (levels.size === 0) levels.add('none')
+  }
+
+  // 3. 目录未匹配（matched 为空）且用户在本地开启了推理且没自定义档位：给出标准四档候选
+  if (levels.size === 0 && isReasoningEnabled) {
+    levels.add('low')
+    levels.add('medium')
+    levels.add('high')
+    levels.add('none')
+  }
+
+  const sourceId = customConfig?.reasoningLevels && customConfig.reasoningLevels.length > 0
+    ? `${modelId} (自定义)`
+    : (matched?.entryId ?? modelId)
 
   const ordered = [...levels].sort(
     (a, b) => REASONING_LEVEL_ORDER.indexOf(a) - REASONING_LEVEL_ORDER.indexOf(b),
   )
-  return { levels: ordered, sourceId: matched.entryId, reasoning: true }
+  return { levels: ordered, sourceId, reasoning: true }
 }
 
 /**
@@ -349,11 +379,12 @@ export function reasoningCandidatesFor(
 export function unionReasoningCandidates(
   modelIds: string[],
   entries: ModelCatalogEntries,
+  modelConfigs?: Record<string, CustomModelConfig>,
 ): { levels: ReasoningLevel[]; sources: Map<ReasoningLevel, string> } {
   const levels = new Set<ReasoningLevel>()
   const sources = new Map<ReasoningLevel, string>()
   for (const modelId of modelIds) {
-    const candidates = reasoningCandidatesFor(modelId, entries)
+    const candidates = reasoningCandidatesFor(modelId, entries, modelConfigs?.[modelId])
     if (!candidates) continue
     for (const level of candidates.levels) {
       levels.add(level)

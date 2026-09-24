@@ -125,6 +125,22 @@ describe('reasoningCandidatesFor 档位提取', () => {
       'xhigh',
     ])
   })
+
+  it('支持自定义 customConfig 中的 reasoningLevels 优先覆盖', () => {
+    const result = reasoningCandidatesFor('gemini-3.8-flash-api', {}, {
+      reasoning: true,
+      reasoningLevels: ['low', 'high'],
+    })
+    expect(result?.levels).toEqual(['low', 'high'])
+    expect(result?.sourceId).toBe('gemini-3.8-flash-api (自定义)')
+  })
+
+  it('未在目录找到且未指定自定义档位，但明确开启 reasoning 时，兜底给出标准候选', () => {
+    const result = reasoningCandidatesFor('gemini-3.8-flash-api', {}, {
+      reasoning: true,
+    })
+    expect(result?.levels).toEqual(['none', 'low', 'medium', 'high'])
+  })
 })
 
 describe('unionReasoningCandidates 多模型合并', () => {
@@ -132,6 +148,18 @@ describe('unionReasoningCandidates 多模型合并', () => {
     const result = unionReasoningCandidates(['deepseek-chat', 'gpt-5.1-chat-latest'], entries)
     expect(result.levels).toEqual(['low', 'medium', 'high', 'xhigh'])
     expect(result.sources.get('xhigh')).toBe('openai/gpt-5.1-chat-latest')
+  })
+
+  it('支持合并传入各模型的自定义 modelConfigs', () => {
+    const result = unionReasoningCandidates(
+      ['gemini-3.8-flash-api'],
+      {},
+      {
+        'gemini-3.8-flash-api': { reasoning: true, reasoningLevels: ['low', 'medium', 'high'] },
+      },
+    )
+    expect(result.levels).toEqual(['low', 'medium', 'high'])
+    expect(result.sources.get('low')).toBe('gemini-3.8-flash-api (自定义)')
   })
 
   it('没有可匹配模型时为空', () => {
