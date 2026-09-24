@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BRANCH_QUICK_CHOICES } from '@/domain/defaults'
 import {
   deriveTitle,
   messageBodyText,
@@ -128,6 +129,30 @@ describe('deriveTitle', () => {
       parts: [{ type: 'quote', text: '被引用的原文' }],
     })
     expect(deriveTitle(message)).toBe('被引用的原文')
+  })
+
+  it('正文是快捷指令模板时不当标题：带引用则标题取引用，避免一批子节点重名', () => {
+    const message = makeMessage({
+      id: 'm1',
+      nodeId: 'n1',
+      parts: [
+        { type: 'quote', text: '旋转曲面的侧面积' },
+        { type: 'text', text: BRANCH_QUICK_CHOICES[0].prompt },
+      ],
+    })
+    expect(deriveTitle(message)).toBe('旋转曲面的侧面积')
+  })
+
+  it('自定义指令（非模板）仍然当标题', () => {
+    const message = makeMessage({
+      id: 'm1',
+      nodeId: 'n1',
+      parts: [
+        { type: 'quote', text: '被引用的原文' },
+        { type: 'text', text: '用费曼技巧讲解这段内容' },
+      ],
+    })
+    expect(deriveTitle(message)).toBe('用费曼技巧讲解这段内容')
   })
 
   it('纯图片提问仍回退到图片占位标题', () => {

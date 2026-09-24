@@ -1,4 +1,5 @@
 import type { Id, Message, MessagePart } from '@/domain/models'
+import { findBranchQuickChoice } from '@/domain/defaults'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { normalizeDisplayMath } from '@/lib/markdown/math-fences'
 import { firstLine, truncate } from '@/lib/text'
@@ -115,10 +116,11 @@ function normalizeForPreview(text: string): string {
 }
 
 export function deriveTitle(message: Message): string {
-  // 标题取用户自己的话；只引用没打字时退用被引用的原文（而不是 "> xxx"）
+  // 标题取用户自己的话；只引用没打字时退用被引用的原文（而不是 "> xxx"）。
+  // 快捷指令模板（咨询/解读/…）正文人人一样，当标题会让一批子节点重名 —— 带引用时标题取引用。
   const body = messageBodyText(message)
-  if (body) return firstLine(body, 42)
   const quote = messageQuotes(message)[0]
+  if (body && !(quote && findBranchQuickChoice(body))) return firstLine(body, 42)
   if (quote) return firstLine(quote, 42)
   return hasImage(message) ? '［图片提问］' : '新节点'
 }

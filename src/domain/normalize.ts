@@ -1,7 +1,8 @@
-import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget } from './defaults'
+import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget, DEFAULT_BRANCH_PROMPT } from './defaults'
 import type {
   AssessmentMeta,
   AssessmentSource,
+  BranchPromptPreference,
   CustomModelConfig,
   GlobalSettings,
   MasterySnapshot,
@@ -373,6 +374,17 @@ export function normalizeNode(value: unknown): Node | null {
   }
 }
 
+/** 「新建子节点」偏好：showDialog 必须是布尔；记住的指令丢弃非字符串与空白串。 */
+function normalizeBranchPrompt(value: unknown): BranchPromptPreference {
+  if (!isRecord(value)) return { ...DEFAULT_BRANCH_PROMPT }
+
+  const rememberedPrompt = readString(value.rememberedPrompt)
+  return {
+    showDialog: typeof value.showDialog === 'boolean' ? value.showDialog : DEFAULT_BRANCH_PROMPT.showDialog,
+    rememberedPrompt: rememberedPrompt?.trim() ? rememberedPrompt : null,
+  }
+}
+
 export function normalizeGlobalSettings(value: unknown): GlobalSettings {
   const defaults = createDefaultSettings()
   if (!isRecord(value)) return defaults
@@ -386,6 +398,7 @@ export function normalizeGlobalSettings(value: unknown): GlobalSettings {
       readNumber(value.contextBudget, defaults.contextBudget),
     ),
     agentMaxSteps: clampAgentMaxSteps(readNumber(value.agentMaxSteps, defaults.agentMaxSteps)),
+    branchPrompt: normalizeBranchPrompt(value.branchPrompt),
     providers: Array.isArray(value.providers)
       ? value.providers
           .map(normalizeProvider)

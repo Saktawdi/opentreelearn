@@ -180,6 +180,32 @@ describe('normalizeGlobalSettings', () => {
     expect(normalizeGlobalSettings({ agentMaxSteps: 80 }).agentMaxSteps).toBe(80)
     expect(normalizeGlobalSettings({ agentMaxSteps: 9999 }).agentMaxSteps).toBe(1_000)
   })
+
+  it('normalizes branchPrompt: defaults to dialog shown, drops junk, blanks empty prompts', () => {
+    // 缺字段 = 默认每次弹窗
+    expect(normalizeGlobalSettings({}).branchPrompt).toEqual({
+      showDialog: true,
+      rememberedPrompt: null,
+    })
+    // 合法值原样保留
+    expect(
+      normalizeGlobalSettings({
+        branchPrompt: { showDialog: false, rememberedPrompt: '请把这段内容总结成便于记忆的要点。' },
+      }).branchPrompt,
+    ).toEqual({ showDialog: false, rememberedPrompt: '请把这段内容总结成便于记忆的要点。' })
+    // 畸形输入逐字段回落
+    expect(normalizeGlobalSettings({ branchPrompt: 'nope' }).branchPrompt).toEqual({
+      showDialog: true,
+      rememberedPrompt: null,
+    })
+    expect(normalizeGlobalSettings({ branchPrompt: { showDialog: 'yes' } }).branchPrompt.showDialog).toBe(
+      true,
+    )
+    expect(
+      normalizeGlobalSettings({ branchPrompt: { showDialog: false, rememberedPrompt: '   ' } })
+        .branchPrompt.rememberedPrompt,
+    ).toBeNull()
+  })
 })
 
 describe('normalizeMastery', () => {

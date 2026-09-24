@@ -355,6 +355,19 @@ export interface ProviderConfig {
   modelConfigs?: Record<string, CustomModelConfig>
 }
 
+/**
+ * 「新建子节点」快捷小窗的偏好（设置 → 偏好 收录）。
+ *
+ * showDialog=false 时点击「新建子节点」不再弹窗，直接以 rememberedPrompt 发送；
+ * 勾选弹窗里的「记住选择，下次不再弹出窗口」会把这里写成 false。
+ */
+export interface BranchPromptPreference {
+  /** 点击「新建子节点」时是否弹出快捷小窗 */
+  showDialog: boolean
+  /** 记住的指令文本（快捷意图的完整 prompt 或用户自定义文本）；null = 还没记住 */
+  rememberedPrompt: string | null
+}
+
 export interface GlobalSettings {
   backgroundProfile: string
   defaultChatModelRef: ModelRef | null
@@ -363,6 +376,8 @@ export interface GlobalSettings {
   contextBudget: number
   /** Agent 工具循环的步数上限；0 = 不限制（归一化见 defaults.clampAgentMaxSteps） */
   agentMaxSteps: number
+  /** 新建子节点快捷小窗的偏好，见 BranchPromptPreference。 */
+  branchPrompt: BranchPromptPreference
   providers: ProviderConfig[]
   /** 最后修改时间（epoch ms）；0 表示从未改过，同步时以云端版本为准。 */
   updatedAt: number

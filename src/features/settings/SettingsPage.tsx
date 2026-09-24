@@ -5,15 +5,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Section } from '@/components/ui/section'
-import type { ProviderConfig } from '@/domain/models'
+import { Switch } from '@/components/ui/switch'
+import type { BranchPromptPreference, ProviderConfig } from '@/domain/models'
 import {
+  BRANCH_QUICK_CHOICES,
   clampAgentMaxSteps,
   clampContextBudget,
+  findBranchQuickChoice,
   MAX_AGENT_MAX_STEPS,
   MAX_CONTEXT_BUDGET,
   MIN_CONTEXT_BUDGET,
 } from '@/domain/defaults'
-import { errorMessage } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 import { PROVIDER_KIND_LABEL, describeProviderModels } from '@/services/llm/catalog'
 import { testProviderConnection } from '@/services/llm/providers'
 import { useSettingsStore, type ModelSlot } from '@/stores/settings-store'
@@ -67,6 +70,10 @@ export function SettingsPage() {
 
   const budgetDirty = budget !== String(settings.contextBudget)
   const maxStepsDirty = maxSteps !== String(settings.agentMaxSteps)
+
+  const branchPrompt = settings.branchPrompt
+  const setBranchPrompt = (next: Partial<BranchPromptPreference>) =>
+    void patch({ branchPrompt: { ...branchPrompt, ...next } })
 
   const saveBudget = async () => {
     const parsed = Number.parseInt(budget, 10)
@@ -144,6 +151,70 @@ export function SettingsPage() {
             <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>
               保存
             </Button>
+          </div>
+        </Section>
+
+        <Section title="偏好">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5">
+              <div className="min-w-0 max-w-lg">
+                <p className="text-sm text-ink-soft">新建子节点时弹出快捷小窗</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                  {branchPrompt.showDialog
+                    ? '框选文字点「新建子节点」时弹出小窗：选快捷指令或自行输入，也可在小窗里勾选「记住选择」。'
+                    : '不再弹窗：点击「新建子节点」直接按下方记住的指令发送，框选内容仍会收进引用胶囊。'}
+                </p>
+              </div>
+              <Switch
+                checked={branchPrompt.showDialog}
+                onCheckedChange={(show) => {
+                  if (show) {
+                    setBranchPrompt({ showDialog: true })
+                    return
+                  }
+                  // 关掉弹窗就得有一条能直发的指令：还没记住时先取第一个快捷意图兜底
+                  setBranchPrompt({
+                    showDialog: false,
+                    rememberedPrompt: branchPrompt.rememberedPrompt ?? BRANCH_QUICK_CHOICES[0].prompt,
+                  })
+                }}
+              />
+            </div>
+
+            <div className="rounded-md border border-line px-3 py-2.5">
+              <p className="text-sm text-ink-soft">记住的指令</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                小窗里勾选「记住选择」会记下当次确认的指令；点芯片可随时换回快捷指令。
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {BRANCH_QUICK_CHOICES.map((choice) => {
+                  const active = branchPrompt.rememberedPrompt === choice.prompt
+                  return (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      title={choice.hint}
+                      onClick={() => setBranchPrompt({ rememberedPrompt: choice.prompt })}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                        active
+                          ? 'border-accent/50 bg-accent-soft text-accent'
+                          : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
+                      )}
+                    >
+                      {choice.label}
+                    </button>
+                  )
+                })}
+              </div>
+              {branchPrompt.rememberedPrompt &&
+              !findBranchQuickChoice(branchPrompt.rememberedPrompt) ? (
+                <p className="mt-2 break-all text-xs text-muted">
+                  自定义指令：
+                  <span className="text-ink-soft">{branchPrompt.rememberedPrompt}</span>
+                </p>
+              ) : null}
+            </div>
           </div>
         </Section>
 

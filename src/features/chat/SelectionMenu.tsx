@@ -17,7 +17,9 @@ import {
   type SelectionAnchor,
 } from '@/domain/notes'
 import { cn, errorMessage } from '@/lib/utils'
+import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
+import { BranchDialog } from './BranchDialog'
 import { NoteDialog } from './NoteDialog'
 import { BODY_ATTR, registeredSource, selectionSourceSpan } from './note-anchor'
 
@@ -259,6 +261,8 @@ export function SelectionMenu({
     labels?: NoteLabel[]
     body?: string
   } | null>(null)
+  // 新建子节点小窗的状态：同样要在菜单收起前把选区捕获下来。
+  const [branching, setBranching] = useState<{ quote: string; messageId: Id } | null>(null)
 
   useEffect(() => {
     const place = () => {
@@ -335,20 +339,47 @@ export function SelectionMenu({
     setMenu(null)
   }
 
-  const createBranch = async () => {
-    if (!menu || busy) return
+  /**
+   * 新建子节点的落地动作：建节点，把框选的原文收进引用胶囊（quote part），
+   * 指令作为正文（text part），两条一起发出去 —— 与输入框「先引用，后提问」的结构一致。
+   * remember=true 时把这条指令写进偏好，下次点击图标不再弹窗、直接发送。
+   */
+  const runBranch = async (target: { quote: string; messageId: Id }, prompt: string, remember: boolean) => {
     setBusy(true)
     try {
+      if (remember) {
+        await useSettingsStore.getState().patch({
+          branchPrompt: { showDialog: false, rememberedPrompt: prompt },
+        })
+        toast.success('已记住该指令：下次新建子节点将不再弹窗（可在 设置 → 偏好 修改）')
+      }
       // 分支节点：落在当前节点下方，并从选中文字所在的那条消息处继承上下文
-      const node = await applyAction('branch', nodeId, menu.messageId)
+      const node = await applyAction('branch', nodeId, target.messageId)
       if (!node) throw new Error('未能创建节点')
-      setMenu(null)
-      await sendMessage(node.id, [{ type: 'text', text: menu.quote }])
+      setBranching(null)
+      await sendMessage(node.id, [
+        { type: 'quote', text: target.quote },
+        { type: 'text', text: prompt },
+      ])
     } catch (error) {
       toast.error(`新建分支失败：${errorMessage(error)}`)
     } finally {
       setBusy(false)
     }
+  }
+
+  /** 图标入口：偏好是「不再弹窗」且有记住的指令就直发，否则弹小窗让用户选。 */
+  const openBranch = () => {
+    if (!menu || busy) return
+    const target = { quote: menu.quote, messageId: menu.messageId }
+    const preference = useSettingsStore.getState().settings.branchPrompt
+    const remembered = preference.showDialog ? null : preference.rememberedPrompt
+    close()
+    if (remembered) {
+      void runBranch(target, remembered, false)
+      return
+    }
+    setBranching(target)
   }
 
   /**
@@ -469,7 +500,7 @@ export function SelectionMenu({
           }
           label="新建子分支节点"
           busy={busy}
-          onSelect={() => void createBranch()}
+          onSelect={openBranch}
         />
         <ArcAction
           index={3}
@@ -478,6 +509,17 @@ export function SelectionMenu({
           onSelect={() => void copy()}
         />
       </div>
+
+      {branching ? (
+        <BranchDialog
+          key={branching.messageId}
+          quote={branching.quote}
+          busy={busy}
+          rememberedPrompt={useSettingsStore.getState().settings.branchPrompt.rememberedPrompt}
+          onCancel={() => setBranching(null)}
+          onConfirm={(prompt, remember) => void runBranch(branching, prompt, remember)}
+        />
+      ) : null}
 
       {annotating ? (
         <NoteDialog
