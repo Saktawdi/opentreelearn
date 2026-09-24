@@ -35,6 +35,7 @@ interface ReviewPracticeProps {
   streamingText?: string
   streamingPurpose?: string
   streamingDelivered?: boolean
+  streamingActivities?: Array<{ name: string; label: string }>
   lastUndoneNotice?: string | null
   undoable: boolean
   onSaveDraft: (draft: string) => void
@@ -67,6 +68,7 @@ export function ReviewPractice({
   streamingText,
   streamingPurpose,
   streamingDelivered,
+  streamingActivities,
   lastUndoneNotice,
   undoable,
   onSaveDraft,
@@ -150,6 +152,11 @@ export function ReviewPractice({
     !streamingDelivered &&
     (streamingPurpose === 'hint' || streamingPurpose === 'rephrase')
 
+  // 检索活动行：模型这一轮查了什么，一行轻量展示（交付工具不计入）
+  const activityLabel = streamingActivities?.length
+    ? streamingActivities.map((activity) => activity.label).join(' · ')
+    : null
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full">
       {/* 撤销提示横幅 */}
@@ -200,9 +207,12 @@ export function ReviewPractice({
         </div>
 
         {isPreparing && !questionMessage ? (
-          <div className="flex items-center gap-2 py-6 text-xs text-muted">
-            <Loader2 className="h-4 w-4 animate-spin text-accent" />
-            <span>正在为你准备{item.mode === 'relearn' ? '补学关键点' : '回忆题目'}…</span>
+          <div className="py-6 text-xs text-muted">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-accent" />
+              <span>正在为你准备{item.mode === 'relearn' ? '补学关键点' : '回忆题目'}…</span>
+            </div>
+            {activityLabel ? <div className="mt-1.5 pl-6 text-2xs text-faint">{activityLabel}</div> : null}
           </div>
         ) : questionMessage ? (
           <div className="text-sm leading-relaxed text-ink">
@@ -256,6 +266,7 @@ export function ReviewPractice({
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span>正在出复述题…</span>
               </div>
+              {activityLabel ? <div className="mb-1 text-2xs text-faint">{activityLabel}</div> : null}
               {streamingText ? (
                 <MarkdownView content={stripStreamingReviewRating(streamingText)} />
               ) : null}
@@ -280,6 +291,7 @@ export function ReviewPractice({
             <Loader2 className="h-3 w-3 animate-spin" />
             <span>{streamingPurpose === 'hint' ? '正在给一点提示…' : '正在换个问法…'}</span>
           </div>
+          {activityLabel ? <div className="mb-1 text-2xs text-faint">{activityLabel}</div> : null}
           {streamingText ? (
             <MarkdownView content={stripStreamingReviewRating(streamingText)} />
           ) : null}

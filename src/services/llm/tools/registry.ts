@@ -2,12 +2,16 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import {
   getNodeDetail,
+  inScope,
   labelStats,
   searchLabeledNotes,
   searchNodes,
   treeOutline,
   type ProjectSnapshot,
+  type RetrievalScope,
 } from '@/domain/agent/retrieval'
+import { reviewHistoryForNode } from '@/domain/review/history'
+import type { ReviewSessionRecord } from '@/domain/review/session'
 import { messageSource } from '@/domain/messages'
 import { NOTE_LABEL_MAX } from '@/domain/notes'
 import type { Id } from '@/domain/models'
@@ -46,6 +50,14 @@ export const TOOLS_SYSTEM = [
 export interface ToolRuntime extends ProjectSnapshot {
   /** 当前正在对话的节点：`get_node` 的缺省目标，也是「这里 / 我」的所指 */
   currentNodeId?: Id
+  /**
+   * 检索作用域（复习会话绑定框选节点 + 祖先路径）。缺省 = 全项目（对话 / 自由答），
+   * 检索行为与没有作用域概念时逐字节一致；给出时检索默认过滤到作用域内，
+   * 跨出必须显式 `widen`，且 widen 的命中一律带 `scope: 'other'` 来源标注。
+   */
+  retrievalScope?: RetrievalScope
+  /** 历史会话加载器：给出时注册 `get_review_history` 工具（复习运行时提供） */
+  reviewHistory?: () => Promise<ReviewSessionRecord[]>
 }
 
 /**
@@ -78,14 +90,35 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
   return {
     search_nodes: tool({
       description:
-        '在当前学习项目里按关键词搜节点（匹配标题、摘要与对话内容）。用户问「我之前在哪学过某个东西」时用它，不要凭记忆编造节点名。',
+        '在当前学习项目里按关键词搜节点（匹配标题、摘要与对话内容）。用户问「我之前在哪学过某个东西」时用它，不要凭记忆编造节点名。绑定复习作用域时默认只查本次框选的主题。',
       inputSchema: z.object({
         query: z.string().describe('关键词，例如「动量守恒」'),
         limit: z.number().int().min(1).max(20).optional().describe('最多返回几条，默认 8'),
+        ...(runtime.retrievalScope
+          ? {
+              widen: z
+                .boolean()
+                .optional()
+                .describe(
+                  '跨出本次复习范围检索。返回的外部内容仅可在提示与讲解中作为参照（必须点名来源节点），不得作为出题或判分的对象。',
+                ),
+            }
+          : {}),
       }),
-      execute: async ({ query, limit }) => {
-        const hits = searchNodes(snapshot, query, limit ?? 8)
-        return asData({ query, count: hits.length, hits })
+      execute: async ({ query, limit, widen }) => {
+        const hits = searchNodes(snapshot, query, limit ?? 8, {
+          scope: runtime.retrievalScope,
+          widen: widen === true,
+        })
+        const outside = hits.filter((hit) => hit.scope === 'other').length
+        return asData({
+          query,
+          count: hits.length,
+          hits,
+          ...(outside > 0
+            ? { note: `其中 ${outside} 条来自未选择的节点（scope: 'other'），仅可作为参照` }
+            : {}),
+        })
       },
     }),
 
@@ -94,13 +127,31 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
         '读一个节点的详情：标题、摘要、掌握度与薄弱点、所在层级路径、最近几条对话。省略 nodeId 时读当前正在对话的节点。',
       inputSchema: z.object({
         nodeId: z.string().optional().describe('节点 id；省略则读当前节点'),
+        ...(runtime.retrievalScope
+          ? {
+              widen: z
+                .boolean()
+                .optional()
+                .describe(
+                  '允许读取本次复习范围之外的节点。返回内容仅可在提示与讲解中作为参照（点名来源节点），不得作为出题或判分的对象。',
+                ),
+            }
+          : {}),
       }),
-      execute: async ({ nodeId }) => {
+      execute: async ({ nodeId, widen }) => {
         const target = nodeId ?? runtime.currentNodeId
         if (!target) return failure('没有指定节点，且当前不在任何节点里')
+        if (runtime.retrievalScope && !inScope(target, runtime.retrievalScope) && widen !== true) {
+          return failure('该节点不在本次复习范围内；确需参照时用 widen 参数显式跨出')
+        }
         const detail = getNodeDetail(snapshot, target)
         if (!detail) return failure('这个节点不存在或已被删除')
-        return asData(detail)
+        const inRange = inScope(target, runtime.retrievalScope)
+        return asData(
+          runtime.retrievalScope && !inRange
+            ? { ...detail, scope: 'other', note: '该节点不在本次复习范围，仅可作为参照' }
+            : detail,
+        )
       },
     }),
 
@@ -138,15 +189,76 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
         query: z.string().optional().describe('关键词，在被标原文与备注里找'),
         nodeId: z.string().optional().describe('限定某个节点'),
         limit: z.number().int().min(1).max(20).optional().describe('最多返回几条，默认 8'),
+        ...(runtime.retrievalScope
+          ? {
+              widen: z
+                .boolean()
+                .optional()
+                .describe(
+                  '跨出本次复习范围检索。返回的外部内容仅可在提示与讲解中作为参照（必须点名来源节点），不得作为出题或判分的对象。',
+                ),
+            }
+          : {}),
       }),
-      execute: async ({ labels, query, nodeId, limit }) => {
-        const result = searchLabeledNotes(snapshot, { labels, query, nodeId, limit })
+      execute: async ({ labels, query, nodeId, limit, widen }) => {
+        if (
+          runtime.retrievalScope &&
+          nodeId &&
+          !inScope(nodeId, runtime.retrievalScope) &&
+          widen !== true
+        ) {
+          return failure('该节点不在本次复习范围内；确需参照时用 widen 参数显式跨出')
+        }
+        const result = searchLabeledNotes(snapshot, {
+          labels,
+          query,
+          nodeId,
+          limit,
+          scope: runtime.retrievalScope,
+          widen: widen === true,
+        })
         if (result.total === 0) {
           return asData({ total: 0, hits: [], note: '没有符合条件的带标签标注' })
         }
-        return asData({ total: result.total, hits: result.hits })
+        const outside = result.hits.filter((hit) => hit.scope === 'other').length
+        return asData({
+          total: result.total,
+          hits: result.hits,
+          ...(outside > 0
+            ? { note: `其中 ${outside} 条来自未选择的节点（scope: 'other'），仅可作为参照` }
+            : {}),
+        })
       },
     }),
+
+    ...(runtime.reviewHistory
+      ? {
+          get_review_history: tool({
+            description:
+              '查一个主题的历史复习记录：历次确认的档位、时间与当时的薄弱点，跳过的也会如实列出。出题或补学前用它了解「这个主题之前复习得怎么样」。省略 nodeId 时读当前主题；跨主题历史不开放。',
+            inputSchema: z.object({
+              nodeId: z.string().optional().describe('节点 id；省略则读当前主题'),
+            }),
+            execute: async ({ nodeId }) => {
+              const target = nodeId ?? runtime.currentNodeId
+              if (!target) return failure('没有指定节点，且当前不在任何主题里')
+              // TS 无法从条件展开里收窄 runtime.reviewHistory；工具只在 loader 存在时注册
+              const loader = runtime.reviewHistory
+              if (!loader) return failure('历史复习记录不可用')
+              const sessions = await loader()
+              const history = reviewHistoryForNode(sessions, target)
+              if (history.total === 0) {
+                return asData({ total: 0, rows: [], note: '这个主题还没有历史复习记录' })
+              }
+              return asData({
+                total: history.total,
+                rows: history.rows,
+                note: `最近 ${history.rows.length} / ${history.total} 条，按时间倒序`,
+              })
+            },
+          }),
+        }
+      : {}),
   }
 }
 

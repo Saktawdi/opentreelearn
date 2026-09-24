@@ -33,7 +33,9 @@ import {
 import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
 import { suggestionFromMessages } from '@/domain/review/protocol'
 import { threadPathFingerprint, resolveThread } from '@/domain/thread/resolve'
+import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { runReviewRequest } from '@/services/llm/review'
+import { buildReadOnlyTools } from '@/services/llm/tools/registry'
 import type { ReviewDeliveryHandlers } from '@/services/llm/tools/review-delivery'
 import { newId } from '@/lib/id'
 import { useSettingsStore } from './settings-store'
@@ -58,6 +60,8 @@ export interface ReviewStreamingState {
   startedAt: number
   /** 本轮产物已通过交付工具落库：旁白可以停了，卡片已经就位 */
   delivered?: boolean
+  /** 本轮发生过的只读检索（活动行）；交付工具不计入 —— 卡片本身就是它的展示 */
+  activities?: Array<{ name: string; label: string }>
 }
 
 interface ReviewSessionStoreState {
@@ -637,6 +641,11 @@ function createDeliveryHandlers(
   }
 
   const commit = async (patch: Parameters<typeof patchItem>[2]) => {
+    // 每轮限交付一次：第二个交付调用只会造成两张卡打架（多开放题守卫在
+    // domain 层管跨轮，这里管同轮）—— 模型要在一条交付里表达多小问
+    if (state.delivered) {
+      return { ok: false, error: '本轮已经交付过产物，不要重复交付；多个小问合并进同一条交付' }
+    }
     const live = store.getState().session
     if (!live) return { ok: false, error: '会话已不可用' }
     patchItem(live, item.itemId, patch, Date.now())
@@ -755,6 +764,40 @@ async function rollbackTurn(
   })
 }
 
+const REVIEW_DELIVERY_TOOL_NAMES = new Set([
+  'teach_key_points',
+  'pose_question',
+  'give_hint',
+  'submit_feedback',
+])
+
+/** 活动行文案：模型查了什么，用户一行看得懂。 */
+const TOOL_ACTIVITY_LABEL: Record<string, string> = {
+  search_notes: '查了标注',
+  search_nodes: '搜了主题',
+  get_node: '看了主题资料',
+  get_tree_outline: '看了树大纲',
+  list_note_labels: '看了标签统计',
+  get_review_history: '看了复习记录',
+}
+
+/**
+ * 复习会话的检索作用域：**框选的主题集合 + 各自的祖先路径**。
+ *
+ * 这是「考与判只发生在框选节点上」契约的结构化表达 —— 默认拿不到的数据，
+ * agent 想考也考不了；跨出必须显式 widen 且结果带来源标注。祖先每次请求现算，
+ * 树中途被挪动也不会用到过期快照。
+ */
+function reviewScope(nodes: Node[], session: ReviewSessionRecord): { nodeIds: Id[] } {
+  const index = buildTreeIndex(nodes)
+  const nodeIds = new Set<Id>()
+  for (const entry of session.items) {
+    nodeIds.add(entry.nodeId)
+    for (const ancestor of ancestorsOf(index, entry.nodeId)) nodeIds.add(ancestor.id)
+  }
+  return { nodeIds: [...nodeIds] }
+}
+
 async function executeModelTurn(
   purpose: ReviewRequestPurpose,
   text: string,
@@ -843,6 +886,19 @@ async function executeModelTurn(
     ? null
     : createDeliveryHandlers(purpose, item, requestId)
 
+  // 只读检索工具（阶段 2）：绑定框选作用域 + 历史复习查询；对话/自由答的调用点
+  // 不传 retrievalScope，行为保持全项目不变。
+  const readOnlyTools = delivery
+    ? buildReadOnlyTools({
+        nodes,
+        messagesByNode,
+        notes,
+        currentNodeId: item.nodeId,
+        retrievalScope: reviewScope(nodes, session),
+        reviewHistory: () => getRepositories().reviewSessions.listByProject(projectId),
+      })
+    : undefined
+
   const result = await runReviewRequest({
     settings,
     projectSettings,
@@ -858,6 +914,22 @@ async function executeModelTurn(
     signal: controller.signal,
     progressNote,
     handlers: delivery?.handlers,
+    readOnlyTools,
+    onToolCall: (activity) => {
+      if (REVIEW_DELIVERY_TOOL_NAMES.has(activity.name)) return
+      const cur = store.getState().streaming
+      if (cur && cur.requestId === requestId) {
+        store.setState({
+          streaming: {
+            ...cur,
+            activities: [
+              ...(cur.activities ?? []),
+              { name: activity.name, label: TOOL_ACTIVITY_LABEL[activity.name] ?? activity.name },
+            ],
+          },
+        })
+      }
+    },
     onDelta: (delta) => {
       const cur = store.getState().streaming
       if (cur && cur.requestId === requestId) {

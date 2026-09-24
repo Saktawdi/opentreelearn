@@ -231,6 +231,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
               streamingText={streaming?.text}
               streamingPurpose={streaming?.purpose}
               streamingDelivered={streaming?.delivered}
+              streamingActivities={streaming?.activities}
               lastUndoneNotice={lastUndoneNotice}
               undoable={canUndo}
               onSaveDraft={(val) => void saveDraft(val)}

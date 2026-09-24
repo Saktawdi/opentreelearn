@@ -52,7 +52,9 @@ export interface ReviewRequestInput {
    * 落库（消息 + 阶段由 handler 原子写入）；缺省或能力为 false 时走回退散文路径。
    */
   handlers?: ReviewDeliveryHandlers
-  /** 工具活动回调（阶段 2 的检索活动行用；阶段 1 可不传） */
+  /** 只读检索工具（复习运行时绑定作用域后由 buildReadOnlyTools 构建） */
+  readOnlyTools?: ToolSet
+  /** 工具活动回调（检索活动行；交付工具由卡片本身展示，不进活动行） */
   onToolCall?: (activity: ToolActivity) => void
   onToolResult?: (outcome: ToolOutcome) => void
   /** 本次是第几个主题 / 共几个，写进上下文帮模型掌握节奏 */
@@ -127,8 +129,8 @@ export async function requireReviewModel(
   return { model, ref }
 }
 
-/** 交付阶段 1 的步数上限：一步交付（或先引导再交付）足够；合并轮次在阶段 3 放宽。 */
-const REVIEW_DELIVERY_MAX_STEPS = 2
+/** 交付阶段的步数上限：检索 1~2 步 + 交付 1 步；合并轮次在阶段 3 再评估。 */
+const REVIEW_DELIVERY_MAX_STEPS = 3
 
 /** 用途 → 交付工具。 */
 const DELIVERY_KIND_BY_PURPOSE: Record<ReviewRequestPurpose, ReviewDeliveryKind> = {
@@ -176,9 +178,14 @@ export async function runReviewRequest(
   if (useDelivery && input.handlers) {
     // 换问法轮由服务层预绑当前开放题：消息 id 不进模型上下文，模型无从填写
     const rephraseOf = input.purpose === 'rephrase' ? currentOpenQuestion(input.item)?.id : undefined
-    toolSet = buildReviewDeliveryTool(DELIVERY_KIND_BY_PURPOSE[input.purpose], input.handlers, {
-      rephraseOf,
-    })
+    const deliveryTools = buildReviewDeliveryTool(
+      DELIVERY_KIND_BY_PURPOSE[input.purpose],
+      input.handlers,
+      { rephraseOf },
+    )
+    // 只读检索工具与交付工具并存：模型可以先查（作用域内）再交付；
+    // 交付每轮限一次由 handler 守卫，检索不落库、无此限制
+    toolSet = input.readOnlyTools ? { ...input.readOnlyTools, ...deliveryTools } : deliveryTools
   }
 
   const material = buildReviewMaterial({

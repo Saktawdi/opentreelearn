@@ -17,6 +17,23 @@ import { normalizeWhitespace, truncate } from '@/lib/text'
  * 工具执行发生在浏览器里，数据本来就在内存，不需要额外查询层。
  */
 
+/**
+ * 检索作用域：复习会话把**框选的节点集合（含祖先路径）**绑进工具运行时；
+ * 缺省（对话 / 自由答）= 全项目，行为与没有这个概念时逐字节一致。
+ *
+ * 越界是显式动作（`widen`），且 widen 的命中一律带 `scope: 'other'` 来源标注 ——
+ * 默认安全：agent 什么都不传，看到的就是作用域内的数据。
+ */
+export interface RetrievalScope {
+  nodeIds: Id[]
+}
+
+export type ScopeMark = 'selected' | 'other'
+
+export function inScope(nodeId: Id, scope: RetrievalScope | undefined): boolean {
+  return !scope || scope.nodeIds.includes(nodeId)
+}
+
 export interface ProjectSnapshot {
   nodes: Node[]
   messagesByNode: Map<Id, Message[]>
@@ -58,21 +75,29 @@ export interface NodeHit {
   depth: number
   /** 命中的位置：标题 / 摘要 / 对话内容 —— 让模型说得清这条为什么被查到 */
   matched: 'title' | 'summary' | 'messages'
+  /** 仅在绑定作用域时出现：命中来自框选节点（selected）还是显式 widen 的外部（other） */
+  scope?: ScopeMark
 }
 
 /** 命中位置的排序权重：标题最可信，对话内容最弱（噪声最多）。 */
 const MATCH_RANK: Record<NodeHit['matched'], number> = { title: 0, summary: 1, messages: 2 }
 
+/** 作用域排序权重：框选内的命中永远排在 widen 来的外部命中前面。 */
+function scopeRank(hit: { scope?: ScopeMark }): number {
+  return hit.scope === 'other' ? 1 : 0
+}
+
 /**
  * 按关键词搜节点（标题 / 摘要 / 对话内容）。
  *
  * 中文没有词边界，用子串匹配而不是分词；大小写不敏感只对拉丁字母有意义，
- * 顺带做掉。排序按「命中位置可信度 → 最近学习时间」。
+ * 顺带做掉。排序按「命中位置可信度 → 最近学习时间」；绑定作用域时框选内优先。
  */
 export function searchNodes(
   snapshot: ProjectSnapshot,
   query: string,
   limit = 8,
+  options: { scope?: RetrievalScope; widen?: boolean } = {},
 ): NodeHit[] {
   const needle = normalizeWhitespace(query).trim().toLowerCase()
   if (!needle) return []
@@ -81,6 +106,9 @@ export function searchNodes(
   const hits: NodeHit[] = []
 
   for (const node of visibleNodes(snapshot.nodes)) {
+    const selected = inScope(node.id, options.scope)
+    if (options.scope && !selected && !options.widen) continue
+
     const title = node.title ?? ''
     const summary = node.summary ?? ''
     let matched: NodeHit['matched'] | null = null
@@ -96,6 +124,7 @@ export function searchNodes(
       score: node.mastery?.score ?? null,
       depth: depthOf(index, node.id),
       matched,
+      ...(options.scope ? { scope: selected ? 'selected' : 'other' } : {}),
     })
   }
 
@@ -104,6 +133,7 @@ export function searchNodes(
   )
   hits.sort(
     (a, b) =>
+      scopeRank(a) - scopeRank(b) ||
       MATCH_RANK[a.matched] - MATCH_RANK[b.matched] ||
       (studiedAt.get(b.nodeId) ?? 0) - (studiedAt.get(a.nodeId) ?? 0),
   )
@@ -212,6 +242,10 @@ export interface NoteQuery {
   /** 限定节点 */
   nodeId?: Id
   limit?: number
+  /** 检索作用域（复习绑定）；缺省全项目 */
+  scope?: RetrievalScope
+  /** 显式跨出作用域：命中带 `scope: 'other'` 来源标注 */
+  widen?: boolean
 }
 
 export interface NoteHit {
@@ -225,6 +259,8 @@ export interface NoteHit {
   quote: string
   body?: string
   createdAt: number
+  /** 仅在绑定作用域时出现：命中来自框选节点（selected）还是显式 widen 的外部（other） */
+  scope?: ScopeMark
 }
 
 export interface NoteSearchResult {
@@ -249,6 +285,8 @@ export function searchLabeledNotes(
   const titles = new Map(snapshot.nodes.map((node) => [node.id, node.title]))
 
   const matched = labeledNotes(snapshot.notes).filter((note) => {
+    const selected = inScope(note.nodeId, options.scope)
+    if (options.scope && !selected && !options.widen) return false
     if (options.nodeId && note.nodeId !== options.nodeId) return false
     if (labels.length > 0 && !note.labels.some((label) => labels.includes(label))) return false
     if (needle) {
@@ -259,7 +297,12 @@ export function searchLabeledNotes(
   })
 
   const hits = [...matched]
-    .sort((a, b) => b.createdAt - a.createdAt)
+    .sort(
+      (a, b) =>
+        (options.scope && inScope(a.nodeId, options.scope) ? 0 : 1) -
+          (options.scope && inScope(b.nodeId, options.scope) ? 0 : 1) ||
+        b.createdAt - a.createdAt,
+    )
     .slice(0, limit)
     .map((note): NoteHit => ({
       noteId: note.id,
@@ -270,6 +313,9 @@ export function searchLabeledNotes(
       quote: truncate(normalizeWhitespace(note.quote), 200),
       ...(note.body ? { body: truncate(normalizeWhitespace(note.body), 200) } : {}),
       createdAt: note.createdAt,
+      ...(options.scope
+        ? { scope: inScope(note.nodeId, options.scope) ? 'selected' : 'other' }
+        : {}),
     }))
 
   return { total: matched.length, hits }
