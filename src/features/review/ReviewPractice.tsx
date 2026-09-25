@@ -12,12 +12,21 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { NodeReview, ReviewGrade } from '@/domain/models'
-import type { ReviewRequestPurpose, ReviewSessionItem } from '@/domain/review/session'
+import type {
+  ReviewRequestPurpose,
+  ReviewSessionItem,
+  ReviewSessionMessage,
+} from '@/domain/review/session'
 import { currentOpenQuestion, latestQuestion } from '@/domain/review/delivery'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import type { SelectionAction } from '@/features/chat/SelectionMenu'
+import { SelectionMenu } from '@/features/chat/SelectionMenu'
+import { MessageNotes } from '@/features/chat/MessageNotes'
+import { ReviewAnnotatableText } from './ReviewAnnotatable'
+import { useReviewMessageNotes } from './use-review-notes'
 import { ReviewFeedback } from './ReviewFeedback'
 
 /** 非题目区消息的标签：复述题、换问法都是「题」，反馈轮里的补讲标「补学」，不能混进「反馈」。 */
@@ -26,6 +35,11 @@ const OTHER_MESSAGE_LABEL: Partial<Record<ReviewRequestPurpose, string>> = {
   hint: '提示',
   rephrase: '换个问法',
   relearn: '补学',
+}
+
+/** 用户消息自己的标签（回答 vs 追问）。 */
+function userMessageLabel(purpose: ReviewRequestPurpose): string {
+  return purpose === 'followup' ? '追问' : '我的回答'
 }
 
 interface ReviewPracticeProps {
@@ -51,6 +65,8 @@ interface ReviewPracticeProps {
   onUndoLast: () => void
   onToggleSource: () => void
   onRetry: () => void
+  /** 就标记的内容追问（划选菜单「就这段追问」的落地动作） */
+  onAskFollowup: (question: string) => void
 }
 
 /**
@@ -84,16 +100,31 @@ export function ReviewPractice({
   onUndoLast,
   onToggleSource,
   onRetry,
+  onAskFollowup,
 }: ReviewPracticeProps) {
   const [draft, setDraft] = useState(item.draft ?? '')
   const [prevItemId, setPrevItemId] = useState(item.itemId)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isComposingRef = useRef(false)
+  /** 划选「就这段追问」拉起的追问输入（quote 是框选到的原文，随文本一起提交） */
+  const [followup, setFollowup] = useState<{ quote: string; text: string } | null>(null)
+  const followupRef = useRef<HTMLTextAreaElement>(null)
+  const followupComposingRef = useRef(false)
 
   // 状态根据 item.itemId 切换而在 render 期间校准，避免在 effect 内部调用 setState
   if (item.itemId !== prevItemId) {
     setPrevItemId(item.itemId)
     setDraft(item.draft ?? '')
+  }
+
+  // 阶段切换时收起追问输入：同样在 render 期间校准 —— 离开可追问的稳定态，
+  // 输入框就不再有提交落点（确认评分、评分中都不是提问的时机）
+  const [prevPhase, setPrevPhase] = useState(item.phase)
+  if (item.phase !== prevPhase) {
+    setPrevPhase(item.phase)
+    if (followup && item.phase !== 'feedback' && item.phase !== 'relearning') {
+      setFollowup(null)
+    }
   }
 
   // 当进入回忆作答时自动聚焦输入框
@@ -115,6 +146,21 @@ export function ReviewPractice({
         onSubmitAnswer(draft)
       }
     }
+  }
+
+  /** 划选「引用到对话」在复习里的落点：并进回答草稿（与学习对话的引用同构） */
+  const quoteToDraft = (text: string) => {
+    const next = draft.trim() ? `${draft.trimEnd()}\n${text}` : text
+    setDraft(next)
+    onSaveDraft(next)
+    textareaRef.current?.focus()
+  }
+
+  const submitFollowup = () => {
+    const question = followup?.text.trim()
+    if (!question) return
+    onAskFollowup(question)
+    setFollowup(null)
   }
 
   const isPreparing = item.phase === 'preparing'
@@ -157,6 +203,26 @@ export function ReviewPractice({
   const activityLabel = streamingActivities?.length
     ? streamingActivities.map((activity) => activity.label).join(' · ')
     : null
+
+  // 题目卡上的标注（questionMessage 可能为 null，钩子必须无条件调用）
+  const questionNotes = useReviewMessageNotes(questionMessage?.id ?? '')
+
+  // 可追问的稳定态：反馈已出（评分前）或补学讲解已展示 —— 此时追问不会打断任何在途请求
+  const isFollowupAllowedPhase = isFeedback || isRelearning
+
+  // 追问输入打开即聚焦
+  useEffect(() => {
+    if (followup) followupRef.current?.focus()
+  }, [followup])
+
+  // 划选菜单的动作随阶段裁剪：作答阶段引用进回答框；反馈/补学阶段可追问；
+  // 流式与落库中的阶段只留标注与复制 —— 打标签永远可用，但不打断正在进行的请求
+  const menuActions: SelectionAction[] =
+    isAnswering && !isRelearnAwaitingQuestion
+      ? ['annotate', 'quote', 'copy']
+      : isFollowupAllowedPhase && !streamingText
+        ? ['annotate', 'ask', 'copy']
+        : ['annotate', 'copy']
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full">
@@ -217,7 +283,11 @@ export function ReviewPractice({
           </div>
         ) : questionMessage ? (
           <div className="text-sm leading-relaxed text-ink">
-            <MarkdownView content={stripReviewRating(questionMessage.text)} />
+            <ReviewAnnotatableText
+              messageId={questionMessage.id}
+              source={stripReviewRating(questionMessage.text)}
+            />
+            <MessageNotes notes={questionNotes} className="mt-2" />
           </div>
         ) : streamingPurpose === 'question' || streamingPurpose === 'relearn' ? (
           <div className="text-sm leading-relaxed text-ink">
@@ -236,23 +306,11 @@ export function ReviewPractice({
         )}
       </div>
 
-      {/* 补充对话记录（提示、用户回答、反馈） */}
+      {/* 补充对话记录（提示、用户回答、追问、反馈） */}
       {otherMessages.length > 0 && (
         <div className="mt-5 space-y-4">
           {otherMessages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`rounded-lg border p-4 text-xs leading-relaxed ${
-                msg.role === 'user'
-                  ? 'border-accent/30 bg-accent-soft/20 text-ink ml-8'
-                  : 'border-line/60 bg-surface text-ink-soft mr-8'
-              }`}
-            >
-              <div className="mb-1 text-2xs text-faint">
-                {msg.role === 'user' ? '我的回答' : (OTHER_MESSAGE_LABEL[msg.purpose] ?? '反馈')}
-              </div>
-              <MarkdownView content={stripReviewRating(msg.text)} />
-            </div>
+            <ReviewTranscriptCard key={msg.id} message={msg} />
           ))}
         </div>
       )}
@@ -393,6 +451,54 @@ export function ReviewPractice({
         </div>
       )}
 
+      {/* 追问输入区：划选「就这段追问」拉起；只在可追问的稳定态存在 */}
+      {followup && isFollowupAllowedPhase && (
+        <div className="mt-5 rounded-xl border border-line/70 bg-surface p-4 shadow-sm">
+          <label htmlFor="review-followup-input" className="block mb-2 text-xs font-medium text-ink">
+            就标记的内容追问
+          </label>
+          {followup.quote ? (
+            <blockquote className="mb-2 max-h-24 overflow-y-auto rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs text-muted">
+              <MarkdownView content={followup.quote} />
+            </blockquote>
+          ) : null}
+          <Textarea
+            id="review-followup-input"
+            ref={followupRef}
+            rows={3}
+            value={followup.text}
+            onChange={(e) => setFollowup({ ...followup, text: e.target.value })}
+            onCompositionStart={() => {
+              followupComposingRef.current = true
+            }}
+            onCompositionEnd={() => {
+              followupComposingRef.current = false
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !followupComposingRef.current) {
+                e.preventDefault()
+                submitFollowup()
+              }
+            }}
+            placeholder="这段哪里没讲清楚，或者想让它再考考你… (Ctrl+Enter 发送)"
+            className="w-full text-xs leading-relaxed"
+          />
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setFollowup(null)}>
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!followup.text.trim()}
+              onClick={submitFollowup}
+            >
+              提交追问
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* 反馈与自评区 */}
       {(isFeedback || isSaving) && (
         <div className="mt-5 space-y-4">
@@ -433,6 +539,45 @@ export function ReviewPractice({
           </div>
         </div>
       )}
+
+      {/* 划选菜单：动作随阶段裁剪（见 menuActions）；origin=review 决定标注的投喂口径 */}
+      <SelectionMenu
+        key={item.nodeId}
+        nodeId={item.nodeId}
+        actions={menuActions}
+        noteOrigin="review"
+        onQuote={quoteToDraft}
+        onAsk={(quote) => setFollowup({ quote, text: '' })}
+      />
+    </div>
+  )
+}
+
+/**
+ * 历史轮次消息卡（提示 / 回答 / 追问 / 点评补学）。
+ *
+ * 独立成组件是为了让「这条消息的标注」能以 Hook 取用 —— 标注桶在 store 里按
+ * messageId 分组，组件化之后每张卡自己订阅自己的桶，互不牵连重渲染。
+ */
+function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
+  const notes = useReviewMessageNotes(message.id)
+  const isUser = message.role === 'user'
+
+  return (
+    <div
+      className={`rounded-lg border p-4 text-xs leading-relaxed ${
+        isUser
+          ? 'border-accent/30 bg-accent-soft/20 text-ink ml-8'
+          : 'border-line/60 bg-surface text-ink-soft mr-8'
+      }`}
+    >
+      <div className="mb-1 text-2xs text-faint">
+        {isUser
+          ? userMessageLabel(message.purpose)
+          : (OTHER_MESSAGE_LABEL[message.purpose] ?? '反馈')}
+      </div>
+      <ReviewAnnotatableText messageId={message.id} source={stripReviewRating(message.text)} />
+      <MessageNotes notes={notes} className="mt-2" />
     </div>
   )
 }

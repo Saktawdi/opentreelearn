@@ -1,7 +1,8 @@
-import { ArrowLeft, BookOpen } from 'lucide-react'
+import { ArrowLeft, BookOpen, NotebookText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { Id } from '@/domain/models'
+import { toast } from 'sonner'
+import type { Id, Note } from '@/domain/models'
 import {
   currentItem,
   undoableItem,
@@ -12,10 +13,12 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { hasModel } from '@/services/llm/catalog'
 import { Button } from '@/components/ui/button'
+import { bodyElement, registeredSource, revealNote } from '@/features/chat/note-anchor'
 import { ReviewOverview } from './ReviewOverview'
 import { ReviewPractice } from './ReviewPractice'
 import { ReviewSummary } from './ReviewSummary'
 import { ReviewSourcePanel } from './ReviewSourcePanel'
+import { ReviewNoteHistoryPanel } from './ReviewNoteHistoryPanel'
 import { LegacyReviewCenterDialog } from './LegacyReviewCenterDialog'
 import { FreeAskPanel } from './FreeAskPanel'
 import { legacyReviewCenters } from '@/domain/review/center'
@@ -50,6 +53,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
 
   const session = useReviewSessionStore((state) => state.session)
   const sourceOpen = useReviewSessionStore((state) => state.sourceOpen)
+  const noteHistoryOpen = useReviewSessionStore((state) => state.noteHistoryOpen)
   const streaming = useReviewSessionStore((state) => state.streaming)
   const lastUndoneNotice = useReviewSessionStore((state) => state.lastUndoneNotice)
 
@@ -70,6 +74,9 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   const resumeSession = useReviewSessionStore((state) => state.resumeSession)
   const toggleSource = useReviewSessionStore((state) => state.toggleSource)
   const setSourceOpen = useReviewSessionStore((state) => state.setSourceOpen)
+  const toggleNoteHistory = useReviewSessionStore((state) => state.toggleNoteHistory)
+  const setNoteHistoryOpen = useReviewSessionStore((state) => state.setNoteHistoryOpen)
+  const askFollowup = useReviewSessionStore((state) => state.askFollowup)
   const ensureContent = useReviewSessionStore((state) => state.ensureCurrentItemContent)
 
   // 查阅资料的节点 ID（默认为当前练习节点）
@@ -118,6 +125,42 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   const handlePauseAndExit = async () => {
     await pauseAndLeave()
     onLeave(session?.returnTo)
+  }
+
+  /**
+   * 笔记历史条目的定位：标注锚在两类内容上，去处的组件也不同。
+   *
+   * - 节点对话消息（学习期标注、复习期在资料面板里打的）：打开资料面板再定位 ——
+   *   面板要渲染一拍才挂上锚点，轮询等待挂载完成；
+   * - 复习消息（练习舞台里的题目/点评/回答）：舞台只渲染当前项，不在屏上就如实告知。
+   */
+  const revealNoteFromHistory = (note: Note) => {
+    const isChatMessage = (messagesByNode[note.nodeId] ?? []).some(
+      (message) => message.id === note.messageId,
+    )
+    if (isChatMessage) {
+      setInspectedNodeId(note.nodeId)
+      setSourceOpen(true)
+      revealWhenMounted(note)
+      return
+    }
+    if (!bodyElement(note.messageId) || !registeredSource(note.messageId)) {
+      toast.info('这条标记所在的内容当前不在屏幕上（可能属于其他主题或更早的轮次）')
+      return
+    }
+    revealNote(note)
+  }
+
+  const revealWhenMounted = (note: Note, attempts = 10) => {
+    if (bodyElement(note.messageId) && registeredSource(note.messageId)) {
+      revealNote(note)
+      return
+    }
+    if (attempts <= 0) {
+      toast.info('标注所在的内容还没渲染出来，请稍后再点一次')
+      return
+    }
+    window.setTimeout(() => revealWhenMounted(note, attempts - 1), 150)
   }
 
   // 模式判断：
@@ -193,6 +236,17 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={toggleNoteHistory}
+                  className={`text-2xs gap-1.5 ${
+                    noteHistoryOpen ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  <NotebookText className="h-3.5 w-3.5" />
+                  笔记历史
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => void endSession()}
                   className="text-2xs text-faint hover:text-ink"
                 >
@@ -252,6 +306,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
               }}
               onToggleSource={toggleSource}
               onRetry={() => void ensureContent()}
+              onAskFollowup={(question) => void askFollowup(question)}
             />
           ) : (
             <ReviewOverview
@@ -288,6 +343,19 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
             snapshotVersion={current?.sourceVersion}
             onClose={() => setSourceOpen(false)}
             onLeaveToNode={handleLeaveToNode}
+          />
+        </div>
+      )}
+
+      {/* 笔记历史抽屉：与资料面板互斥（store 层开关互相收起对方） */}
+      {noteHistoryOpen && (
+        <div className="relative w-80 lg:w-96 shrink-0 h-full z-20 shadow-panel">
+          <ReviewNoteHistoryPanel
+            session={session}
+            currentNodeId={current?.nodeId}
+            nodes={nodes}
+            onClose={() => setNoteHistoryOpen(false)}
+            onReveal={revealNoteFromHistory}
           />
         </div>
       )}

@@ -6,6 +6,10 @@ import { resolveThread } from '@/domain/thread/resolve'
 import { messageText } from '@/domain/messages'
 import { formatRelativeTime } from '@/lib/time'
 import { Button } from '@/components/ui/button'
+import { SelectionMenu } from '@/features/chat/SelectionMenu'
+import { MessageNotes } from '@/features/chat/MessageNotes'
+import { ReviewAnnotatableText } from './ReviewAnnotatable'
+import { useReviewMessageNotes } from './use-review-notes'
 
 interface ReviewSourcePanelProps {
   nodeId: Id
@@ -143,28 +147,41 @@ export function ReviewSourcePanel({
             {visibleMessages.length === 0 ? (
               <p className="py-6 text-center text-2xs text-muted">该主题暂无原对话记录</p>
             ) : (
-              visibleMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`rounded-md border p-3 ${
-                    msg.role === 'assistant'
-                      ? 'border-line/60 bg-surface'
-                      : 'border-accent/30 bg-accent-soft/20'
-                  }`}
-                >
-                  <div className="mb-1 flex items-center justify-between text-2xs text-muted">
-                    <span className="font-medium">
-                      {msg.role === 'assistant' ? '导师' : '学习者'}
-                    </span>
-                    <span>{formatRelativeTime(msg.createdAt)}</span>
-                  </div>
-                  <MarkdownView content={messageText(msg)} />
-                </div>
-              ))
+              visibleMessages.map((msg) => <SourceMessageCard key={msg.id} message={msg} />)
             )}
           </div>
         )}
       </div>
+
+      {/* 资料里也只留标注与复制：追问是练习舞台的动作，资料面板保持「查阅」心智 */}
+      <SelectionMenu key={nodeId} nodeId={nodeId} actions={['annotate', 'copy']} noteOrigin="review" />
     </aside>
+  )
+}
+
+/**
+ * 资料面板里的单条原对话卡片，接入划选打标签。
+ *
+ * 标注锚定到节点对话消息本体（id 全局稳定）：在复习里给资料打的标记与学习对话里
+ * 打的标记落在同一条消息上，回到节点对话时高亮照常渲染 —— 这是「同一份资料、
+ * 同一套标注」而不是两套平行的记录。
+ */
+function SourceMessageCard({ message }: { message: Message }) {
+  const notes = useReviewMessageNotes(message.id)
+  const isAssistant = message.role === 'assistant'
+
+  return (
+    <div
+      className={`rounded-md border p-3 ${
+        isAssistant ? 'border-line/60 bg-surface' : 'border-accent/30 bg-accent-soft/20'
+      }`}
+    >
+      <div className="mb-1 flex items-center justify-between text-2xs text-muted">
+        <span className="font-medium">{isAssistant ? '导师' : '学习者'}</span>
+        <span>{formatRelativeTime(message.createdAt)}</span>
+      </div>
+      <ReviewAnnotatableText messageId={message.id} source={messageText(message)} />
+      <MessageNotes notes={notes} className="mt-2" />
+    </div>
   )
 }

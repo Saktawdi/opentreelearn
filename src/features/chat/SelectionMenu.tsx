@@ -4,12 +4,13 @@ import {
   GitBranch,
   Highlighter,
   Loader2,
+  MessageCircleQuestion,
   MessageSquareQuote,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { Tooltip } from '@/components/ui/tooltip'
-import type { Id, NoteLabel } from '@/domain/models'
+import type { Id, NoteLabel, NoteOrigin } from '@/domain/models'
 import {
   collectUsedLabels,
   sameAnchor,
@@ -50,27 +51,34 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * 「月牙盘」排布：四枚圆形图标按钮沿一段**竖直**的弧线铺开 —— 弧顶（中轴）拱在最右，
+ * 「月牙盘」排布：圆形图标按钮沿一段**竖直**的弧线铺开 —— 弧顶（中轴）拱在最右，
  * 上下依次向左侧内收，整体是一弯竖起来的月牙。容器尺寸只用于定位与量尺寸。
- *
- * 合二为一后共 4 槽（标注/高亮、引用、新建分支、复制）。
  */
 const BUTTON = 30
 const ARC_RADIUS = 68
 const ARC_SPREAD = 52
-const SLOTS = 4
-const ARC_STEP = (ARC_SPREAD * 2) / (SLOTS - 1)
 const ARC_WIDTH = Math.round(ARC_RADIUS * (1 - Math.cos((ARC_SPREAD * Math.PI) / 180)) + BUTTON)
 const ARC_HEIGHT = Math.round(2 * ARC_RADIUS * Math.sin((ARC_SPREAD * Math.PI) / 180) + BUTTON)
 
-/** 第 index 枚的位置：竖向按正弦铺开，横向按「离弧顶越远越往左收」的正矢排。 */
-function slotStyle(index: number) {
-  const angle = ((-ARC_SPREAD + index * ARC_STEP) * Math.PI) / 180
+/** 第 index 枚（共 slots 枚）的位置：竖向按正弦铺开，横向按「离弧顶越远越往左收」的正矢排。 */
+function slotStyle(index: number, slots: number) {
+  const step = (ARC_SPREAD * 2) / Math.max(1, slots - 1)
+  const angle = ((-ARC_SPREAD + index * step) * Math.PI) / 180
   return {
     left: Math.round(ARC_WIDTH - BUTTON - ARC_RADIUS * (1 - Math.cos(angle))),
     top: Math.round(ARC_HEIGHT / 2 + ARC_RADIUS * Math.sin(angle) - BUTTON / 2),
   }
 }
+
+/**
+ * 菜单动作槽位。
+ *
+ * 学习对话用全部四个；复习中心等新表面按场景裁剪（见各挂载点）——
+ * 动作是配置出来的而不是 if 出来的，将来任何新表面都能组合自己的月牙盘。
+ */
+export type SelectionAction = 'annotate' | 'quote' | 'ask' | 'branch' | 'copy'
+
+const DEFAULT_ACTIONS: readonly SelectionAction[] = ['annotate', 'quote', 'branch', 'copy']
 
 /** 选区锚点所在的消息正文容器；落在输入框、画布等非正文区域时返回 null（不弹菜单）。 */
 function ownerBody(node: globalThis.Node | null): HTMLElement | null {
@@ -199,6 +207,7 @@ function ArcAction({
   icon,
   label,
   index,
+  slots,
   busy,
   onSelect,
 }: {
@@ -206,6 +215,7 @@ function ArcAction({
   label: string
   /** 第几枚（0 起）：位置由弧线决定，见 slotStyle */
   index: number
+  slots: number
   busy?: boolean
   onSelect: () => void
 }) {
@@ -217,7 +227,7 @@ function ArcAction({
         disabled={busy}
         onMouseDown={(event) => event.preventDefault()}
         onClick={onSelect}
-        style={{ width: BUTTON, height: BUTTON, ...slotStyle(index) }}
+        style={{ width: BUTTON, height: BUTTON, ...slotStyle(index, slots) }}
         className="absolute grid place-items-center rounded-full border border-line/80 bg-surface/95 text-ink-soft shadow-node ring-1 ring-white/[0.04] backdrop-blur transition-colors hover:border-accent/40 hover:bg-elevated hover:text-accent disabled:opacity-60"
       >
         {icon}
@@ -227,8 +237,10 @@ function ArcAction({
 }
 
 /**
- * 消息正文框选后的悬浮菜单（月牙盘）：四枚圆形图标按钮沿竖直弧线 ——
- * 标注（高亮/打标签合二为一）/ 引用到对话 / 新建子分支节点 / 复制。
+ * 消息正文框选后的悬浮菜单（月牙盘）：动作槽位由 `actions` 配置 ——
+ * 学习对话默认 标注 / 引用到对话 / 新建子分支节点 / 复制；
+ * 复习中心传 `['annotate', 'ask', 'copy']` 之类裁剪组合，`noteOrigin` 决定
+ * 新建标注的创建面（喂给 AI 的口径不同，见 domain/models 的 NoteOrigin）。
  *
  * 菜单常驻挂载（隐藏态）而不是按需挂载 —— 位置要按自身实际宽高算，先量再定位，
  * 才能在视口边缘正确避让；量尺寸必须在事件里做（不能在 render/effect 里读 DOM）。
@@ -238,9 +250,18 @@ function ArcAction({
 export function SelectionMenu({
   nodeId,
   onQuote,
+  onAsk,
+  actions = DEFAULT_ACTIONS,
+  noteOrigin = 'chat',
 }: {
   nodeId: Id
-  onQuote: (text: string) => void
+  /** 引用到对话（'quote' 槽位）：给出才渲染该槽位 */
+  onQuote?: (text: string) => void
+  /** 就这段追问（'ask' 槽位）：给出才渲染该槽位 */
+  onAsk?: (quote: string) => void
+  actions?: readonly SelectionAction[]
+  /** 新建标注的创建面；缺省 = 学习对话 */
+  noteOrigin?: NoteOrigin
 }) {
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const sendMessage = useWorkspaceStore((state) => state.sendMessage)
@@ -424,6 +445,7 @@ export function SelectionMenu({
           start: annotating.anchor.start,
           end: annotating.anchor.end,
           ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(noteOrigin !== 'chat' ? { origin: noteOrigin } : {}),
         })
         if (!created) throw new Error('未能写入标注')
       }
@@ -446,10 +468,17 @@ export function SelectionMenu({
   const annotatingNoteId = annotating?.noteId ?? null
 
   const quoteToComposer = () => {
-    if (!menu) return
+    if (!menu || !onQuote) return
     onQuote(menu.quote)
     // 交棒给输入框：清掉页面选区，否则接下来打字时菜单会被 keyup 重新唤起
     close()
+  }
+
+  const askAboutSelection = () => {
+    if (!menu || !onAsk) return
+    const quote = menu.quote
+    close()
+    onAsk(quote)
   }
 
   const copy = async () => {
@@ -461,6 +490,79 @@ export function SelectionMenu({
       copiedTimer.current = window.setTimeout(() => setCopied(false), 1400)
     } catch {
       toast.error('复制失败，请手动复制')
+    }
+  }
+
+  // 没给 handler 的动作槽位不渲染（quote/ask 是可选能力，branch/copy/annotate 恒可用）
+  const slots = actions.filter(
+    (action) => (action !== 'quote' || Boolean(onQuote)) && (action !== 'ask' || Boolean(onAsk)),
+  )
+
+  const renderAction = (action: SelectionAction, index: number) => {
+    switch (action) {
+      case 'annotate':
+        return (
+          <ArcAction
+            key={action}
+            index={index}
+            slots={slots.length}
+            icon={<Highlighter className="h-4 w-4" />}
+            label="标注 / 高亮"
+            busy={busy}
+            onSelect={openAnnotate}
+          />
+        )
+      case 'quote':
+        return (
+          <ArcAction
+            key={action}
+            index={index}
+            slots={slots.length}
+            icon={<MessageSquareQuote className="h-4 w-4" />}
+            label="引用到对话"
+            onSelect={quoteToComposer}
+          />
+        )
+      case 'ask':
+        return (
+          <ArcAction
+            key={action}
+            index={index}
+            slots={slots.length}
+            icon={<MessageCircleQuestion className="h-4 w-4" />}
+            label="就这段追问"
+            onSelect={askAboutSelection}
+          />
+        )
+      case 'branch':
+        return (
+          <ArcAction
+            key={action}
+            index={index}
+            slots={slots.length}
+            icon={
+              busy ? (
+                <Loader2 className="h-4 w-4 animate-spin text-accent" />
+              ) : (
+                <GitBranch className="h-4 w-4" />
+              )
+            }
+            label="新建子分支节点"
+            busy={busy}
+            onSelect={openBranch}
+          />
+        )
+      case 'copy':
+        return (
+          <ArcAction
+            key={action}
+            index={index}
+            slots={slots.length}
+            icon={copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+            label={copied ? '已复制' : '复制'}
+            onSelect={() => void copy()}
+          />
+        )
     }
   }
 
@@ -481,33 +583,7 @@ export function SelectionMenu({
           menu ? '' : 'invisible pointer-events-none',
         )}
       >
-        <ArcAction
-          index={0}
-          icon={<Highlighter className="h-4 w-4" />}
-          label="标注 / 高亮"
-          busy={busy}
-          onSelect={openAnnotate}
-        />
-        <ArcAction index={1} icon={<MessageSquareQuote className="h-4 w-4" />} label="引用到对话" onSelect={quoteToComposer} />
-        <ArcAction
-          index={2}
-          icon={
-            busy ? (
-              <Loader2 className="h-4 w-4 animate-spin text-accent" />
-            ) : (
-              <GitBranch className="h-4 w-4" />
-            )
-          }
-          label="新建子分支节点"
-          busy={busy}
-          onSelect={openBranch}
-        />
-        <ArcAction
-          index={3}
-          icon={copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-          label={copied ? '已复制' : '复制'}
-          onSelect={() => void copy()}
-        />
+        {slots.map(renderAction)}
       </div>
 
       {branching ? (

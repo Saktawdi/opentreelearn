@@ -71,6 +71,8 @@ interface ReviewSessionStoreState {
   error: string | null
   /** 资料面板是否展开（桌面右侧抽屉，窄屏覆盖） */
   sourceOpen: boolean
+  /** 笔记历史面板是否展开；与资料面板互斥 —— 同时开两块抽屉会把主舞台挤没 */
+  noteHistoryOpen: boolean
   streaming: ReviewStreamingState | null
   /** 撤销评分后的短暂持久条；用户可以随时点撤销，不是自动消失的 toast */
   lastUndoneNotice: string | null
@@ -126,6 +128,9 @@ interface ReviewSessionStoreState {
   /** 打开/关闭资料面板 */
   toggleSource: () => void
   setSourceOpen: (open: boolean) => void
+  /** 打开/关闭笔记历史面板 */
+  toggleNoteHistory: () => void
+  setNoteHistoryOpen: (open: boolean) => void
   clearError: () => void
   clearNotice: () => void
   reset: () => void
@@ -153,6 +158,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
     loading: false,
     error: null,
     sourceOpen: false,
+    noteHistoryOpen: false,
     streaming: null,
     lastUndoneNotice: null,
 
@@ -565,11 +571,19 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
     },
 
     toggleSource: () => {
-      set((state) => ({ sourceOpen: !state.sourceOpen }))
+      set((state) => ({ sourceOpen: !state.sourceOpen, noteHistoryOpen: false }))
     },
 
     setSourceOpen: (open) => {
-      set({ sourceOpen: open })
+      set({ sourceOpen: open, ...(open ? { noteHistoryOpen: false } : {}) })
+    },
+
+    toggleNoteHistory: () => {
+      set((state) => ({ noteHistoryOpen: !state.noteHistoryOpen, sourceOpen: false }))
+    },
+
+    setNoteHistoryOpen: (open) => {
+      set({ noteHistoryOpen: open, ...(open ? { sourceOpen: false } : {}) })
     },
 
     clearError: () => {

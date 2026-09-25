@@ -9,16 +9,7 @@ import { cn, errorMessage } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { NoteDialog } from './NoteDialog'
 import { revealNote } from './note-anchor'
-
-/**
- * 标注条里的单行预览。
- *
- * quote 存的是**源文**（公式连同 `$…$` 一起，见 note-anchor.ts），一行里塞 `$` 只会更挤；
- * 展示时把公式定界符收掉，里面的 LaTeX 仍照原样 —— 这是预览，不是可以复制的正文。
- */
-function quotePreview(quote: string): string {
-  return normalizeWhitespace(quote.replace(/\$\$?/g, ''))
-}
+import { quotePreview } from './note-preview'
 
 /**
  * 消息下方的标注条：这条消息上的高亮与带标签的标注都在这里回看。
@@ -32,9 +23,12 @@ function quotePreview(quote: string): string {
 export const MessageNotes = memo(function MessageNotes({
   notes,
   align = 'start',
+  className,
 }: {
   notes: Note[]
   align?: 'start' | 'end'
+  /** 外部间距钩子：卡片里挂在正文下方时用（列表为空时整条不渲染，不留空隙） */
+  className?: string
 }) {
   const updateNote = useWorkspaceStore((state) => state.updateNote)
   const removeNote = useWorkspaceStore((state) => state.removeNote)
@@ -73,6 +67,7 @@ export const MessageNotes = memo(function MessageNotes({
         className={cn(
           'flex max-w-full flex-wrap gap-1.5 pt-0.5',
           align === 'end' ? 'justify-end' : 'justify-start',
+          className,
         )}
       >
         {notes.map((note, index) => (
