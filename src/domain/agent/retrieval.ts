@@ -1,6 +1,6 @@
 import { messageSource } from '@/domain/messages'
-import type { Id, Message, Node, Note, Role } from '@/domain/models'
-import { formatNoteLabels, labeledNotes, noteLabelName } from '@/domain/notes'
+import type { Id, Message, Node, Note, NoteOrigin, Role } from '@/domain/models'
+import { formatNoteLabels, labeledNotes, noteLabelName, noteOrigin } from '@/domain/notes'
 import { resolveThread } from '@/domain/thread/resolve'
 import { buildTreeIndex, depthOf } from '@/domain/tree/tree'
 import { treeOrder } from '@/domain/review/digest'
@@ -256,8 +256,15 @@ export interface NoteHit {
   labels: string[]
   /** 标签的展示形态：`[错题][没懂]` */
   labelsText: string
-  quote: string
+  /**
+   * 被标原文；**复习期标注不给**（origin: 'review'）——那原文是上一轮的讲解、
+   * 很可能就是答案，从工具里漏出去与投喂时回送是同一种污染。
+   */
+  quote?: string
+  /** 复习期标注的备注（用户自己的话），是它替代原文的语义载体 */
   body?: string
+  /** 创建面：review 时 quote 缺省，模型应按标签与 body 理解这条命中 */
+  origin?: NoteOrigin
   createdAt: number
   /** 仅在绑定作用域时出现：命中来自框选节点（selected）还是显式 widen 的外部（other） */
   scope?: ScopeMark
@@ -310,7 +317,10 @@ export function searchLabeledNotes(
       nodeTitle: titles.get(note.nodeId) ?? '（节点已删除）',
       labels: note.labels,
       labelsText: formatNoteLabels(note.labels),
-      quote: truncate(normalizeWhitespace(note.quote), 200),
+      // 复习期标注不回送原文（与复习材料的投喂口径一致，见 domain/context/review.ts）
+      ...(noteOrigin(note) === 'review'
+        ? { origin: 'review' as const }
+        : { quote: truncate(normalizeWhitespace(note.quote), 200) }),
       ...(note.body ? { body: truncate(normalizeWhitespace(note.body), 200) } : {}),
       createdAt: note.createdAt,
       ...(options.scope

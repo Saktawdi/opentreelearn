@@ -31,6 +31,7 @@ import {
 } from '@/domain/review/delivery'
 import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
 import { suggestionFromMessages } from '@/domain/review/protocol'
+import { noteOrigin } from '@/domain/notes'
 import { threadPathFingerprint, resolveThread } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { runReviewRequest } from '@/services/llm/review'
@@ -864,7 +865,14 @@ async function executeModelTurn(
   // 标注按**消息**分组（与 workspace-store.notesByMessage 同口径）：
   // 旧实现拿 nodeId 去查这张表，导致复习材料里的「笔记」那段从未生效过
   const notesByMessage = new Map<Id, Note[]>()
+  // 复习期标注走独立通道：它们锚在复习消息上，按消息索引查不到；投喂口径也不同
+  // （只送标签与备注，不回送上一轮讲解原文 —— 见 domain/context/review.ts）
+  const reviewNotes: Note[] = []
   for (const note of notes) {
+    if (noteOrigin(note) === 'review') {
+      if (note.nodeId === item.nodeId) reviewNotes.push(note)
+      continue
+    }
     const bucket = notesByMessage.get(note.messageId)
     if (bucket) bucket.push(note)
     else notesByMessage.set(note.messageId, [note])
@@ -904,6 +912,7 @@ async function executeModelTurn(
     nodes,
     messagesByNode,
     notesByMessage,
+    reviewNotes,
     item,
     purpose,
     text,

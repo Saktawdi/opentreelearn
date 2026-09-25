@@ -284,6 +284,15 @@ export type NoteLabel = string
  * `labels` 空数组 = 纯高亮（用户自己的书签）：正文里照常画线，但**默认不进 AI 上下文**
  * —— 只有带标签的标注才外送，那是用户亲口确认过的语义（错题 / 没懂）。
  */
+/**
+ * 标注的创建面：学习对话里划的（chat）还是复习中心里划的（review）。
+ *
+ * 它决定喂给 AI 的口径：复习期的标注锚在 AI 自己的讲解上，quote 带回去就是把
+ * 上一轮的答案塞进下一轮的上下文（「认得出」替换「想得起」），所以复习期标注
+ * 只送标签与备注、不送原文（见 domain/context/review.ts 的 renderLabeledNotes）。
+ */
+export type NoteOrigin = 'chat' | 'review'
+
 export interface Note {
   id: Id
   projectId: Id
@@ -296,6 +305,11 @@ export interface Note {
   end: number
   /** 可选备注，退居次要：默认不进 AI 上下文，且限长（见 NOTE_BODY_MAX）。 */
   body?: string
+  /**
+   * 创建面；缺省 = chat。刻意可选：旧数据没有这个字段，同步载荷也无需迁移 ——
+   * 读取侧用 domain/notes 的 noteOrigin() 取值，不要直接读字段。
+   */
+  origin?: NoteOrigin
   createdAt: number
   updatedAt: number
 }

@@ -191,3 +191,105 @@ describe('review material: user annotations', () => {
     expect(material.text).not.toContain('被切走的历史版本')
   })
 })
+
+describe('review material: review-session annotations (origin=review)', () => {
+  const node = makeNode({ id: 'n1', title: '区间代换' })
+
+  it('sends labels and body but never the quoted text for review-origin annotations', () => {
+    // 复习期标注锚在上一轮讲解上，quote 极可能就是答案本体：回送 = 把答案喂回下一轮
+    const material = buildReviewMaterial({
+      node,
+      nodes: [node],
+      messagesByNode: new Map(),
+      reviewNotes: [
+        {
+          id: 'r1',
+          projectId: 'p1',
+          nodeId: 'n1',
+          messageId: 'review-msg-1',
+          labels: ['mistake'],
+          quote: '单奇凑微分，全偶用降幂',
+          start: 0,
+          end: 12,
+          body: '总是忘记先拆奇偶次幂',
+          origin: 'review',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    })
+
+    expect(material.text).toContain('- [错题]（复习期标记）总是忘记先拆奇偶次幂')
+    expect(material.text).toContain('不附原文')
+    expect(material.text).not.toContain('单奇凑微分，全偶用降幂')
+  })
+
+  it('keeps a bare review-origin annotation as a weak signal without any text', () => {
+    const material = buildReviewMaterial({
+      node,
+      nodes: [node],
+      messagesByNode: new Map(),
+      reviewNotes: [
+        {
+          id: 'r2',
+          projectId: 'p1',
+          nodeId: 'n1',
+          messageId: 'review-msg-2',
+          labels: ['confusing'],
+          quote: '被标的那段讲解',
+          start: 0,
+          end: 7,
+          origin: 'review',
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+    })
+
+    expect(material.text).toContain('- [没懂]（复习期标记）无备注')
+    expect(material.text).not.toContain('被标的那段讲解')
+  })
+
+  it('puts the newest review annotation first and merges with chat annotations', () => {
+    const messages = [
+      makeMessage({ id: 'm1', nodeId: 'n1', role: 'assistant', parts: [{ type: 'text', text: '讲解' }] }),
+    ]
+    const material = buildReviewMaterial({
+      node,
+      nodes: [node],
+      messagesByNode: messagesByNode([['n1', messages]]),
+      notesByMessage: new Map([
+        ['m1', [
+          {
+            id: 'c1', projectId: 'p1', nodeId: 'n1', messageId: 'm1',
+            labels: ['key'], quote: '学习期的关键结论', start: 0, end: 8,
+            createdAt: 1, updatedAt: 1,
+          },
+        ]],
+      ]),
+      reviewNotes: [
+        {
+          id: 'r-old', projectId: 'p1', nodeId: 'n1', messageId: 'rm1',
+          labels: ['mistake'], quote: '旧', start: 0, end: 1, origin: 'review',
+          createdAt: 10, updatedAt: 10,
+        },
+        {
+          id: 'r-new', projectId: 'p1', nodeId: 'n1', messageId: 'rm2',
+          labels: ['mistake'], quote: '新', start: 0, end: 1, origin: 'review',
+          body: '最新的信号', createdAt: 20, updatedAt: 20,
+        },
+      ],
+    })
+
+    const text = material.text
+    // 学习期标注照常带原文；两条复习期标注都进材料，最新的排前面
+    expect(text).toContain('- [关键] 学习期的关键结论')
+    expect(text).toContain('## 用户标注（')
+    expect(text).toContain('[错题] 2')
+    expect(text).toContain('[关键] 1')
+    const newestAt = text.indexOf('（复习期标记）最新的信号')
+    const oldestAt = text.indexOf('（复习期标记）无备注')
+    expect(newestAt).toBeGreaterThan(-1)
+    expect(oldestAt).toBeGreaterThan(newestAt)
+  })
+})

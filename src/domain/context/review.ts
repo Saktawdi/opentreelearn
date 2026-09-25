@@ -6,6 +6,7 @@ import {
   countNoteLabels,
   formatNoteLabels,
   labeledNotes,
+  noteOrigin,
   renderNoteLegend,
 } from '@/domain/notes'
 import { REVIEW_RATING_MARKER_HINT } from '@/domain/review/protocol'
@@ -57,19 +58,42 @@ export interface ReviewMaterialInput {
    * （演进方案 4.1 的死代码）。这里改成先取本节点的消息、再按消息取标注。
    */
   notesByMessage?: Map<Id, Note[]>
+  /**
+   * 本节点在**复习会话里**产生的标注（历次复习累计，锚在复习消息上）。
+   *
+   * 与 `notesByMessage` 分开传：复习消息不在节点对话流里，按消息索引查不到；
+   * 而且两种标注的投喂口径不同 —— 复习期标注只送标签与备注（见 renderLabeledNotes）。
+   */
+  reviewNotes?: Note[]
   budgetTokens?: number
 }
 
 const MATERIAL_HEADER = '## 学习资料（只作为出题与点评的依据，不要直接整段念给学习者）'
 
 /**
- * 标注的渲染：`- [错题][没懂] 判断动量是否守恒时忽略了竖直方向`。
+ * 复习期标注的投喂口径说明，紧跟标注图例：不解释这一句，模型会把「（复习期标记）无备注」
+ * 当成数据缺损，或者尝试从上下文里把它对应的讲解内容翻出来念给学习者。
+ */
+const REVIEW_NOTE_FEEDING_RULE =
+  '- 来自复习期的标注只给标签与备注、不附原文：原文是上一轮的讲解，很可能就是答案本体，回送会把「主动回忆」退化成「认出答案」。按标签与备注理解它、在出题与点评里优先照顾，但不要复述它指向的内容。'
+
+/**
+ * 标注的渲染，按创建面分两种口径：
  *
- * 只给标签与原文，**不给备注**：备注默认不进 AI 上下文（演进方案 4.4）——
- * 标签必须能独立表达完整意思，细节留到工具显式索取全文时再给。
+ * - 学习期（chat）：`- [错题][没懂] 判断动量是否守恒时忽略了竖直方向` ——
+ *   只给标签与原文，**不给备注**：备注默认不进 AI 上下文（演进方案 4.4）——
+ *   标签必须能独立表达完整意思，细节留到工具显式索取全文时再给。
+ * - 复习期（review）：`- [错题]（复习期标记）总是记不住方向` —— 只给标签与备注，
+ *   **不回送原文**。复习期的标注锚在上一轮的讲解上，原文极可能就是本题答案要点；
+ *   带回去，下一轮就从「主动回忆」退化成「认出答案」。没有备注时保留标记本身：
+ *   「这里被标过」仍是有用的弱信号。
  */
 function renderLabeledNotes(notes: Note[]): string[] {
   return notes.map((note) => {
+    if (noteOrigin(note) === 'review') {
+      const body = note.body ? truncate(normalizeWhitespace(note.body), 120) : '无备注'
+      return `- ${formatNoteLabels(note.labels)}（复习期标记）${body}`
+    }
     const quote = truncate(normalizeWhitespace(note.quote), 120)
     return `- ${formatNoteLabels(note.labels)} ${quote}`
   })
@@ -113,7 +137,10 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
   const chain = [...ancestors.map((item) => item.title), node.title]
   const pathLine = chain.map((title, depth) => `${'  '.repeat(depth)}- ${title}`).join('\n')
 
-  const notes = collectLabeledNotes(node.id, path, messagesByNode, input.notesByMessage)
+  const chatNotes = collectLabeledNotes(node.id, path, messagesByNode, input.notesByMessage)
+  // 复习期标注：本节点历次复习累计，最新的排前面（最近的 struggling 信号最相关）
+  const reviewNotes = labeledNotes(input.reviewNotes ?? []).sort((a, b) => b.createdAt - a.createdAt)
+  const notes = [...chatNotes, ...reviewNotes]
 
   const transcriptLines = path.map((message, position) => {
     const speaker = message.role === 'assistant' ? '导师' : '学习者'
@@ -129,7 +156,7 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
       ? `## 上次评估发现的薄弱点\n${node.mastery.weakPoints.map((point) => `- ${point}`).join('\n')}`
       : '',
     notes.length > 0
-      ? `## 用户标注（${countNoteLabels(notes)}）\n${renderNoteLegend(collectUsedLabels(notes))}\n${renderLabeledNotes(notes.slice(0, 20)).join('\n')}`
+      ? `## 用户标注（${countNoteLabels(notes)}）\n${renderNoteLegend(collectUsedLabels(notes))}\n${REVIEW_NOTE_FEEDING_RULE}\n${renderLabeledNotes(notes.slice(0, 20)).join('\n')}`
       : '',
     transcriptLines.length > 0
       ? `## 原学习对话（按时间顺序）\n${transcriptLines.join('\n')}`

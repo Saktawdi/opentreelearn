@@ -193,6 +193,9 @@ export function normalizeNote(value: unknown, now = Date.now()): Note | null {
   const end = Math.max(start, Math.floor(readNumber(value.end, start + quote.length)))
   const createdAt = readNumber(value.createdAt, now)
   const body = normalizeNoteBody(value.body)
+  // 创建面只认显式的 'review'：缺省与其它值都按学习期处理（读回不清洗注入，
+  // 保持载荷精简；取值一律走 domain/notes 的 noteOrigin()）
+  const origin = value.origin === 'review' ? 'review' as const : undefined
 
   return {
     id,
@@ -204,6 +207,7 @@ export function normalizeNote(value: unknown, now = Date.now()): Note | null {
     start,
     end,
     ...(body ? { body } : {}),
+    ...(origin ? { origin } : {}),
     createdAt,
     updatedAt: readNumber(value.updatedAt, createdAt),
   }

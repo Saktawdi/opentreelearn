@@ -1,4 +1,4 @@
-import type { Note, NoteLabel } from './models'
+import type { Note, NoteLabel, NoteOrigin } from './models'
 
 /** 标注在正文纯文本里的字符区间 `[start, end)`。 */
 export interface Anchor {
@@ -84,6 +84,11 @@ export function normalizeNoteBody(value: unknown): string | undefined {
 /** 纯高亮（书签）：没有任何标签。 */
 export function isPlainHighlight(note: Note): boolean {
   return note.labels.length === 0
+}
+
+/** 标注的创建面：旧数据与未带 origin 的记录一律按学习对话处理。 */
+export function noteOrigin(note: Pick<Note, 'origin'>): NoteOrigin {
+  return note.origin ?? 'chat'
 }
 
 /** 只取带标签的标注 —— 进 AI 上下文、进复习材料、进工具返回的一律是这一批。 */

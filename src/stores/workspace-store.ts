@@ -17,6 +17,7 @@ import type {
   NodeStatus,
   Note,
   NoteLabel,
+  NoteOrigin,
   Project,
   ProjectSettings,
 } from '@/domain/models'
@@ -120,6 +121,8 @@ export interface NewNoteInput {
   start: number
   end: number
   body?: string
+  /** 创建面：学习对话（缺省）或复习中心。决定投喂 AI 时的口径。 */
+  origin?: NoteOrigin
 }
 
 /** 一次由 Agent 完成的改动：给用户看的一句话 + 撤销它的动作。 */
@@ -659,6 +662,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         start: input.start,
         end: input.end,
         ...(body ? { body } : {}),
+        ...(input.origin ? { origin: input.origin } : {}),
         createdAt: now,
         updatedAt: now,
       }

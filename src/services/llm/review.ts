@@ -41,6 +41,8 @@ export interface ReviewRequestInput {
   nodes: Node[]
   messagesByNode: Map<Id, Message[]>
   notesByMessage?: Map<Id, Note[]>
+  /** 本节点在复习会话里产生的标注（历次累计）；投喂口径见 buildReviewMaterial */
+  reviewNotes?: Note[]
   item: ReviewSessionItem
   purpose: ReviewRequestPurpose
   /** 本轮要发给模型的新内容（学习者回答 / 追问 / 空的触发语） */
@@ -196,6 +198,7 @@ export async function runReviewRequest(
     nodes: input.nodes,
     messagesByNode: input.messagesByNode,
     notesByMessage: input.notesByMessage,
+    reviewNotes: input.reviewNotes,
     budgetTokens: input.settings.contextBudget,
   })
 
