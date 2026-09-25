@@ -14,6 +14,7 @@ import type {
   Message,
   MessagePart,
   Node,
+  NodeStatus,
   Note,
   NoteLabel,
   Project,
@@ -127,6 +128,17 @@ export interface AgentChange {
   undo: () => Promise<void>
 }
 
+/** 归档前记录的节点状态：撤销归档 = 按这份名单原样恢复。 */
+export interface ArchivedEntry {
+  id: Id
+  status: NodeStatus
+}
+
+/** 重新生成/编辑重发会淘汰旧版本时的预演结果；不淘汰则返回 null。 */
+export interface VersionPrunePreview {
+  removedMessageIds: Id[]
+}
+
 interface WorkspaceState {
   projectId: Id | null
   project: Project | null
@@ -172,7 +184,15 @@ interface WorkspaceState {
   setNodeTitle: (id: Id, title: string) => Promise<void>
   setNodePosition: (id: Id, position: { x: number; y: number } | null) => Promise<void>
   relayout: () => Promise<void>
-  archiveNode: (id: Id) => Promise<void>
+  archiveNode: (id: Id) => Promise<ArchivedEntry[]>
+  /** 撤销归档：按 archiveNode 返回的名单把状态原样恢复。 */
+  restoreArchivedNodes: (entries: ArchivedEntry[]) => Promise<void>
+  /** 预演一次重新生成/编辑重发会不会淘汰旧版本；纯查询，不改任何数据。 */
+  peekVersionPrune: (
+    nodeId: Id,
+    kind: 'regenerate' | 'edit',
+    messageId?: Id,
+  ) => VersionPrunePreview | null
   deleteNode: (id: Id) => Promise<void>
   updateProjectSettings: (patch: Partial<ProjectSettings>) => Promise<void>
   addNote: (input: NewNoteInput) => Promise<Note | null>
@@ -477,6 +497,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const index = buildTreeIndex(nodes)
       const targets = [id, ...descendantsOf(index, id).map((node) => node.id)]
       const repositories = getRepositories()
+      // 记录归档前状态：撤销时按这份名单原样恢复（含此前已被归档的后代，不误伤）
+      const previousStatuses: ArchivedEntry[] = targets.map((nodeId) => {
+        const node = nodes.find((item) => item.id === nodeId)
+        return { id: nodeId, status: node?.status ?? 'active' }
+      })
       await Promise.all(
         targets.map((nodeId) =>
           repositories.nodes.update(nodeId, { status: 'archived', updatedAt: Date.now() }),
@@ -498,6 +523,62 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           state.selectedNodeId = null
         }
       })
+      return previousStatuses
+    },
+
+    restoreArchivedNodes: async (entries) => {
+      if (entries.length === 0) return
+      const repositories = getRepositories()
+      await Promise.all(
+        entries.map((entry) =>
+          repositories.nodes.update(entry.id, {
+            status: entry.status,
+            updatedAt: Date.now(),
+          }),
+        ),
+      )
+      const entryMap = new Map(entries.map((entry) => [entry.id, entry.status]))
+      set((state) => {
+        for (const node of state.nodes) {
+          const status = entryMap.get(node.id)
+          if (status) node.status = status
+        }
+      })
+    },
+
+    peekVersionPrune: (nodeId, kind, messageId) => {
+      const state = get()
+      const node = state.nodes.find((item) => item.id === nodeId)
+      if (!node) return null
+      const messages = state.messagesByNode[nodeId] ?? []
+      const path = resolveThread(node, messages).path
+      // openAnswerVersion / createEditVersion 都是纯函数（只在克隆上改），
+      // 借一次真实计算拿到淘汰名单，结果直接丢弃
+      if (kind === 'regenerate') {
+        const last = path.at(-1)
+        const target = messageId ? path.find((message) => message.id === messageId) : last
+        // 与 regenerate 的可重生成条件保持一致：只有显示路径末条回答能换版
+        if (target?.role !== 'assistant' || last?.id !== target.id) return null
+        const change = openAnswerVersion({
+          node,
+          messages,
+          messageId: target.id,
+          newAnswerMessageId: '__prune_preview__',
+        })
+        if (!change || change.removedMessageIds.length === 0) return null
+        return { removedMessageIds: change.removedMessageIds }
+      }
+      const original = messageId ? path.find((message) => message.id === messageId) : undefined
+      if (original?.role !== 'user') return null
+      const change = createEditVersion({
+        node,
+        messages,
+        messageId: original.id,
+        newUserMessageId: '__prune_preview_u__',
+        newAnswerMessageId: '__prune_preview_a__',
+      })
+      if (!change || change.removedMessageIds.length === 0) return null
+      return { removedMessageIds: change.removedMessageIds }
     },
 
     deleteNode: async (id) => {
@@ -642,6 +723,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const projectId = state.projectId
       const node = state.nodes.find((item) => item.id === nodeId)
       if (!projectId || !node) return
+
+      // 全局同时只允许一轮生成：abort 是单槽的，跨节点抢占会让旧一轮的停止按钮
+      // 凭空消失、进度无地从查（Composer 与画布指示器只是 UI 层的提醒，这里是兜底）
+      const busy = state.streaming
+      if (busy && !busy.error) {
+        if (busy.nodeId === nodeId) return
+        throw new Error('另一个节点正在生成，等它结束或先停止')
+      }
 
       const hasContent = parts.some(
         (part) =>

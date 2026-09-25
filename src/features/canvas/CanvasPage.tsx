@@ -7,8 +7,16 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import { Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, Sparkles, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Square, Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, Sparkles, X } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip } from '@/components/ui/tooltip'
+import { EASE_OUT_EXPO, ENTER_SOFT, EXIT_FAST } from '@/lib/motion'
 import { FocusChatView } from '@/features/chat/FocusChatView'
 import { isBlankCanvasOpen } from '@/lib/blank-canvas'
 import { cn } from '@/lib/utils'
@@ -30,6 +39,7 @@ import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
 import { StarterPanel } from './StarterPanel'
+import { useArchiveNodeWithUndo } from './use-archive-node'
 import { useDecayClock } from '@/features/chat/useDecayClock'
 import { ReviewWorkspace } from '@/features/review/ReviewWorkspace'
 import { dueCounts } from '@/domain/review/enrollment'
@@ -97,8 +107,11 @@ function CanvasWorkspace() {
   const relayout = useWorkspaceStore((state) => state.relayout)
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const startRootNode = useWorkspaceStore((state) => state.startRootNode)
-  const archiveNode = useWorkspaceStore((state) => state.archiveNode)
+  const archiveWithUndo = useArchiveNodeWithUndo()
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
+  // 全局流式指示：生成的进度在所属节点的对话里有，跨节点时这里必须有人喊一嗓子
+  const streaming = useWorkspaceStore((state) => state.streaming)
+  const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
   const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
   const projectSettings = useWorkspaceStore((state) => state.projectSettings)
   const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
@@ -109,6 +122,20 @@ function CanvasWorkspace() {
 
   // 到期数统计：常驻文字入口显示
   const dueSummary = useMemo(() => dueCounts(nodes, heatNow), [nodes, heatNow])
+
+  // 进入复习工作区：地图胶囊、展开画布浮动条、聊天头部三个入口共用
+  const openReview = useCallback(() => {
+    setSearchParams((prev) => {
+      prev.set('view', 'review')
+      return prev
+    })
+  }, [setSearchParams])
+
+  // 跨节点流式指示的数据：正在生成的那个节点（错误态的流已经结束，不算）
+  const streamingNode = useMemo(() => {
+    if (!streaming || streaming.error) return null
+    return nodes.find((node) => node.id === streaming.nodeId) ?? null
+  }, [streaming, nodes])
 
   // 视图投影：旧复习中心在常规学习树中隐藏，但它的普通后代继续可见
   const visibleNodes = useMemo(() => projectVisibleNodes(nodes), [nodes])
@@ -269,9 +296,34 @@ function CanvasWorkspace() {
 
   const [detailNodes, setDetailNodes, onDetailNodesChange] = useNodesState<LearnFlowNode>([])
 
+  // 「诞生」标记：画布在场期间新出现的节点，第一次注入 flow 时就带上 born，
+  // 卡片据此播一次「长出来」入场。标记在 effect 里打（这里才允许碰 ref），
+  // 打开画布时的首批节点全量记为在场 —— 整体进场交给层级的淡入，不逐卡重演。
+  const knownDetailIdsRef = useRef<Set<string> | null>(null)
   useEffect(() => {
-    setDetailNodes(detailGeometry.nodes)
-  }, [detailGeometry, setDetailNodes])
+    if (!isCanvasOpen) {
+      knownDetailIdsRef.current = null
+      setDetailNodes(detailGeometry.nodes)
+      return
+    }
+    const known = knownDetailIdsRef.current
+    if (!known) {
+      knownDetailIdsRef.current = new Set(detailGeometry.nodes.map((node) => node.id))
+      setDetailNodes(detailGeometry.nodes)
+      return
+    }
+    const freshIds = new Set(
+      detailGeometry.nodes.filter((node) => !known.has(node.id)).map((node) => node.id),
+    )
+    for (const id of freshIds) known.add(id)
+    setDetailNodes(
+      freshIds.size === 0
+        ? detailGeometry.nodes
+        : detailGeometry.nodes.map((node) =>
+            freshIds.has(node.id) ? { ...node, data: { ...node.data, born: true } } : node,
+          ),
+    )
+  }, [detailGeometry, isCanvasOpen, setDetailNodes])
 
   useEffect(() => {
     if (isEmpty) return
@@ -453,7 +505,7 @@ function CanvasWorkspace() {
           nodesConnectable={false}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#181c23" />
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-grid)" />
         </ReactFlow>
 
         {/* 顶部极简信息标与操作 */}
@@ -463,12 +515,7 @@ function CanvasWorkspace() {
             <Tooltip label="进入复习工作区">
               <button
                 type="button"
-                onClick={() =>
-                  setSearchParams((prev) => {
-                    prev.set('view', 'review')
-                    return prev
-                  })
-                }
+                onClick={openReview}
                 className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:text-accent font-medium"
               >
                 <Brain className="h-3 w-3 text-accent" />
@@ -528,35 +575,29 @@ function CanvasWorkspace() {
           </div>
         ) : null}
 
-        {/*
-          空白项目的第一个问题入口：展开画布在时由画布正中间那份负责（见下面的弹层），
-          这里只兜底分栏视图 —— 两份同时挂着只会让同一句话被读两遍。
-        */}
-        {isEmpty && !loading && !isCanvasOpen ? (
-          <StarterPanel
-            projectName={project?.name ?? '新项目'}
-            onSubmit={(question) => startRootNode(question)}
+      <AnimatePresence initial={false}>
+        {contextMenu ? (
+          <CanvasContextMenu
+            key="canvas-context-menu"
+            menu={contextMenu}
+            onClose={() => setContextMenu(null)}
+            onNodeAction={(kind, nodeId) => {
+              selectNode(nodeId)
+              void applyAction(kind, nodeId)
+            }}
+            onArchiveNode={(nodeId) => void archiveWithUndo(nodeId)}
+            onDeleteNode={(nodeId) => setNodeToDelete(nodeId)}
+            onCreateRootAt={(flowPosition) =>
+              setCreateRootDialog({ open: true, flowPosition, question: '' })
+            }
+            onRelayout={() => void relayout()}
+            onFitView={() => void activeApi().fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
+            onResetView={() =>
+              void activeApi().setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 400 })
+            }
           />
         ) : null}
-
-        <CanvasContextMenu
-          menu={contextMenu}
-          onClose={() => setContextMenu(null)}
-          onNodeAction={(kind, nodeId) => {
-            selectNode(nodeId)
-            void applyAction(kind, nodeId)
-          }}
-          onArchiveNode={(nodeId) => void archiveNode(nodeId)}
-          onDeleteNode={(nodeId) => setNodeToDelete(nodeId)}
-          onCreateRootAt={(flowPosition) =>
-            setCreateRootDialog({ open: true, flowPosition, question: '' })
-          }
-          onRelayout={() => void relayout()}
-          onFitView={() => void activeApi().fitView({ padding: 0.34, duration: 0.5, maxZoom: 1 })}
-          onResetView={() =>
-            void activeApi().setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 400 })
-          }
-        />
+      </AnimatePresence>
 
         {/* 在此处新建根节点对话框 */}
         <Dialog
@@ -635,10 +676,76 @@ function CanvasWorkspace() {
         </Dialog>
       </div>
 
+      {/*
+        空白项目的第一个问题入口：展开画布在时由画布正中间那份负责（见下面的弹层），
+        分栏模式下它覆盖整个工作区 —— 空树上的地图没有东西可看，
+        提问入口不该被塞进 220px 的窄栏里挤着。
+      */}
+      <AnimatePresence initial={false}>
+        {isEmpty && !loading && !isCanvasOpen ? (
+          <motion.div
+            key="starter-overlay"
+            exit={{ opacity: 0, transition: EXIT_FAST }}
+            className="absolute inset-0 z-20 bg-canvas"
+          >
+            <StarterPanel
+              projectName={project?.name ?? '新项目'}
+              onSubmit={(question) => startRootNode(question)}
+            />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* 跨节点生成提示：进度细节在所属节点的对话里，切到别的节点后这里必须有人喊「还在跑」，
+          否则旧一轮看起来就像死了。正看着那个节点的对话时不重复打扰。 */}
+      <div className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
+        <AnimatePresence initial={false}>
+          {streamingNode && streamingNode.id !== selectedNodeId ? (
+            <motion.div
+              key="streaming-pill"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={ENTER_SOFT}
+              className="flex items-center gap-2 rounded-full border border-accent/30 bg-elevated/95 py-1.5 pl-3 pr-1.5 shadow-panel backdrop-blur"
+            >
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
+              <button
+                type="button"
+                onClick={() => selectNode(streamingNode.id)}
+                className="max-w-[240px] truncate text-xs text-ink-soft transition-colors hover:text-ink"
+              >
+                「{streamingNode.title}」正在生成
+              </button>
+              <Button
+                variant="subtle"
+                size="icon-sm"
+                aria-label="停止生成"
+                onClick={stopStreaming}
+                className="rounded-full"
+              >
+                <Square className="h-3 w-3" />
+              </Button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
+
       {/* 全屏展开的节点详情画布弹层（原节点卡片/支持拖动节点模式）
-          必须独占一个 ReactFlowProvider：与导航地图共享 store 时，本层卸载会 reset 掉地图的节点查找表 */}
-      {isCanvasOpen ? (
-        <div className="reveal-layer absolute inset-0 z-40 flex flex-col bg-canvas">
+          必须独占一个 ReactFlowProvider：与导航地图共享 store 时，本层卸载会 reset 掉地图的节点查找表。
+          进出场交给 AnimatePresence：打开时淡入盖住对话，收起时淡出让位 —— 两个舞台之间不再硬切。 */}
+      <AnimatePresence initial={false}>
+        {isCanvasOpen ? (
+          <motion.div
+            key="detail-canvas"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.2, ease: EASE_OUT_EXPO } }}
+            exit={{ opacity: 0, transition: EXIT_FAST }}
+            className="absolute inset-0 z-40 flex flex-col bg-canvas"
+          >
           <ReactFlowProvider>
             <FlowApiBridge apiRef={detailApiRef} />
             <ReactFlow
@@ -664,18 +771,21 @@ function CanvasWorkspace() {
               onlyRenderVisibleElements
               proOptions={{ hideAttribution: true }}
             >
-              <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#181c23" />
+              <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--color-grid)" />
               <Controls className="!border-line !bg-surface !shadow-panel" />
             </ReactFlow>
           </ReactFlowProvider>
 
           {/* 空白画布：第一个问题的入口就摆在画布正中间，不必先摸到右键菜单 */}
-          {isEmpty && !loading ? (
-            <StarterPanel
-              projectName={project?.name ?? '新项目'}
-              onSubmit={(question) => startRootNode(question)}
-            />
-          ) : null}
+          <AnimatePresence initial={false}>
+            {isEmpty && !loading ? (
+              <StarterPanel
+                key="starter-in-canvas"
+                projectName={project?.name ?? '新项目'}
+                onSubmit={(question) => startRootNode(question)}
+              />
+            ) : null}
+          </AnimatePresence>
 
           {/* 顶部浮动条：状态与返回主舞台按钮 */}
           <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
@@ -699,10 +809,7 @@ function CanvasWorkspace() {
                     size="sm"
                     onClick={() => {
                       closeDetailCanvas()
-                      setSearchParams((prev) => {
-                        prev.set('view', 'review')
-                        return prev
-                      })
+                      openReview()
                     }}
                     className="gap-1.5 bg-surface/90 backdrop-blur"
                   >
@@ -774,8 +881,9 @@ function CanvasWorkspace() {
               </Button>
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
     </div>
   )
 }

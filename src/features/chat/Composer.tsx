@@ -1,10 +1,12 @@
 import { ImagePlus, Loader2, MessageSquareQuote, SendHorizontal, Square, X } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getRepositories } from '@/data'
 import type { Asset, Id, MessagePart, ModelRef } from '@/domain/models'
+import { ENTER_FAST } from '@/lib/motion'
 import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
@@ -62,6 +64,10 @@ export function Composer({
 }) {
   const sendMessage = useWorkspaceStore((state) => state.sendMessage)
   const isStreaming = useWorkspaceStore((state) => isStreamingIn(state.streaming, nodeId))
+  // 全局同一时刻只有一轮生成；别节点在跑时这里只读不写，别去抢占单槽 abort
+  const isStreamingElsewhere = useWorkspaceStore(
+    (state) => Boolean(state.streaming && !state.streaming.error) && !isStreamingIn(state.streaming, nodeId),
+  )
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
 
   const [text, setText] = useState('')
@@ -161,7 +167,10 @@ export function Composer({
   }
 
   const canSend =
-    (text.trim().length > 0 || quotes.length > 0 || pending.length > 0) && !isStreaming && !busy
+    (text.trim().length > 0 || quotes.length > 0 || pending.length > 0) &&
+    !isStreaming &&
+    !isStreamingElsewhere &&
+    !busy
 
   return (
     <div
@@ -180,10 +189,18 @@ export function Composer({
         dragging ? 'bg-accent-soft/40' : 'bg-transparent',
       )}
     >
-      {pending.length > 0 ? (
-        <div className="mb-2 flex flex-wrap gap-2">
+      {/* 容器常驻（empty:hidden 兜住空态），最后一枚胶囊/图片退场时才有地方淡出 */}
+      <div className="mb-2 flex flex-wrap gap-2 empty:hidden">
+        <AnimatePresence initial={false}>
           {pending.map((item) => (
-            <div key={item.asset.id} className="group/img relative">
+            <motion.div
+              key={item.asset.id}
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.88 }}
+              transition={ENTER_FAST}
+              className="group/img relative"
+            >
               <img
                 src={item.url}
                 alt={item.asset.name ?? '待发送图片'}
@@ -196,17 +213,22 @@ export function Composer({
               >
                 <X className="h-3 w-3" />
               </button>
-            </div>
+            </motion.div>
           ))}
-        </div>
-      ) : null}
+        </AnimatePresence>
+      </div>
 
       <div className="rounded-lg border border-line/60 bg-canvas/40 transition-colors focus-within:border-accent/40">
-        {quotes.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5 px-2 pt-2">
+        {/* 容器常驻（empty:hidden 兜住空态），最后一枚引用退场时才有地方淡出 */}
+        <div className="flex flex-wrap gap-1.5 px-2 pt-2 empty:hidden">
+          <AnimatePresence initial={false}>
             {quotes.map((quote) => (
-              <span
+              <motion.span
                 key={quote}
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={ENTER_FAST}
                 title={quote}
                 className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-accent/25 bg-accent-soft/50 py-0.5 pl-2 pr-1 text-2xs text-ink-soft"
               >
@@ -220,10 +242,10 @@ export function Composer({
                 >
                   <X className="h-3 w-3" />
                 </button>
-              </span>
+              </motion.span>
             ))}
-          </div>
-        ) : null}
+          </AnimatePresence>
+        </div>
 
         <textarea
           ref={textareaRef}
@@ -291,26 +313,34 @@ export function Composer({
           </div>
 
           {isStreaming ? (
-            <Button
-              variant="subtle"
-              size="icon-sm"
-              onClick={stopStreaming}
-              className="rounded-full"
-              title="停止生成"
-            >
-              <Square className="h-3 w-3" />
-            </Button>
+            <Tooltip label="停止生成">
+              <Button
+                variant="subtle"
+                size="icon-sm"
+                onClick={stopStreaming}
+                aria-label="停止生成"
+                className="rounded-full"
+              >
+                <Square className="h-3 w-3" />
+              </Button>
+            </Tooltip>
           ) : (
-            <Button
-              variant="primary"
-              size="icon-sm"
-              onClick={() => void submit()}
-              disabled={!canSend}
-              className="rounded-full"
-              title="发送"
+            <Tooltip
+              label={
+                isStreamingElsewhere ? '另一个节点正在生成，等它结束' : busy ? '发送中…' : '发送'
+              }
             >
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizontal className="h-3.5 w-3.5" />}
-            </Button>
+              <Button
+                variant="primary"
+                size="icon-sm"
+                onClick={() => void submit()}
+                disabled={!canSend}
+                aria-label="发送"
+                className="rounded-full"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizontal className="h-3.5 w-3.5" />}
+              </Button>
+            </Tooltip>
           )}
         </div>
       </div>

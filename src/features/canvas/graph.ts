@@ -15,6 +15,12 @@ export interface LearnNodeData extends Record<string, unknown> {
   summarizing: boolean
   messageCount: number
   childCount: number
+  /**
+   * 「诞生」标记：本画布在场期间新出现的节点，卡片据此播一次「长出来」入场。
+   * 由 CanvasPage 在向 flow 注入节点时打（buildGraph 保持纯函数），打开画布
+   * 或重新布局都不补标记 —— 动画只解释「刚发生的事」。
+   */
+  born?: boolean
   forkFromTitle?: string
   selected: boolean
   /** 复习中心（kind: 'review'）：卡片上有专门的标记 */

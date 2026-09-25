@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { Brain, GitBranch, MessageSquare, RefreshCcw, Waypoints } from 'lucide-react'
+import { motion } from 'motion/react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip } from '@/components/ui/tooltip'
 import {
@@ -9,6 +10,7 @@ import {
   gradeOfScore,
   type HeatLevel,
 } from '@/domain/review/schedule'
+import { EASE_OUT_EXPO } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import type { LearnFlowNode } from './graph'
 
@@ -81,7 +83,7 @@ function MasteryLine({ data }: { data: LearnFlowNode['data'] }) {
           掌握 {mastery.score}
         </span>
         <span className="text-faint">
-          · {mastery.learned}/{mastery.total}
+          · 评估 {mastery.learned}/{mastery.total}
         </span>
       </span>
     </Tooltip>
@@ -93,7 +95,10 @@ export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
   const heat = data.reviewCard && data.showHeatMap ? HEAT_STYLES[cardHeat(data.reviewCard, data.now)].border : ''
 
   return (
-    <div
+    <motion.div
+      initial={data.born ? { opacity: 0, scale: 0.9 } : false}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.32, ease: EASE_OUT_EXPO }}
       className={cn(
         'group relative flex h-full w-full cursor-pointer flex-col rounded-lg border bg-surface p-3 text-left transition-colors duration-150',
         data.selected
@@ -161,6 +166,6 @@ export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
         <HeatBadge data={data} />
         <MasteryLine data={data} />
       </div>
-    </div>
+    </motion.div>
   )
 }

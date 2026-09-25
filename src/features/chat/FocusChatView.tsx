@@ -1,7 +1,8 @@
 import { // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态图标（评估中 / 已评估）
   Brain, Archive, ChevronRight, GitBranch, MoreHorizontal, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Trash2, Waypoints, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { AnimatePresence, motion } from 'motion/react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,7 +21,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip } from '@/components/ui/tooltip'
+import { ENTER_SOFT } from '@/lib/motion'
 import { isMasteryStale } from '@/domain/mastery/aggregate'
+import { NODE_ACTION_HINT } from '@/domain/node-ops/actions'
 import { messagePreview } from '@/domain/messages'
 import type { Id } from '@/domain/models'
 import { GRADE_BAND_LABEL, gradeOfScore } from '@/domain/review/schedule'
@@ -31,6 +34,7 @@ import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { LearningStatusDialog } from '@/features/review/LearningStatusDialog'
+import { useArchiveNodeWithUndo } from '@/features/canvas/use-archive-node'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { SelectionMenu } from './SelectionMenu'
@@ -51,7 +55,7 @@ export function FocusChatView({
   const projectSettings = useWorkspaceStore((state) => state.projectSettings)
   const setNodeTitle = useWorkspaceStore((state) => state.setNodeTitle)
   const applyAction = useWorkspaceStore((state) => state.applyAction)
-  const archiveNode = useWorkspaceStore((state) => state.archiveNode)
+  const archiveWithUndo = useArchiveNodeWithUndo()
   const deleteNode = useWorkspaceStore((state) => state.deleteNode)
   const refreshSummary = useWorkspaceStore((state) => state.refreshSummary)
   const enrollInReview = useWorkspaceStore((state) => state.enrollInReview)
@@ -64,6 +68,7 @@ export function FocusChatView({
   const undoAgentChange = useWorkspaceStore((state) => state.undoAgentChange)
   const dismissAgentChange = useWorkspaceStore((state) => state.dismissAgentChange)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
+  const navigate = useNavigate()
 
   const providers = useSettingsStore((state) => state.settings.providers)
   const defaultChatModelRef = useSettingsStore((state) => state.settings.defaultChatModelRef)
@@ -187,15 +192,24 @@ export function FocusChatView({
               <DropdownMenuLabel>节点</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => void applyAction('child', node.id)}>
                 <GitBranch className="h-3.5 w-3.5" />
-                新建空白子节点
+                <span className="min-w-0">
+                  <span className="block">新建空白子节点</span>
+                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.child}</span>
+                </span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void applyAction('branch', node.id)}>
                 <GitBranch className="h-3.5 w-3.5" />
-                从最新消息分支
+                <span className="min-w-0">
+                  <span className="block">从最新消息分支</span>
+                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.branch}</span>
+                </span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void applyAction('diverge', node.id)}>
                 <Waypoints className="h-3.5 w-3.5" />
-                从最新消息横向发散
+                <span className="min-w-0">
+                  <span className="block">从最新消息发散</span>
+                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.diverge}</span>
+                </span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -206,7 +220,7 @@ export function FocusChatView({
                 {isSummarizing ? '正在生成摘要…' : '生成学习摘要'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => void archiveNode(node.id)}>
+              <DropdownMenuItem onSelect={() => void archiveWithUndo(node.id)}>
                 <Archive className="h-3.5 w-3.5" />
                 归档（含子树）
               </DropdownMenuItem>
@@ -259,28 +273,38 @@ export function FocusChatView({
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
         <MessageList nodeId={node.id} />
 
-        {/* Agent 刚改动了这棵树：给一条可撤销的提示。只留最近一条 —— 撤销是后悔药，不是操作历史 */}
-        {agentChange ? (
-          <div className="mx-5 mb-2 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-2xs text-ink-soft">
-            <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
-            <span className="min-w-0 flex-1 truncate">Agent {agentChange.label}</span>
-            <button
-              type="button"
-              onClick={() => void undoAgentChange()}
-              className="shrink-0 rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent transition-colors hover:bg-accent-soft"
+        {/* Agent 刚改动了这棵树：给一条可撤销的提示。只留最近一条 —— 撤销是后悔药，不是操作历史。
+            动画只在这一刻出现（滑入以认领注意力），不该跟着节点切换重演。 */}
+        <AnimatePresence initial={false}>
+          {agentChange ? (
+            <motion.div
+              key="agent-change"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={ENTER_SOFT}
+              className="mx-5 mb-2 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft/50 px-3 py-2 text-2xs text-ink-soft"
             >
-              撤销
-            </button>
-            <button
-              type="button"
-              aria-label="不再提示"
-              onClick={dismissAgentChange}
-              className="shrink-0 rounded-sm p-0.5 text-faint transition-colors hover:text-ink"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ) : null}
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 truncate">Agent {agentChange.label}</span>
+              <button
+                type="button"
+                onClick={() => void undoAgentChange()}
+                className="shrink-0 rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent transition-colors hover:bg-accent-soft"
+              >
+                撤销
+              </button>
+              <button
+                type="button"
+                aria-label="不再提示"
+                onClick={dismissAgentChange}
+                className="shrink-0 rounded-sm p-0.5 text-faint transition-colors hover:text-ink"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {hasChatModel ? (
           <>
@@ -321,12 +345,8 @@ export function FocusChatView({
         onEnrollInReview={() => enrollInReview(node.id)}
         onUnenrollFromReview={() => unenrollFromReview(node.id)}
         onStartSingleReview={() => {
-          // 跳转进入复习工作区（通过 URL view=review）
-          const url = new URL(window.location.href)
-          url.searchParams.set('view', 'review')
-          window.history.pushState({}, '', url.toString())
-          // 触发 popstate 让外层监听响应
-          window.dispatchEvent(new PopStateEvent('popstate'))
+          // 跳转进入复习工作区（通过 URL view=review）：交给 react-router，不手工绕 popstate
+          navigate('?view=review')
         }}
       />
 
@@ -406,7 +426,7 @@ function MasteryIndicator({
   const band = GRADE_BAND_LABEL[gradeOfScore(mastery.score)]
 
   return (
-    <Tooltip label="点击查看依据、薄弱点与复习计划">
+    <Tooltip label={`掌握度 ${mastery.score} · ${band} · 点击查看依据与复习计划`}>
       <button
         type="button"
         onClick={onClick}
@@ -419,7 +439,6 @@ function MasteryIndicator({
       >
         <Brain className="h-3 w-3" />
         <span className="tabular-nums">掌握 {mastery.score}</span>
-        <span className="text-faint">· {band}</span>
         {stale ? <span className="text-faint">· 有新内容</span> : null}
       </button>
     </Tooltip>

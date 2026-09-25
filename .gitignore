@@ -11,4 +11,6 @@ dist-ssr
 coverage
 .vite
 .eslintcache
-.zcode/
+.zcode/.impeccable/
+/.impeccable/
+/.zcode/

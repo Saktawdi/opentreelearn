@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { FolderKanban, Settings, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
@@ -52,41 +52,50 @@ export function AppShell() {
   // 账号与同步的运行期接线挂在这里而不是「我的」页：进不进那一页都要持续同步。
   useSyncRuntime(phase === 'ready')
 
-  // 方案 B：中央独立微型悬浮胶囊状态
-  const [capsuleHovered, setCapsuleHovered] = useState(false)
-  const leaveTimerRef = useRef<number | null>(null)
+  // 方案 B：中央微型导航胶囊。不做常驻图标（常驻图标是视觉噪音）——鼠标靠近顶部中央时
+  // 胶囊以滑出+脉冲动效揭示，动效本身就是引导；键盘/触屏走一枚隐形可聚焦热点，
+  // 聚焦即展开（focus ring 可见），点按可把胶囊钉住。
+  const [pinned, setPinned] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const closeTimerRef = useRef<number | null>(null)
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+  const scheduleClose = useCallback(() => {
+    cancelClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      setHovered(false)
+      setFocused(false)
+      closeTimerRef.current = null
+    }, 240)
+  }, [cancelClose])
 
   useEffect(() => {
     if (!isCanvasRoute) return
     const handleMouseMove = (event: MouseEvent) => {
-      // 仅当鼠标接近窗口正上方中央区域时显现
-      const windowWidth = window.innerWidth
-      const centerX = windowWidth / 2
-      const isNearCenter = Math.abs(event.clientX - centerX) <= 150
-      const isNearTop = event.clientY <= 52
-
-      if (isNearCenter && isNearTop) {
-        if (leaveTimerRef.current) {
-          window.clearTimeout(leaveTimerRef.current)
-          leaveTimerRef.current = null
-        }
-        setCapsuleHovered(true)
-      } else if (event.clientY > 68 || !isNearCenter) {
-        if (!leaveTimerRef.current && capsuleHovered) {
-          leaveTimerRef.current = window.setTimeout(() => {
-            setCapsuleHovered(false)
-            leaveTimerRef.current = null
-          }, 240)
-        }
+      const centerX = window.innerWidth / 2
+      const nearCenter = Math.abs(event.clientX - centerX) <= 150
+      const nearTop = event.clientY <= 52
+      // 迟滞：开区小、关区大，从图标区移动到胶囊的路上不会中途收起
+      const inCloseZone = Math.abs(event.clientX - centerX) <= 190 && event.clientY <= 110
+      if (nearCenter && nearTop) {
+        cancelClose()
+        setHovered(true)
+      } else if (!inCloseZone) {
+        scheduleClose()
       }
     }
-
     window.addEventListener('mousemove', handleMouseMove)
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
-      if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
+      cancelClose()
     }
-  }, [isCanvasRoute, capsuleHovered])
+  }, [isCanvasRoute, cancelClose, scheduleClose])
 
   return (
     <TooltipProvider>
@@ -139,25 +148,37 @@ export function AppShell() {
           </header>
         ) : (
           /* 方案 B：工作区页面中绝对禁止全宽条带遮挡！
-             整层使用 pointer-events-none，无左侧重复 Logo，无任何全宽透明层拦截事件，
-             仅在正中央悬浮独立微型导航胶囊，鼠标划过中央顶部时显现，两端完全透传给下层按钮 */
-          <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-start justify-center pt-2">
+             整层 pointer-events-none，无任何全宽透明层拦截事件，两端完全透传给下层按钮。
+             中央顶部只有一枚隐形热点（聚焦/点按时才以 focus ring 现形），
+             鼠标靠近时胶囊滑出 + 琥珀脉冲，动效即引导。 */
+          <div
+            className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-start justify-center pt-2"
+            onFocus={() => {
+              cancelClose()
+              setFocused(true)
+            }}
+            onBlur={scheduleClose}
+          >
+            <button
+              type="button"
+              aria-label="显示导航"
+              aria-expanded={pinned || hovered || focused}
+              aria-controls="global-nav"
+              onClick={() => setPinned((v) => !v)}
+              className="pointer-events-auto h-7 w-7 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+            />
             <nav
+              id="global-nav"
               onMouseEnter={() => {
-                if (leaveTimerRef.current) window.clearTimeout(leaveTimerRef.current)
-                setCapsuleHovered(true)
+                cancelClose()
+                setHovered(true)
               }}
-              onMouseLeave={() => {
-                leaveTimerRef.current = window.setTimeout(() => {
-                  setCapsuleHovered(false)
-                  leaveTimerRef.current = null
-                }, 240)
-              }}
+              onMouseLeave={scheduleClose}
               className={cn(
-                'pointer-events-auto flex items-center gap-1 rounded-full border border-line/60 bg-surface/90 p-1 shadow-panel backdrop-blur-md transition-all duration-300 ease-out-expo',
-                capsuleHovered
-                  ? 'translate-y-0 opacity-100 scale-100'
-                  : '-translate-y-4 opacity-0 scale-90 pointer-events-none',
+                'absolute top-10 flex items-center gap-1 rounded-full border border-line/60 bg-surface/90 p-1 shadow-panel backdrop-blur-md transition-all duration-300 ease-out-expo',
+                pinned || hovered || focused
+                  ? 'pointer-events-auto translate-y-0 scale-100 opacity-100 animate-nav-glint'
+                  : 'pointer-events-none -translate-y-2 scale-95 opacity-0',
               )}
             >
               {NAV_ITEMS.map((item) => {

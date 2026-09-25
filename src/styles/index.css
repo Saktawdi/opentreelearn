@@ -6,11 +6,16 @@
   --color-elevated: #171b21;
   --color-line: #232830;
   --color-line-strong: #313842;
+  /* 画布点阵网格专用：介于 canvas 与 line 之间，比 line 淡一档 */
+  --color-grid: #181c23;
   --color-ink: #e8ebef;
   --color-ink-soft: #b6bdc7;
   --color-muted: #868f9d;
-  /* 第四级灰：占位符与禁用态。深浅只用这四个色，不再叠 /50 /70 /80 这类透明度。 */
-  --color-faint: #6b7482;
+  /* 第四级灰：占位符与禁用态。文字与图标的灰深只用这四级，禁止叠 /50 /70 /80 这类
+     透明度去凑新灰（实践里从未违反）。边框与表面允许透明度变体——那是在和底下的
+     canvas 混合出层级（浮层半透明 + backdrop-blur），不属于「发明新灰」。
+     #7a8492 是实测值：在最深的 elevated 底上仍有 4.56:1（WCAG AA）。 */
+  --color-faint: #7a8492;
   --color-accent: #e0a768;
   --color-accent-soft: #33281a;
   --color-accent-ink: #17100a;
@@ -39,6 +44,22 @@
   --shadow-node: 0 1px 0 0 rgb(255 255 255 / 0.04), 0 8px 20px -12px rgb(0 0 0 / 0.55);
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 导航胶囊靠近时的引导脉冲：一圈琥珀色光环扩散一次即散 */
+  --animate-nav-glint: nav-glint 0.7s ease-out 1;
+
+  @keyframes nav-glint {
+    0% {
+      box-shadow:
+        var(--shadow-panel),
+        0 0 0 0 rgb(224 167 104 / 0.3);
+    }
+    100% {
+      box-shadow:
+        var(--shadow-panel),
+        0 0 0 12px rgb(224 167 104 / 0);
+    }
+  }
 }
 
 @layer base {
@@ -459,15 +480,12 @@
   animation: pop-in 160ms var(--ease-out-expo);
 }
 
-/* 无 Radix data-state 的浮层（画布右键菜单）与全屏浮层各自复用同一组关键帧。
-   原先这两处写的是 tailwindcss-animate 的 animate-in / fade-in-0 / zoom-in-95，
+/* 无 Radix data-state 的浮层（画布右键菜单）复用同一组关键帧；全屏详情画布的
+   进出场已改由 motion 接管（AnimatePresence 补上了这里给不了的退场动画）。
+   原先这些地方写的是 tailwindcss-animate 的 animate-in / fade-in-0 / zoom-in-95，
    但本项目没装该插件，等于没有任何动画。 */
 .menu-pop {
   animation: pop-in 140ms var(--ease-out-expo);
-}
-
-.reveal-layer {
-  animation: overlay-in 200ms var(--ease-out-expo);
 }
 
 /*

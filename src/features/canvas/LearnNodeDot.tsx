@@ -48,10 +48,11 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
                     : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
           )}
         >
-          {/* 内芯圆点 */}
+          {/* 内芯圆点：有没有子节点用「大小」编码——28px 尺寸下亮度差低于可感知阈值 */}
           <div
             className={cn(
-              'h-2.5 w-2.5 rounded-full transition-colors',
+              'rounded-full transition-all',
+              data.childCount > 0 ? 'h-2.5 w-2.5' : 'h-1.5 w-1.5',
               isSelected
                 ? isReviewCenter
                   ? 'bg-info'

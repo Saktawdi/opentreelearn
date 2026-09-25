@@ -1,5 +1,7 @@
 import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { useState } from 'react'
+import { motion } from 'motion/react'
+import { ENTER_FAST } from '@/lib/motion'
 /**
  * 工具卡要展示的一行：流式活动与落库的工具记录都归一到这个形状。
  * 放在这里而不是引用 store 的类型，是为了让落库消息也能复用同一份呈现。
@@ -54,9 +56,12 @@ function statusIcon(status: ToolActivityItem['status']) {
 export function ToolActivities({
   tools,
   className,
+  animateIn = false,
 }: {
   tools: ToolActivityItem[]
   className?: string
+  /** 流式期间逐张浮现；落库后随消息整体入场，不再单独动。 */
+  animateIn?: boolean
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   if (tools.length === 0) return null
@@ -66,9 +71,8 @@ export function ToolActivities({
       {tools.map((tool) => {
         const open = expanded === tool.callId
         const detail = tool.error ?? tool.output
-        return (
+        const card = (
           <div
-            key={tool.callId}
             className="overflow-hidden rounded-lg border border-line/70 bg-elevated/40 text-2xs"
           >
             <button
@@ -94,6 +98,19 @@ export function ToolActivities({
               </pre>
             ) : null}
           </div>
+        )
+        // 卡片随 Agent 的进度逐张出现，时间差天然错开，不需要额外 stagger
+        return animateIn ? (
+          <motion.div
+            key={tool.callId}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={ENTER_FAST}
+          >
+            {card}
+          </motion.div>
+        ) : (
+          <div key={tool.callId}>{card}</div>
         )
       })}
     </div>

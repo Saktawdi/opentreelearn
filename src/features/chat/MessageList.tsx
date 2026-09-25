@@ -1,4 +1,13 @@
-import { ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCcw, Waypoints } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  GitBranch,
+  Pencil,
+  RotateCcw,
+  Waypoints,
+} from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   Fragment,
   memo,
@@ -13,7 +22,16 @@ import {
 } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Tooltip } from '@/components/ui/tooltip'
+import { ENTER_FAST, ENTER_SOFT } from '@/lib/motion'
 import {
   messageBodyText,
   messageImageIds,
@@ -28,11 +46,12 @@ import {
 import type { Id, Message, MessagePart } from '@/domain/models'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
 import { clampAgentMaxSteps } from '@/domain/defaults'
+import { MAX_THREAD_VERSIONS } from '@/domain/thread/mutations'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
 import { resolveThread, summarizeSlotVersions } from '@/domain/thread/resolve'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
-import { cn } from '@/lib/utils'
+import { cn, humanizeStreamError } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settings-store'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
@@ -46,6 +65,23 @@ import { useNoteHighlights } from './useNoteHighlights'
 import { useThrottledValue } from './useThrottledValue'
 
 const PRUNE_NOTICE = '最多保留 3 个版本，最早的版本已删除'
+
+/**
+ * 新消息进场：只给「这一轮新落库的气泡」播一次浮现（是否播由 on 决定，
+ * 判定逻辑在 MessageList 里）。切节点、首屏加载一律不播 —— 动画只解释
+ * 「刚发生的事」，不重演历史。
+ */
+function Entrance({ on, children }: { on: boolean; children: ReactNode }) {
+  return (
+    <motion.div
+      initial={on ? { opacity: 0, y: 8 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={ENTER_SOFT}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 /** 稳定引用：直接写 `?? []` 会让依赖数组每次渲染都变，memo 白做 */
 const NO_MESSAGES: Message[] = []
@@ -505,10 +541,9 @@ function useRegenerateAction(nodeId: Id): (messageId?: Id) => Promise<void> {
   )
 }
 
-function StreamingBubble({ nodeId }: { nodeId: Id }) {
+function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void }) {
   const streaming = useWorkspaceStore((state) => state.streaming)
   const maxSteps = useSettingsStore((state) => clampAgentMaxSteps(state.settings.agentMaxSteps))
-  const regenerate = useRegenerateAction(nodeId)
   const text = useThrottledValue(streaming?.text ?? '', 70)
 
   // 这一轮属于别的节点时不在这里渲染，否则切到别的节点还能看见它的「正在思考」
@@ -517,16 +552,22 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
   // 失败得连一个字都没吐出来时不会有消息落库，错误只能挂在这一轮上：直接给个重来的入口
   if (streaming.error) {
     return (
-      <div className="flex flex-wrap items-center gap-2 rounded-xl rounded-bl-sm border border-danger/30 bg-danger-soft/40 px-3.5 py-2.5 text-2xs text-danger">
-        <span>生成中断：{streaming.error}</span>
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={ENTER_FAST}
+        className="flex flex-wrap items-center gap-2 rounded-xl rounded-bl-sm border border-danger/30 bg-danger-soft/40 px-3.5 py-2.5 text-2xs text-danger"
+      >
+        <span>生成中断：{humanizeStreamError(streaming.error)}</span>
         <button
           type="button"
-          onClick={() => void regenerate()}
+          onClick={onRetry}
           className="rounded-sm border border-danger/40 px-1.5 py-0.5 transition-colors hover:bg-danger-soft"
         >
           重新生成
         </button>
-      </div>
+      </motion.div>
     )
   }
 
@@ -534,7 +575,15 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
   const running = tools.some((tool) => tool.status === 'running')
 
   return (
-    <div className="flex flex-col gap-1">
+    <motion.div
+      // AnimatePresence 的退场就是「流式→落库」的交棒：思考气泡淡出，
+      // 同一帧里正式回答以新消息身份浮现（见 MessageList 的 Entrance）。
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={ENTER_SOFT}
+      className="flex flex-col gap-1"
+    >
       {tools.length > 0 ? (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 px-0.5 text-2xs text-faint">
@@ -546,7 +595,7 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
             <span>·</span>
             <span>本轮查了 {tools.length} 次项目数据</span>
           </div>
-          <ToolActivities tools={tools} />
+          <ToolActivities tools={tools} animateIn />
         </div>
       ) : null}
 
@@ -568,7 +617,7 @@ function StreamingBubble({ nodeId }: { nodeId: Id }) {
           <span className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-accent" />
         ) : null}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -579,14 +628,32 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
   const editUserMessage = useWorkspaceStore((state) => state.editUserMessage)
   const setSlotVersion = useWorkspaceStore((state) => state.setSlotVersion)
   const streamingHere = useWorkspaceStore((state) => isStreamingIn(state.streaming, nodeId))
+  // 含错误态的「本轮仍在场」：错误框也要在 AnimatePresence 里待到被关掉为止
+  const streamingRoundHere = useWorkspaceStore(
+    (state) => state.streaming?.nodeId === nodeId,
+  )
   const streamingMessageId = useWorkspaceStore((state) =>
     state.streaming?.nodeId === nodeId ? state.streaming.messageId : null,
   )
   const regenerate = useRegenerateAction(nodeId)
+  const peekVersionPrune = useWorkspaceStore((state) => state.peekVersionPrune)
+  const notesByMessage = useWorkspaceStore((state) => state.notesByMessage)
 
   // 节点内只有一个编辑态；带着节点 id 记，切节点后自然失效（不用 effect 重置）
   const [editing, setEditing] = useState<{ nodeId: Id; messageId: Id } | null>(null)
   const editingId = editing?.nodeId === nodeId ? editing.messageId : null
+
+  // 版本淘汰确认：重新生成/编辑重发要挤掉最早一版时，先问一句再动手
+  const [pruneConfirm, setPruneConfirm] = useState<{
+    kind: 'regenerate' | 'edit'
+    messageId?: Id
+    parts?: MessagePart[]
+    removedCount: number
+    notesCount: number
+  } | null>(null)
+
+  // 上滚之后给一枚「回到底部」，长对话不再丢位置感
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
 
   const viewportRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -624,11 +691,50 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
   const assetUrls = useAssetUrls(idsKey)
   const lastIndex = visible.length - 1
 
+  // 哪些气泡播进场动画：官方「渲染期调整 state」模式 —— state 记着上一次渲染的在场名单，
+  // 与本次 visible 的差集就是「刚到场」的气泡。全程纯派生（读 state、条件式 setState），
+  // StrictMode 双渲染结果一致，也不碰 effect。
+  const [seenState, setSeenState] = useState<{ nodeId: Id; ids: Set<Id>; fresh: Set<Id> }>(() => ({
+    nodeId,
+    ids: new Set(visible.map((message) => message.id)),
+    fresh: new Set<Id>(),
+  }))
+
+  let freshIds: Set<Id>
+  if (seenState.nodeId !== nodeId) {
+    // 刚切到这个节点：整列都是历史，一律不播 —— 动画只解释「刚发生的事」
+    freshIds = new Set()
+    setSeenState({
+      nodeId,
+      ids: new Set(visible.map((message) => message.id)),
+      fresh: freshIds,
+    })
+  } else if (
+    seenState.ids.size !== visible.length ||
+    !visible.every((message) => seenState.ids.has(message.id))
+  ) {
+    // 有消息进出：本次的差集就是「刚落库」的那批
+    freshIds = new Set(
+      visible.map((message) => message.id).filter((id) => !seenState.ids.has(id)),
+    )
+    setSeenState({ nodeId, ids: new Set(visible.map((message) => message.id)), fresh: freshIds })
+  } else {
+    // 名单没变：沿用上一次记录的差集（initial 只在挂载时生效，翻面无副作用）
+    freshIds = seenState.fresh
+  }
+
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport || !stickToBottom.current) return
     viewport.scrollTop = viewport.scrollHeight
   }, [visible.length, nodeId, streamingMessageId])
+
+  // 切节点时重置「回到底部」：渲染期调整 state（官方推荐模式），避开 effect 内 setState
+  const [jumpNodeId, setJumpNodeId] = useState(nodeId)
+  if (jumpNodeId !== nodeId) {
+    setJumpNodeId(nodeId)
+    setShowJumpToBottom(false)
+  }
 
   useEffect(() => {
     stickToBottom.current = true
@@ -652,7 +758,7 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
     [nodeId, setSlotVersion],
   )
 
-  const submitEdit = useCallback(
+  const doSubmitEdit = useCallback(
     async (messageId: Id, parts: MessagePart[]) => {
       setEditing(null)
       const result = await editUserMessage(nodeId, messageId, parts)
@@ -661,15 +767,63 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
     [editUserMessage, nodeId],
   )
 
+  /** 把淘汰名单翻译成确认框需要的计数：连带的标注笔记也要说清楚。 */
+  const openPruneConfirm = useCallback(
+    (kind: 'regenerate' | 'edit', messageId: Id | undefined, parts?: MessagePart[]) => {
+      const preview = peekVersionPrune(nodeId, kind, messageId)
+      if (!preview) return false
+      const removedSet = new Set(preview.removedMessageIds)
+      const notesCount = Object.values(notesByMessage).reduce(
+        (sum, bucket) => sum + bucket.filter((note) => removedSet.has(note.messageId)).length,
+        0,
+      )
+      setPruneConfirm({ kind, messageId, parts, removedCount: preview.removedMessageIds.length, notesCount })
+      return true
+    },
+    [nodeId, peekVersionPrune, notesByMessage],
+  )
+
+  const submitEdit = useCallback(
+    (messageId: Id, parts: MessagePart[]) => {
+      // 先预演：不淘汰就直接提交；要淘汰就先确认，编辑草稿保留在原地
+      if (openPruneConfirm('edit', messageId, parts)) return
+      void doSubmitEdit(messageId, parts)
+    },
+    [doSubmitEdit, openPruneConfirm],
+  )
+
+  const requestRegenerate = useCallback(
+    (messageId?: Id) => {
+      if (openPruneConfirm('regenerate', messageId)) return
+      void regenerate(messageId)
+    },
+    [openPruneConfirm, regenerate],
+  )
+
+  const confirmPrune = useCallback(() => {
+    if (!pruneConfirm) return
+    const { kind, messageId, parts } = pruneConfirm
+    setPruneConfirm(null)
+    if (kind === 'regenerate') {
+      void regenerate(messageId)
+    } else if (messageId && parts) {
+      void doSubmitEdit(messageId, parts)
+    }
+  }, [pruneConfirm, regenerate, doSubmitEdit])
+
   return (
+    <div className="relative min-h-0 flex-1">
     <div
       ref={viewportRef}
       onScroll={(event) => {
         const element = event.currentTarget
         stickToBottom.current =
           element.scrollHeight - element.scrollTop - element.clientHeight < 96
+        setShowJumpToBottom(
+          element.scrollHeight - element.scrollTop - element.clientHeight > 400,
+        )
       }}
-      className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="h-full space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {visible.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
@@ -682,24 +836,27 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
 
       {visible.map((message, index) => {
         const version = versions.get(message.id)
+        const fresh = freshIds.has(message.id)
         return (
           <Fragment key={message.id}>
-            <MessageBubble
-              message={message}
-              assetUrls={messageImageIds(message)
-                .map((id) => assetUrls[id])
-                .filter((url): url is string => Boolean(url))}
-              onAction={(kind, messageId) => void applyAction(kind, nodeId, messageId)}
-              isLast={index === lastIndex}
-              canRegenerate={index === lastIndex && !streamingHere}
-              onRegenerate={() => void regenerate(message.id)}
-              busy={streamingHere}
-              editing={editingId === message.id}
-              canEdit={message.role === 'user' && !streamingHere}
-              onStartEdit={() => setEditing({ nodeId, messageId: message.id })}
-              onCancelEdit={() => setEditing(null)}
-              onSubmitEdit={(parts) => void submitEdit(message.id, parts)}
-            />
+            <Entrance on={fresh}>
+              <MessageBubble
+                message={message}
+                assetUrls={messageImageIds(message)
+                  .map((id) => assetUrls[id])
+                  .filter((url): url is string => Boolean(url))}
+                onAction={(kind, messageId) => void applyAction(kind, nodeId, messageId)}
+                isLast={index === lastIndex}
+                canRegenerate={index === lastIndex && !streamingHere}
+                onRegenerate={() => requestRegenerate(message.id)}
+                busy={streamingHere}
+                editing={editingId === message.id}
+                canEdit={message.role === 'user' && !streamingHere}
+                onStartEdit={() => setEditing({ nodeId, messageId: message.id })}
+                onCancelEdit={() => setEditing(null)}
+                onSubmitEdit={(parts) => void submitEdit(message.id, parts)}
+              />
+            </Entrance>
             {version && version.total > 1 ? (
               <VersionDivider
                 ref={(element) => {
@@ -715,7 +872,64 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
         )
       })}
 
-      <StreamingBubble nodeId={nodeId} />
+      <AnimatePresence initial={false}>
+        {streamingRoundHere ? (
+          <StreamingBubble key={`streaming-${nodeId}`} nodeId={nodeId} onRetry={() => requestRegenerate()} />
+        ) : null}
+      </AnimatePresence>
+    </div>
+
+    {/* 定位居中的壳负责绝对定位，按钮本体只管进出场 —— 两种 transform 各走各的属性，互不覆盖 */}
+    <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2">
+      <AnimatePresence initial={false}>
+        {showJumpToBottom ? (
+          <motion.button
+            key="jump-to-bottom"
+            type="button"
+            initial={{ opacity: 0, y: 6, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={ENTER_FAST}
+            onClick={() => {
+              stickToBottom.current = true
+              const viewport = viewportRef.current
+              if (viewport) viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
+              setShowJumpToBottom(false)
+            }}
+            className="pointer-events-auto flex items-center gap-1 rounded-full border border-line bg-elevated/95 px-2.5 py-1 text-2xs text-ink-soft shadow-panel backdrop-blur transition-colors hover:text-ink"
+          >
+            <ChevronDown className="h-3 w-3" />
+            回到底部
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
+    </div>
+
+    {/* 版本淘汰确认：淘汰是静默删数据，先说清楚会丢什么再动手 */}
+    <Dialog open={Boolean(pruneConfirm)} onOpenChange={(open) => !open && setPruneConfirm(null)}>
+      <DialogContent className="w-[min(400px,100%)]">
+        <DialogHeader>
+          <DialogTitle>
+            {pruneConfirm?.kind === 'edit' ? '提交编辑将淘汰最早的版本' : '重新生成将淘汰最早的版本'}
+          </DialogTitle>
+          <DialogDescription>
+            最多保留 {MAX_THREAD_VERSIONS} 个版本。最早的一版（{pruneConfirm?.removedCount ?? 0} 条消息
+            {pruneConfirm && pruneConfirm.notesCount > 0
+              ? `、其中标注笔记 ${pruneConfirm.notesCount} 条`
+              : ''}
+            ）会被删除，无法恢复。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setPruneConfirm(null)}>
+            取消
+          </Button>
+          <Button variant="danger" onClick={confirmPrune}>
+            {pruneConfirm?.kind === 'edit' ? '仍然提交' : '仍然重新生成'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </div>
   )
 }
