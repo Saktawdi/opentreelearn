@@ -32,6 +32,7 @@ import {
 import { buildReviewQueue, type ReviewQueueItem } from '@/domain/review/queue'
 import { suggestionFromMessages } from '@/domain/review/protocol'
 import { noteOrigin } from '@/domain/notes'
+import { loadAssetUrls } from '@/services/images'
 import { threadPathFingerprint, resolveThread } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { runReviewRequest } from '@/services/llm/review'
@@ -97,8 +98,8 @@ interface ReviewSessionStoreState {
   ensureCurrentItemContent: () => Promise<void>
   /** 保存输入草稿（输入时防抖调用） */
   saveDraft: (text: string) => Promise<void>
-  /** 提交回答并请求反馈 */
-  submitAnswer: (answer: string) => Promise<void>
+  /** 提交回答并请求反馈；作答图片已在 UI 侧落成 assets，这里只带 id */
+  submitAnswer: (answer: string, imageIds?: Id[]) => Promise<void>
   /** 要提示 */
   requestHint: () => Promise<void>
   /** 换个问法 */
@@ -288,30 +289,33 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       await executeModelTurn(purpose, '')
     },
 
-    submitAnswer: async (answer) => {
+    submitAnswer: async (answer, imageIds) => {
       const trimmed = answer.trim()
-      if (!trimmed) return
+      const images = [...new Set(imageIds ?? [])]
+      // 纯图片作答（如手写过程的拍照）合法：正文为空但图片非空也放行
+      if (!trimmed && images.length === 0) return
       const session = get().session
       const item = currentItem(session)
       if (!session || !item) return
 
       const now = Date.now()
-      // 回答先落库成用户消息，阶段转 evaluating
-      const messages = [
-        ...item.messages,
-        {
-          id: newId(),
-          role: 'user' as const,
-          text: trimmed,
-          purpose: 'answer' as const,
-          createdAt: now,
-        },
-      ]
+      // 回答先落库成用户消息，阶段转 evaluating。
+      // `answer` 刻意不为空（图片-only 时给占位句）：它是确认评分的门槛（canConfirm），
+      // 也是模型侧「这一项回答过」的判据 —— 不让一张图绕过这两个不变量。
+      const message: ReviewSessionMessage = {
+        id: newId(),
+        role: 'user',
+        text: trimmed,
+        purpose: 'answer',
+        ...(images.length > 0 ? { imageIds: images } : {}),
+        createdAt: now,
+      }
+      const messages = [...item.messages, message]
       patchItem(
         session,
         item.itemId,
         {
-          answer: trimmed,
+          answer: trimmed || '（提交了图片作答）',
           draft: '',
           phase: 'evaluating',
           interacted: true,
@@ -917,6 +921,13 @@ async function executeModelTurn(
       })
     : undefined
 
+  // 作答图片 → dataUrl：模型上下文里图片以数据 URL 附在用户消息上（与聊天同一套资产解析）
+  const imageIds = [
+    ...new Set(item.messages.flatMap((message) => (message.role === 'user' ? (message.imageIds ?? []) : []))),
+  ]
+  const imageUrls =
+    imageIds.length > 0 ? await loadAssetUrls(getRepositories().assets, imageIds) : undefined
+
   const result = await runReviewRequest({
     settings,
     projectSettings,
@@ -927,6 +938,7 @@ async function executeModelTurn(
     messagesByNode,
     notesByMessage,
     reviewNotes,
+    imageUrls,
     item,
     purpose,
     text,

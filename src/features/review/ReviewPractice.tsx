@@ -4,14 +4,17 @@ import {
   BookOpen,
   ChevronRight,
   HelpCircle,
+  ImagePlus,
   Lightbulb,
   Loader2,
   RefreshCw,
   RotateCcw,
   SkipForward,
+  X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { NodeReview, ReviewGrade } from '@/domain/models'
+import { toast } from 'sonner'
+import type { Asset, Id, NodeReview, ReviewGrade } from '@/domain/models'
 import type {
   ReviewRequestPurpose,
   ReviewSessionItem,
@@ -20,11 +23,15 @@ import type {
 import { currentOpenQuestion, latestQuestion } from '@/domain/review/delivery'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
+import { getRepositories } from '@/data'
+import { createImageAsset, imagesFromClipboard } from '@/services/images'
+import { errorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { SelectionAction } from '@/features/chat/SelectionMenu'
 import { SelectionMenu } from '@/features/chat/SelectionMenu'
 import { MessageNotes } from '@/features/chat/MessageNotes'
+import { useAssetUrls } from '@/features/chat/useAssetUrls'
 import { ReviewAnnotatableText } from './ReviewAnnotatable'
 import { useReviewMessageNotes } from './use-review-notes'
 import { ReviewFeedback } from './ReviewFeedback'
@@ -43,6 +50,7 @@ function userMessageLabel(purpose: ReviewRequestPurpose): string {
 }
 
 interface ReviewPracticeProps {
+  projectId: Id
   item: ReviewSessionItem
   scoreBefore: number
   reviewBefore?: NodeReview
@@ -54,7 +62,7 @@ interface ReviewPracticeProps {
   lastUndoneNotice?: string | null
   undoable: boolean
   onSaveDraft: (draft: string) => void
-  onSubmitAnswer: (answer: string) => void
+  onSubmitAnswer: (answer: string, imageIds?: Id[]) => void
   onRequestHint: () => void
   onRequestRephrase: () => void
   onRequestGiveUp: () => void
@@ -78,6 +86,7 @@ interface ReviewPracticeProps {
  * - 撤销上次评分后常驻可点提示条。
  */
 export function ReviewPractice({
+  projectId,
   item,
   scoreBefore,
   reviewBefore,
@@ -110,11 +119,19 @@ export function ReviewPractice({
   const [followup, setFollowup] = useState<{ quote: string; text: string } | null>(null)
   const followupRef = useRef<HTMLTextAreaElement>(null)
   const followupComposingRef = useRef(false)
+  /** 待提交的作答图片：粘贴 / 上传进来，提交时才落 assets（与聊天输入框同一套时序） */
+  const [pendingImages, setPendingImages] = useState<Array<{ asset: Asset; url: string }>>([])
+  const pendingImagesRef = useRef<Array<{ asset: Asset; url: string }>>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 状态根据 item.itemId 切换而在 render 期间校准，避免在 effect 内部调用 setState
   if (item.itemId !== prevItemId) {
     setPrevItemId(item.itemId)
     setDraft(item.draft ?? '')
+    // 换主题时待提交图片一并作废：草稿不跨主题，图片也不该悄悄跟过去。
+    // 这里读到的是本 render 的 state（旧图片还在里面），回收后清空 —— 不经 ref。
+    for (const pending of pendingImages) URL.revokeObjectURL(pending.url)
+    setPendingImages([])
   }
 
   // 阶段切换时收起追问输入：同样在 render 期间校准 —— 离开可追问的稳定态，
@@ -142,8 +159,8 @@ export function ReviewPractice({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isComposingRef.current) {
       e.preventDefault()
-      if (draft.trim() && item.phase === 'answering') {
-        onSubmitAnswer(draft)
+      if ((draft.trim() || pendingImages.length > 0) && item.phase === 'answering') {
+        void submitAnswer()
       }
     }
   }
@@ -162,6 +179,61 @@ export function ReviewPractice({
     onAskFollowup(question)
     setFollowup(null)
   }
+
+  /** 粘贴 / 选择图片：先压缩登记成 asset（objectURL 仅作预览），提交时才落库 */
+  const attachImages = async (files: File[]) => {
+    if (files.length === 0) return
+    try {
+      const created = await Promise.all(
+        files.map(async (file) => {
+          const asset = await createImageAsset(file, projectId)
+          return { asset, url: URL.createObjectURL(asset.blob) }
+        }),
+      )
+      setPendingImages((previous) => [...previous, ...created])
+    } catch (error) {
+      toast.error(`图片读取失败：${errorMessage(error)}`)
+    }
+  }
+
+  const removePendingImage = (assetId: Id) => {
+    setPendingImages((previous) => {
+      const target = previous.find((item) => item.asset.id === assetId)
+      if (target) URL.revokeObjectURL(target.url)
+      return previous.filter((item) => item.asset.id !== assetId)
+    })
+  }
+
+  /** 提交回答：图片资产先落库再随消息带 id 上行（纯图片作答也合法） */
+  const submitAnswer = async () => {
+    if (isEvaluating) return
+    if (!draft.trim() && pendingImages.length === 0) return
+    const imageIds: Id[] = []
+    try {
+      for (const pending of pendingImages) {
+        await getRepositories().assets.create(pending.asset)
+        imageIds.push(pending.asset.id)
+      }
+    } catch (error) {
+      toast.error(`图片保存失败：${errorMessage(error)}`)
+      return
+    }
+    for (const pending of pendingImages) URL.revokeObjectURL(pending.url)
+    setPendingImages([])
+    onSubmitAnswer(draft, imageIds)
+  }
+
+  // ref 只在 effect 里同步（render 期间读写 ref 是 lint 禁区）；换主题 / 卸载时
+  // 由下面的 cleanup 回收可能漏掉的预览 URL —— 与上面的 render 校准互为双保险
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages
+  })
+  useEffect(
+    () => () => {
+      for (const pending of pendingImagesRef.current) URL.revokeObjectURL(pending.url)
+    },
+    [item.itemId],
+  )
 
   const isPreparing = item.phase === 'preparing'
   const isRelearning = item.phase === 'relearning'
@@ -376,6 +448,28 @@ export function ReviewPractice({
           <label htmlFor="review-answer-input" className="block mb-2 text-xs font-medium text-ink">
             我的回答
           </label>
+
+          {/* 待提交图片预览：与聊天输入框同款胶囊 */}
+          <div className="mb-2 flex flex-wrap gap-2 empty:hidden">
+            {pendingImages.map((pending) => (
+              <div key={pending.asset.id} className="group/img relative">
+                <img
+                  src={pending.url}
+                  alt={pending.asset.name ?? '待发送图片'}
+                  className="h-16 w-16 rounded-md border border-line object-cover"
+                />
+                <button
+                  type="button"
+                  aria-label="移除这张图片"
+                  onClick={() => removePendingImage(pending.asset.id)}
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-line bg-canvas p-0.5 text-muted transition-colors hover:text-ink"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+
           <Textarea
             id="review-answer-input"
             ref={textareaRef}
@@ -383,6 +477,13 @@ export function ReviewPractice({
             value={draft}
             disabled={isEvaluating}
             onChange={(e) => handleDraftChange(e.target.value)}
+            onPaste={(e) => {
+              const files = imagesFromClipboard(e.nativeEvent)
+              if (files.length > 0) {
+                e.preventDefault()
+                void attachImages(files)
+              }
+            }}
             onCompositionStart={() => {
               isComposingRef.current = true
             }}
@@ -390,12 +491,34 @@ export function ReviewPractice({
               isComposingRef.current = false
             }}
             onKeyDown={handleKeyDown}
-            placeholder="用自己的话简述答案，或写下回忆出的关键点… (Ctrl+Enter 发送)"
+            placeholder="用自己的话简述答案，可粘贴/上传图片（如手写过程）… (Ctrl+Enter 发送)"
             className="w-full text-xs leading-relaxed"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void attachImages(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
           />
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isEvaluating}
+                onClick={() => fileInputRef.current?.click()}
+                title="上传图片作答"
+                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
+              >
+                <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                插入图片
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -442,8 +565,8 @@ export function ReviewPractice({
             <Button
               variant="primary"
               size="sm"
-              disabled={!draft.trim() || isEvaluating}
-              onClick={() => onSubmitAnswer(draft)}
+              disabled={(!draft.trim() && pendingImages.length === 0) || isEvaluating}
+              onClick={() => void submitAnswer()}
             >
               提交回答
             </Button>
@@ -561,6 +684,7 @@ export function ReviewPractice({
  */
 function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
   const notes = useReviewMessageNotes(message.id)
+  const imageUrls = useAssetUrls((message.imageIds ?? []).join(','))
   const isUser = message.role === 'user'
 
   return (
@@ -576,7 +700,24 @@ function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
           ? userMessageLabel(message.purpose)
           : (OTHER_MESSAGE_LABEL[message.purpose] ?? '反馈')}
       </div>
-      <ReviewAnnotatableText messageId={message.id} source={stripReviewRating(message.text)} />
+      {message.text ? (
+        <ReviewAnnotatableText messageId={message.id} source={stripReviewRating(message.text)} />
+      ) : null}
+      {(message.imageIds?.length ?? 0) > 0 ? (
+        <div className={message.text ? 'mt-2 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
+          {(message.imageIds ?? []).map((id) => {
+            const url = imageUrls[id]
+            return url ? (
+              <img
+                key={id}
+                src={url}
+                alt="作答图片"
+                className="max-h-48 rounded-md border border-line/60"
+              />
+            ) : null
+          })}
+        </div>
+      ) : null}
       <MessageNotes notes={notes} className="mt-2" />
     </div>
   )

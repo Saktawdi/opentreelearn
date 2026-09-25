@@ -278,6 +278,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
             />
           ) : isPracticing && current && activeNode ? (
             <ReviewPractice
+              projectId={projectId}
               item={current}
               scoreBefore={activeNode.mastery?.score ?? 50}
               reviewBefore={activeNode.review}
@@ -289,7 +290,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
               lastUndoneNotice={lastUndoneNotice}
               undoable={canUndo}
               onSaveDraft={(val) => void saveDraft(val)}
-              onSubmitAnswer={(ans) => void submitAnswer(ans)}
+              onSubmitAnswer={(ans, ids) => void submitAnswer(ans, ids)}
               onRequestHint={() => void requestHint()}
               onRequestRephrase={() => void requestRephrase()}
               onRequestGiveUp={() => void requestGiveUp()}

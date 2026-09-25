@@ -75,6 +75,11 @@ export interface ReviewSessionMessage {
   role: 'user' | 'assistant'
   text: string
   purpose: ReviewRequestPurpose
+  /**
+   * 用户消息附带的作答图片（assets 表的 blob 引用，不在会话文档里存数据本体 ——
+   * 会话每次 patch 都整档落库，图片进文档会让每次键入都重写几兆字节）。
+   */
+  imageIds?: Id[]
   /** 产生这条消息的请求 id；迟到回调据此被丢弃 */
   requestId?: Id
   /** 生成被中断或失败：正文保留但**不采纳其中的评分标记** */

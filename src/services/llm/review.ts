@@ -4,6 +4,7 @@ import {
   assembleReviewContext,
   buildReviewMaterial,
   type ReviewContextMessage,
+  type ReviewContextPart,
 } from '@/domain/context/review'
 import { currentOpenQuestion } from '@/domain/review/delivery'
 import type { ReviewItemPhase, ReviewRequestPurpose, ReviewSessionItem } from '@/domain/review/session'
@@ -43,6 +44,8 @@ export interface ReviewRequestInput {
   notesByMessage?: Map<Id, Note[]>
   /** 本节点在复习会话里产生的标注（历次累计）；投喂口径见 buildReviewMaterial */
   reviewNotes?: Note[]
+  /** 会话消息里作答图片的数据 URL（assetId → dataUrl，调用方现取现传） */
+  imageUrls?: Map<Id, string>
   item: ReviewSessionItem
   purpose: ReviewRequestPurpose
   /** 本轮要发给模型的新内容（学习者回答 / 追问 / 空的触发语） */
@@ -94,12 +97,19 @@ export interface ReviewRequestFailure {
   capabilityUnknown?: boolean
 }
 
-/** 把会话项里已有的消息转成模型能读的对话（判定标记剥掉，模型不需要看到两遍）。 */
-function itemHistory(item: ReviewSessionItem): ReviewContextMessage[] {
-  return item.messages.map((message) => ({
-    role: message.role,
-    parts: [{ type: 'text', text: stripReviewRating(message.text) }],
-  }))
+/** 把会话项里已有的消息转成模型能读的对话（判定标记剥掉；作答图片按现成的 dataUrl 附上）。 */
+function itemHistory(item: ReviewSessionItem, imageUrls?: Map<Id, string>): ReviewContextMessage[] {
+  return item.messages.map((message) => {
+    const parts: ReviewContextPart[] = [{ type: 'text', text: stripReviewRating(message.text) }]
+    if (message.role === 'user') {
+      for (const id of message.imageIds ?? []) {
+        const dataUrl = imageUrls?.get(id)
+        // 资产已被清理（删库、同步裁剪）时跳过：正文还在，图片缺席优于整轮失败
+        if (dataUrl) parts.push({ type: 'image', dataUrl })
+      }
+    }
+    return { role: message.role, parts }
+  })
 }
 
 /** 本轮触发语：把「用户做了什么」写成一句明确的指令，避免模型把空消息当成误发。 */
@@ -202,7 +212,7 @@ export async function runReviewRequest(
     budgetTokens: input.settings.contextBudget,
   })
 
-  const history = itemHistory(input.item)
+  const history = itemHistory(input.item, input.imageUrls)
   history.push({ role: 'user', parts: [{ type: 'text', text: triggerText(input.purpose, input.text) }] })
 
   const context = assembleReviewContext({
