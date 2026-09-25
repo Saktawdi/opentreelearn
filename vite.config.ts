@@ -145,8 +145,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), apiProxyPlugin()],
   server: {
     port: 6174,
-    // 关闭 HMR：改动后手动刷新浏览器，避免热更新把 store 状态搞出幽灵态
-    hmr: false,
     proxy: {
       // 同步服务（server/，默认 3901）。走同源代理，开发时不必依赖 CORS。
       // 生产部署同样把 /lern-api 反代到该服务即可（见 docs/design.md 第 13 节）。
