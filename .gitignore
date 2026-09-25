@@ -14,3 +14,4 @@ coverage
 .zcode/.impeccable/
 /.impeccable/
 /.zcode/
+.vite-dev.log
