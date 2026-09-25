@@ -144,10 +144,12 @@ export function ReviewPractice({
     }
   }
 
-  // 当进入回忆作答时自动聚焦输入框
+  // 当进入回忆作答时自动聚焦输入框。
+  // preventScroll：滚动定位归新题效果管（见下）—— 聚焦若默认把输入框滚进视野，
+  // 会把刚要展示的题目又拽出视口，正是「复述题闪到顶上后题目不见了」的帮凶。
   useEffect(() => {
     if (item.phase === 'answering' && !streamingText) {
-      textareaRef.current?.focus()
+      textareaRef.current?.focus({ preventScroll: true })
     }
   }, [item.phase, streamingText])
 
@@ -279,6 +281,28 @@ export function ReviewPractice({
   // 题目卡上的标注（questionMessage 可能为 null，钩子必须无条件调用）
   const questionNotes = useReviewMessageNotes(questionMessage?.id ?? '')
 
+  // 新题落地把它带进视野。补学→复述题、点评→再问都会把新题放进**顶部主卡**（补学
+  // 讲解 / 旧反馈整体下移进历史区），而用户的视口还停在底部的占位卡或点评上 ——
+  // 「占位卡位置没错，题目生成完却闪到最顶上」就是这么来的。换题且题目卡不在视野
+  // 内时平滑滚过去；题目本来就在眼前（新主题首题、用户已翻回顶部）时一动不动。
+  const stageRef = useRef<HTMLDivElement>(null)
+  const questionCardRef = useRef<HTMLDivElement>(null)
+  const lastQuestionIdRef = useRef<Id | null>(questionMessage?.id ?? null)
+  useEffect(() => {
+    const questionId = questionMessage?.id ?? null
+    if (questionId === lastQuestionIdRef.current) return
+    lastQuestionIdRef.current = questionId
+    if (!questionId) return
+
+    const card = questionCardRef.current
+    const stage = stageRef.current
+    if (!card || !stage) return
+    const cardRect = card.getBoundingClientRect()
+    const stageRect = stage.getBoundingClientRect()
+    const visible = cardRect.top >= stageRect.top - 4 && cardRect.bottom <= stageRect.bottom + 4
+    if (!visible) card.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [questionMessage?.id])
+
   // 可追问的稳定态：反馈已出（评分前）或补学讲解已展示 —— 此时追问不会打断任何在途请求
   const isFollowupAllowedPhase = isFeedback || isRelearning
 
@@ -297,7 +321,10 @@ export function ReviewPractice({
         : ['annotate', 'copy']
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full">
+    <div
+      ref={stageRef}
+      className="flex flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-8 max-w-4xl mx-auto w-full"
+    >
       {/* 撤销提示横幅 */}
       {undoable && (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-line/60 bg-surface px-3 py-2 text-xs text-muted">
@@ -329,7 +356,7 @@ export function ReviewPractice({
       ) : null}
 
       {/* 题目展示区 */}
-      <div className="rounded-xl border border-line/70 bg-surface p-5 shadow-sm">
+      <div ref={questionCardRef} className="rounded-xl border border-line/70 bg-surface p-5 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-2xs font-medium text-accent">
             {item.mode === 'relearn' ? '关键点补学' : '主动回忆题'}
