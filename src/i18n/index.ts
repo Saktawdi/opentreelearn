@@ -14,6 +14,9 @@ i18n
     // 其余语言全部落 fallbackLng。（实测 v26 里 supportedLngs+nonExplicitSupportedLngs
     // 组合会让 t() 解析失效，返回裸键。）
     fallbackLng: 'zh-CN',
+    // 运行时默认命名空间必须与 resources.d.ts 的类型级 defaultNS 一致——
+    // useTranslation() 不带参数时 t('键') 就落在这里；漏掉会返回裸键
+    defaultNS: 'common',
     detection: {
       // 用户显式选过的语言存 localStorage，优先于浏览器偏好
       order: ['localStorage', 'navigator'],

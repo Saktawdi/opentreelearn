@@ -1,6 +1,7 @@
 import { Check, Copy } from 'lucide-react'
 import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Options } from 'react-markdown'
+import { useTranslation } from 'react-i18next'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -20,6 +21,7 @@ function CodeBlock({
   code: string
   language?: string
 } & SourceProps) {
+  const { t } = useTranslation('common')
   const [html, setHtml] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -55,7 +57,7 @@ function CodeBlock({
         type="button"
         onClick={copy}
         className="absolute right-2 top-1.5 rounded-md border border-line/70 bg-canvas/70 p-1 text-muted opacity-0 transition-opacity duration-150 hover:text-ink focus-visible:opacity-100 group-hover/code:opacity-100"
-        aria-label="复制代码"
+        aria-label={t('copyCode')}
       >
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
