@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "OpenTreeLearn 同步后端（BFF）：账号映射 + 多端增量同步",
+  "license": "MIT",
   "scripts": {
     "start:dev": "nest start --watch",
     "start": "node dist/main",

@@ -19,7 +19,7 @@ import settingsZh from './locales/zh-CN/settings.json'
  * 语言资源静态打包：两份语言全量随 bundle 加载（体量小，不值得按语言做懒加载分包）。
  * zh-CN 是源语言（key 的类型声明以它为准），en 是第一门目标语言。
  * 命名空间与 feature 目录一一对应：common 是跨页面共用文案（导航/共享操作），
- * 其余见 docs/i18n.md。新增语言：加 locales/<code>/ 目录 + 在这里挂条目 + supportedLngs 放行。
+ * 其余见 docs/dev/i18n.md（本地开发文档）。新增语言：加 locales/<code>/ 目录 + 在这里挂条目 + supportedLngs 放行。
  */
 export const resources = {
   'zh-CN': {

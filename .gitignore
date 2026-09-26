@@ -11,7 +11,17 @@ dist-ssr
 coverage
 .vite
 .eslintcache
-.zcode/.impeccable/
-/.impeccable/
-/.zcode/
 .vite-dev.log
+
+# 非项目内容：AI 工具与本地工作区
+/.zcode/
+/.claude/
+/.gate/
+/.impeccable/
+.zcodeignore
+
+# 宣传片工程（Remotion，随仓库一起保留在本地，不随开源发布）
+promo-video/
+
+# 本地开发文档（不随开源发布）
+docs/dev/

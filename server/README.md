@@ -1,8 +1,8 @@
 # OpenTreeLearn 同步服务（BFF）
 
-前端是 local-first 的学习工作台（Vite SPA + IndexedDB），账号系统（`https://api.sakta.top`）**只提供身份**，没有任何数据存储接口。所以多端同步的数据落点在这个服务里：它负责把账号系统的 token 换成用户、把每个用户的记录存下来，并提供增量 pull/push。
+> 简体中文 · [English](README.en.md)
 
-架构照 Blog 的 `sakta-bff`：NestJS 10 + Prisma + SQLite。
+前端是 local-first 的学习工作台（Vite SPA + IndexedDB），账号系统（`https://api.sakta.top`）**只提供身份**，没有任何数据存储接口。所以多端同步的数据落点在这个服务里：它负责把账号系统的 token 换成用户、把每个用户的记录存下来，并提供增量 pull/push。
 
 ## 快速开始
 
@@ -109,10 +109,3 @@ docker compose up -d --build     # 访问 http://localhost:8080
 2. 前端把 `/lern-api` 反代到本服务（开发已在根 `vite.config.ts` 配好同源代理），这样浏览器不必依赖 CORS；若要直连，把前端源写进 `CORS_ORIGIN`。
 3. SQLite 文件在 `prisma/dev.db`（由 `DATABASE_URL` 决定），备份直接复制该文件；量级不大时够用，将来要换 Postgres 只需改 datasource 与迁移。
 4. 生产环境请清空 `ALLOW_DEV_TOKEN`：那一路径是唯一能绕过账号系统的入口（非生产才生效，但别留隐患）。
-
-## 已知坑
-
-- **`cors` 的函数 origin 会挂死请求**：该包把函数形式的 `origin` 当异步回调 `(origin, callback)`，同步返回布尔的函数永远不调 callback，表现为「连接建立、零字节响应」。所以 `createCorsOrigin()` 返回字符串/正则数组，并有单测锁住这一点。
-- **body 上限**：Nest 默认 100KB，push 是批量提交，这里放宽到 16MB（`main.ts` 的 `BODY_LIMIT`），并用 `useBodyParser` 显式注册。nginx 侧也要放宽（`docker/nginx.conf` 的 `client_max_body_size 20m`），否则大 push 会先被网关 413 掉。
-- **每次校验一次外部调用**：token 校验转发 `getInfo`，靠 60s 缓存摊薄；同步是低频批量操作，够用。
-- **镜像里的 pnpm store/cache**：pnpm 把包硬链接进 `node_modules`，但 store（`~/.local/share/pnpm/store`）与元数据缓存（`~/.cache/pnpm`）会留在镜像里，实测多占约 350MB。`server/Dockerfile` 用 `--store-dir=/tmp/pnpm-store` 装完后在同层 `rm -rf`，并清掉 prisma 的下载缓存；改 Dockerfile 时别把这一步弄丢。
