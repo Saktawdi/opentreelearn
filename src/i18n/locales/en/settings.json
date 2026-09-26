@@ -1,1 +1,149 @@
-{}
+{
+  "page": {
+    "title": "Settings",
+    "subtitle": "Data and API keys are stored only in this browser.",
+    "storageNote": "Projects, nodes, conversations and images live in the browser's IndexedDB; clearing browser data wipes them too."
+  },
+  "section": {
+    "context": "Context",
+    "preferences": "Preferences",
+    "agent": "Agent",
+    "models": "Model assignment",
+    "providers": "BYOK providers"
+  },
+  "action": {
+    "save": "Save"
+  },
+  "toast": {
+    "saved": "Saved",
+    "budgetClamped": "Saved (beyond {{min}}–{{max}}, saved as {{value}})",
+    "stepsClamped": "Saved (valid range 0–{{max}}, saved as {{value}})",
+    "stepsUnlimited": "Saved: no step limit; you can stop generation manually at any time",
+    "testOkTools": "{{label}} connected; tool calling supported",
+    "testOkNoTools": "{{label}} connected, but no tool-calling capability was detected: chat will proceed without tools",
+    "testFailed": "Connection failed: {{error}}"
+  },
+  "context": {
+    "budgetLabel": "Context budget (tokens)",
+    "budgetHint": "Once exceeded, earlier parent-chain conversations are compressed automatically. Allowed range {{min}}–{{max}}; values beyond it are saved at the boundary."
+  },
+  "prefs": {
+    "dialogToggleTitle": "Show quick-prompt dialog when creating a child node",
+    "dialogOn": "When you select text and click \"New child node\", a dialog opens: pick a quick prompt or type your own, and you can check \"Remember choice\" there.",
+    "dialogOff": "No more dialog: clicking \"New child node\" sends the remembered prompt below directly; selected text is still attached as a quote capsule.",
+    "rememberedTitle": "Remembered prompt",
+    "rememberedHint": "Checking \"Remember choice\" in the dialog saves the prompt you confirmed; click a chip to switch back to a quick prompt anytime.",
+    "customPromptLabel": "Custom prompt:"
+  },
+  "agent": {
+    "maxStepsLabel": "Max tool-call steps",
+    "maxStepsHintA": "Maximum number of tool calls the model can make in one turn (one step = one model call, including the final answer). Default 50; ",
+    "maxStepsHintEm": "0 means no limit",
+    "maxStepsHintB": " (the model decides when to finish, and you can interrupt generation with the stop button at any time)."
+  },
+  "slot": {
+    "chat": {
+      "label": "Chat model",
+      "hint": "Used for question-and-answer inside a node."
+    },
+    "title": {
+      "label": "Title model",
+      "hint": "Leave empty to use the question text as the title."
+    },
+    "summary": {
+      "label": "Summary model",
+      "hint": "Used to generate node study summaries manually; leave empty to disable the feature."
+    }
+  },
+  "providers": {
+    "empty": "No providers yet. Add one, fill in the API key and model IDs, and you can start chatting.",
+    "test": "Test",
+    "edit": "Edit",
+    "add": "Add provider",
+    "keyNotSet": "Not set"
+  },
+  "picker": {
+    "placeholder": "Select model",
+    "empty": "No available models yet — add one in Settings first.",
+    "clear": "Clear selection"
+  },
+  "reasoning": {
+    "auto": "Auto",
+    "autoOption": "Auto (follow provider default)",
+    "button": "Reasoning · {{level}}",
+    "inputPlaceholder": "Auto, or type a level (low / high / xhigh…)",
+    "levelsLabel": "Levels supported by this model",
+    "matching": "Matching model catalog…",
+    "noModels": "No models yet — enter a model ID first",
+    "noLevels": "No reasoning levels recognized in the model catalog (or the model doesn't support them); type your own above"
+  },
+  "dialog": {
+    "addTitle": "Add provider",
+    "editTitle": "Edit provider",
+    "keyNote": "API keys are stored only in this browser and never uploaded.",
+    "kindLabel": "Protocol",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. DeepSeek",
+    "baseUrlHint": "Leave empty for the official default address; OpenAI-compatible setups can point to a self-hosted proxy.",
+    "modelsLabel": "Models",
+    "modelsHint": "Fetch the model list from upstream or enter IDs manually; \"Smart match\" pulls the online config and shows capability tags.",
+    "modelInputPlaceholder": "Enter a model ID, e.g. deepseek-chat or gpt-5.1…",
+    "suggestionsHeader_one": "Matched {{count}} upstream model (click or press Enter to add):",
+    "suggestionsHeader_other": "Matched {{count}} upstream models (click or press Enter to add):",
+    "alreadyAdded": "Added",
+    "addModel": "Add",
+    "fetchNeedsKey": "Enter the API key first",
+    "fetchTitle": "Fetch the available model list from the upstream API",
+    "fetching": "Fetching…",
+    "fetchModels": "Fetch models",
+    "matching": "Matching…",
+    "smartMatch": "Smart match",
+    "upstreamFound_one": "Upstream API found {{count}} available model",
+    "upstreamFound_other": "Upstream API found {{count}} available models",
+    "selectAll": "Add all",
+    "matchedFrom": "Online match: {{entry}}",
+    "notInCatalog": "Not found in the online catalog",
+    "reasoningBadge": "This model supports reasoning",
+    "reasoningBadgeCustom": "This model supports reasoning (custom levels: {{levels}})",
+    "thinkingBadge": "Thinking",
+    "collapseEditor": "Collapse settings",
+    "editModel": "Edit model capabilities",
+    "deleteModel": "Delete model",
+    "capabilitiesHeader": "Capability toggles and context (from the online match or manual overrides):",
+    "basedOn": "Based on {{entry}}",
+    "fullManual": "Not found in the online catalog — fully manual config",
+    "reasoningSwitch": "Supports reasoning",
+    "visionSwitch": "Supports vision input",
+    "contextLabel": "Context:",
+    "contextPlaceholder": "Default (e.g. 1048576)",
+    "levelsHeader": "Reasoning levels (leave empty to follow the general/online default; custom values allowed, comma-separated):",
+    "presetThree": "Standard 3",
+    "presetThreeTitle": "Fill in the standard three levels: low, medium, high",
+    "presetFour": "Four levels",
+    "presetFourTitle": "Fill in four levels: low, medium, high, xhigh",
+    "presetTwo": "Two levels",
+    "presetTwoTitle": "Fill in two levels: low, high",
+    "presetToggle": "Toggle only",
+    "presetToggleTitle": "Fill in a single level: none (toggle only)",
+    "levelsPlaceholder": "e.g. low, medium, high (or use the presets on the right)",
+    "noModels": "No models yet. Type above and press Enter to add one.",
+    "testConnection": "Test connection",
+    "cancel": "Cancel",
+    "matchNeedsModel": "Add at least one model ID first",
+    "matchAll_one": "All {{count}} model matched the online catalog",
+    "matchAll_other": "All {{count}} models matched the online catalog",
+    "matchPartial_one": "{{count}}/{{total}} model matched; unmatched ones still work",
+    "matchPartial_other": "{{count}}/{{total}} models matched; unmatched ones still work",
+    "matchNone": "No match found in the online catalog; it can still be used",
+    "fetchEmpty": "The upstream API responded but returned no usable models",
+    "fetchOk_one": "Fetched {{count}} model from upstream",
+    "fetchOk_other": "Fetched {{count}} models from upstream",
+    "fetchFailed": "Failed to fetch models: {{error}}",
+    "addAllOk_one": "Added all {{count}} model",
+    "addAllOk_other": "Added all {{count}} models",
+    "testNeedsKey": "Enter the API key and at least one model ID first",
+    "testOkTools": "Connected: {{model}} responded, tool calling supported",
+    "testOkNoTools": "Connected: {{model}} responded, but no tool-calling capability was detected (chat will proceed without tools)",
+    "testFailed": "Connection failed: {{error}}"
+  }
+}

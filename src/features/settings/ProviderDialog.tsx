@@ -1,5 +1,6 @@
 import { Check, Download, Eye, EyeOff, Loader2, Pencil, Sparkles, Trash2, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,6 +57,7 @@ export function ProviderDialog({
   onOpenChange: (open: boolean) => void
   provider?: ProviderConfig | null
 }) {
+  const { t } = useTranslation('settings')
   const addProvider = useSettingsStore((state) => state.addProvider)
   const updateProvider = useSettingsStore((state) => state.updateProvider)
 
@@ -124,7 +126,7 @@ export function ProviderDialog({
 
   const runMatch = async () => {
     if (draft.models.length === 0) {
-      toast.error('先添加至少一个模型 ID')
+      toast.error(t('dialog.matchNeedsModel'))
       return
     }
     setMatching(true)
@@ -139,10 +141,10 @@ export function ProviderDialog({
     setMatching(false)
     const summary =
       hitCount === draft.models.length
-        ? `全部 ${hitCount} 个模型已匹配线上配置`
+        ? t('dialog.matchAll', { count: hitCount })
         : hitCount > 0
-          ? `${hitCount}/${draft.models.length} 个模型已匹配，未命中项可正常使用`
-          : '未在线上目录找到匹配项，可正常使用'
+          ? t('dialog.matchPartial', { count: hitCount, total: draft.models.length })
+          : t('dialog.matchNone')
     setMatchSummary(summary)
     toast.success(summary)
   }
@@ -153,13 +155,13 @@ export function ProviderDialog({
     try {
       const fetched = await fetchUpstreamModels(draft)
       if (fetched.length === 0) {
-        toast.info('上游接口已响应，但未返回可用模型')
+        toast.info(t('dialog.fetchEmpty'))
       } else {
-        toast.success(`成功从上游获取 ${fetched.length} 个模型`)
+        toast.success(t('dialog.fetchOk', { count: fetched.length }))
       }
       setUpstreamModels(fetched)
     } catch (error) {
-      toast.error(`拉取模型失败：${errorMessage(error)}`)
+      toast.error(t('dialog.fetchFailed', { error: errorMessage(error) }))
     } finally {
       setFetchingUpstream(false)
     }
@@ -181,7 +183,7 @@ export function ProviderDialog({
     const have = new Set(draft.models)
     const added = upstreamModels.filter((id) => !have.has(id))
     patch({ models: [...draft.models, ...added] })
-    toast.success(`已添加全部 ${upstreamModels.length} 个模型`)
+    toast.success(t('dialog.addAllOk', { count: upstreamModels.length }))
   }
 
   // 当输入框有内容且存在上游拉取的模型列表时，计算联想候选词
@@ -225,7 +227,7 @@ export function ProviderDialog({
 
   const test = async () => {
     if (!draft.apiKey.trim() || draft.models.length === 0) {
-      toast.error('先填写 API Key 与至少一个模型 ID')
+      toast.error(t('dialog.testNeedsKey'))
       return
     }
     setTesting(true)
@@ -235,11 +237,11 @@ export function ProviderDialog({
       patch({ capabilities: { tools: probe.tools } })
       toast.success(
         probe.tools
-          ? `连接成功：${draft.models[0]} 已响应，支持工具调用`
-          : `连接成功：${draft.models[0]} 已响应，但未探测到工具调用能力（对话将按无工具模式进行）`,
+          ? t('dialog.testOkTools', { model: draft.models[0] })
+          : t('dialog.testOkNoTools', { model: draft.models[0] }),
       )
     } catch (error) {
-      toast.error(`连接失败：${errorMessage(error)}`)
+      toast.error(t('dialog.testFailed', { error: errorMessage(error) }))
     } finally {
       setTesting(false)
     }
@@ -271,12 +273,12 @@ export function ProviderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(580px,100%)]">
         <DialogHeader>
-          <DialogTitle>{provider ? '编辑提供商' : '添加提供商'}</DialogTitle>
-          <DialogDescription>API Key 只保存在本机浏览器，不会上传。</DialogDescription>
+          <DialogTitle>{provider ? t('dialog.editTitle') : t('dialog.addTitle')}</DialogTitle>
+          <DialogDescription>{t('dialog.keyNote')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <DialogField label="协议类型">
+          <DialogField label={t('dialog.kindLabel')}>
             <div className="flex flex-wrap gap-1.5">
               {KINDS.map((kind) => (
                 <button
@@ -303,11 +305,11 @@ export function ProviderDialog({
           </DialogField>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <DialogField label="名称">
+            <DialogField label={t('dialog.nameLabel')}>
               <Input
                 value={draft.label}
                 onChange={(event) => patch({ label: event.target.value })}
-                placeholder="例如：DeepSeek"
+                placeholder={t('dialog.namePlaceholder')}
               />
             </DialogField>
 
@@ -333,7 +335,7 @@ export function ProviderDialog({
 
           <DialogField
             label="Base URL"
-            hint="留空使用官方默认地址；兼容协议可指向自建代理。"
+            hint={t('dialog.baseUrlHint')}
           >
             <Input
               value={draft.baseURL ?? ''}
@@ -345,8 +347,8 @@ export function ProviderDialog({
 
           {/* 模型管理：复刻 OpenWorktree 交互 —— 拉取模型与智能匹配并排 */}
           <DialogField
-            label="模型管理"
-            hint="可从上游拉取模型列表，或手动输入；「智能匹配」拉取线上配置并展示能力标签。"
+            label={t('dialog.modelsLabel')}
+            hint={t('dialog.modelsHint')}
           >
             <div className="space-y-2">
               <div className="flex gap-2">
@@ -365,7 +367,7 @@ export function ProviderDialog({
                         }
                       }
                     }}
-                    placeholder="输入模型 ID，如 deepseek-chat 或 gpt-5.1…"
+                    placeholder={t('dialog.modelInputPlaceholder')}
                     className="font-mono text-xs"
                   />
 
@@ -373,7 +375,7 @@ export function ProviderDialog({
                   {suggestions.length > 0 ? (
                     <div className="absolute left-0 top-full z-50 mt-1 max-h-[180px] w-full overflow-y-auto rounded-md border border-line bg-canvas p-1 shadow-md">
                       <div className="px-2 py-1 text-2xs text-muted">
-                        匹配到 {suggestions.length} 个上游模型（点击或回车添加）：
+                        {t('dialog.suggestionsHeader', { count: suggestions.length })}
                       </div>
                       {suggestions.map((suggestion) => {
                         const alreadyAdded = draft.models.includes(suggestion)
@@ -391,7 +393,7 @@ export function ProviderDialog({
                           >
                             <span className="truncate">{suggestion}</span>
                             {alreadyAdded ? (
-                              <span className="shrink-0 text-2xs text-muted">已添加</span>
+                              <span className="shrink-0 text-2xs text-muted">{t('dialog.alreadyAdded')}</span>
                             ) : null}
                           </button>
                         )
@@ -401,14 +403,14 @@ export function ProviderDialog({
                 </div>
 
                 <Button variant="ghost" size="sm" onClick={addModel} disabled={!newModelInput.trim()}>
-                  添加
+                  {t('dialog.addModel')}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => void fetchModels()}
                   disabled={fetchingUpstream || !draft.apiKey.trim()}
-                  title={!draft.apiKey.trim() ? '先填写 API Key' : '从上游接口拉取可用模型列表'}
+                  title={!draft.apiKey.trim() ? t('dialog.fetchNeedsKey') : t('dialog.fetchTitle')}
                   className="shrink-0 gap-1"
                 >
                   {fetchingUpstream ? (
@@ -416,7 +418,7 @@ export function ProviderDialog({
                   ) : (
                     <Download className="h-3.5 w-3.5" />
                   )}
-                  {fetchingUpstream ? '拉取中…' : '拉取模型'}
+                  {fetchingUpstream ? t('dialog.fetching') : t('dialog.fetchModels')}
                 </Button>
                 <Button
                   variant="subtle"
@@ -430,7 +432,7 @@ export function ProviderDialog({
                   ) : (
                     <Sparkles className="h-3.5 w-3.5" />
                   )}
-                  {matching ? '匹配中…' : '智能匹配'}
+                  {matching ? t('dialog.matching') : t('dialog.smartMatch')}
                 </Button>
               </div>
 
@@ -443,7 +445,7 @@ export function ProviderDialog({
                 <div className="rounded-lg border border-accent/30 bg-accent-soft/20 p-2.5 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-ink-soft">
-                      上游接口发现 {upstreamModels.length} 个可用模型
+                      {t('dialog.upstreamFound', { count: upstreamModels.length })}
                     </span>
                     <Button
                       variant="ghost"
@@ -451,7 +453,7 @@ export function ProviderDialog({
                       onClick={selectAllUpstream}
                       className="h-6 px-2 text-2xs text-accent"
                     >
-                      全选添加
+                      {t('dialog.selectAll')}
                     </Button>
                   </div>
                   <div className="max-h-[160px] overflow-y-auto space-y-1 pr-1">
@@ -481,7 +483,9 @@ export function ProviderDialog({
               {matchedEntries.length > 0 ? (
                 <div className="max-h-[300px] space-y-1.5 overflow-y-auto rounded-md border border-line bg-canvas/40 p-2">
                   {matchedEntries.map(({ modelId, matched, merged, tags }) => {
-                    const sourceText = matched ? `线上命中：${matched.entryId}` : '未在线上目录找到'
+                    const sourceText = matched
+                      ? t('dialog.matchedFrom', { entry: matched.entryId })
+                      : t('dialog.notInCatalog')
                     const isEditing = editingModelId === modelId
                     return (
                       <div
@@ -514,11 +518,13 @@ export function ProviderDialog({
                                 className="text-2xs"
                                 title={
                                   merged.reasoningLevels && merged.reasoningLevels.length > 0
-                                    ? `该模型支持推理思考（已自定义档位：${merged.reasoningLevels.join(', ')}）`
-                                    : '该模型支持推理思考'
+                                    ? t('dialog.reasoningBadgeCustom', {
+                                        levels: merged.reasoningLevels.join(', '),
+                                      })
+                                    : t('dialog.reasoningBadge')
                                 }
                               >
-                                思考
+                                {t('dialog.thinkingBadge')}
                               </Badge>
                             ) : null}
                           </div>
@@ -535,7 +541,7 @@ export function ProviderDialog({
                                 ? 'bg-accent/15 text-accent'
                                 : 'text-muted hover:text-ink',
                             )}
-                            title={isEditing ? '收起配置' : '单独编辑模型能力'}
+                            title={isEditing ? t('dialog.collapseEditor') : t('dialog.editModel')}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -544,7 +550,7 @@ export function ProviderDialog({
                             type="button"
                             onClick={() => removeModel(modelId)}
                             className="rounded p-1 text-muted transition-colors hover:text-danger"
-                            title="删除模型"
+                            title={t('dialog.deleteModel')}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -554,13 +560,13 @@ export function ProviderDialog({
                         {isEditing ? (
                           <div className="mt-2 space-y-2.5 border-t border-line/60 pt-2.5">
                             <div className="flex flex-wrap items-center justify-between gap-2 text-2xs text-muted">
-                              <span>能力开关与上下文（线上未匹配或手改覆盖）：</span>
+                              <span>{t('dialog.capabilitiesHeader')}</span>
                               {matched ? (
                                 <span className="font-mono text-faint">
-                                  基于 {matched.entryId}
+                                  {t('dialog.basedOn', { entry: matched.entryId })}
                                 </span>
                               ) : (
-                                <span className="text-warn">未在线上目录找到，全手动配置</span>
+                                <span className="text-warn">{t('dialog.fullManual')}</span>
                               )}
                             </div>
 
@@ -572,7 +578,7 @@ export function ProviderDialog({
                                     patchModelConfig(modelId, { reasoning: checked })
                                   }
                                 />
-                                <span>支持思考 (Reasoning)</span>
+                                <span>{t('dialog.reasoningSwitch')}</span>
                               </label>
 
                               <label className="flex items-center gap-2 text-xs text-ink-soft cursor-pointer">
@@ -582,16 +588,16 @@ export function ProviderDialog({
                                     patchModelConfig(modelId, { hasVision: checked })
                                   }
                                 />
-                                <span>支持视觉输入</span>
+                                <span>{t('dialog.visionSwitch')}</span>
                               </label>
 
                               <div className="flex items-center gap-1.5">
-                                <span className="text-2xs text-muted shrink-0">上下文:</span>
+                                <span className="text-2xs text-muted shrink-0">{t('dialog.contextLabel')}</span>
                                 <Input
                                   value={
                                     merged.contextLimit ? String(merged.contextLimit) : ''
                                   }
-                                  placeholder="默认（如 1048576）"
+                                  placeholder={t('dialog.contextPlaceholder')}
                                   className="h-6 font-mono text-2xs"
                                   onChange={(e) => {
                                     const val = Number.parseInt(e.target.value, 10)
@@ -608,7 +614,7 @@ export function ProviderDialog({
                               <div className="rounded-md border border-line/50 bg-surface/50 p-2 text-2xs space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="text-ink-soft">
-                                    推理档位（留空跟随通用/线上默认，支持自定义输入，英文逗号分隔）：
+                                    {t('dialog.levelsHeader')}
                                   </span>
                                   <div className="flex items-center gap-1">
                                     <button
@@ -619,9 +625,9 @@ export function ProviderDialog({
                                           reasoningLevels: ['low', 'medium', 'high'],
                                         })
                                       }
-                                      title="填入标准三档：low, medium, high"
+                                      title={t('dialog.presetThreeTitle')}
                                     >
-                                      标准三档
+                                      {t('dialog.presetThree')}
                                     </button>
                                     <button
                                       type="button"
@@ -631,9 +637,9 @@ export function ProviderDialog({
                                           reasoningLevels: ['low', 'medium', 'high', 'xhigh'],
                                         })
                                       }
-                                      title="填入四档：low, medium, high, xhigh"
+                                      title={t('dialog.presetFourTitle')}
                                     >
-                                      四档
+                                      {t('dialog.presetFour')}
                                     </button>
                                     <button
                                       type="button"
@@ -643,9 +649,9 @@ export function ProviderDialog({
                                           reasoningLevels: ['low', 'high'],
                                         })
                                       }
-                                      title="填入两档：low, high"
+                                      title={t('dialog.presetTwoTitle')}
                                     >
-                                      两档
+                                      {t('dialog.presetTwo')}
                                     </button>
                                     <button
                                       type="button"
@@ -655,15 +661,15 @@ export function ProviderDialog({
                                           reasoningLevels: ['none'],
                                         })
                                       }
-                                      title="填入单档：none（仅开关）"
+                                      title={t('dialog.presetToggleTitle')}
                                     >
-                                      仅开关
+                                      {t('dialog.presetToggle')}
                                     </button>
                                   </div>
                                 </div>
                                 <Input
                                   value={merged.reasoningLevels ? merged.reasoningLevels.join(', ') : ''}
-                                  placeholder="例如：low, medium, high（或使用右侧快捷预设）"
+                                  placeholder={t('dialog.levelsPlaceholder')}
                                   className="h-6 font-mono text-2xs"
                                   onChange={(e) => {
                                     const raw = e.target.value
@@ -685,7 +691,7 @@ export function ProviderDialog({
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-muted">尚未添加模型，在上方输入后回车添加。</p>
+                <p className="text-xs text-muted">{t('dialog.noModels')}</p>
               )}
             </div>
           </DialogField>
@@ -694,14 +700,14 @@ export function ProviderDialog({
         <DialogFooter className="justify-between">
           <Button variant="ghost" size="sm" onClick={() => void test()} disabled={testing}>
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-            测试连接
+            {t('dialog.testConnection')}
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
-              取消
+              {t('dialog.cancel')}
             </Button>
             <Button variant="primary" onClick={() => void save()} disabled={!canSave}>
-              保存
+              {t('action.save')}
             </Button>
           </div>
         </DialogFooter>

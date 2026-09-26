@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Cpu } from 'lucide-react'
 import { Fragment, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -17,7 +18,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 export function ModelPicker({
   value,
   onChange,
-  placeholder = '选择模型',
+  placeholder,
   className,
 }: {
   value: ModelRef | null | undefined
@@ -25,6 +26,7 @@ export function ModelPicker({
   placeholder?: string
   className?: string
 }) {
+  const { t } = useTranslation('settings')
   const providers = useSettingsStore((state) => state.settings.providers)
   const available = useMemo(() => listAvailableModelRefs(providers), [providers])
   const label = describeModelRef(providers, value)
@@ -40,14 +42,14 @@ export function ModelPicker({
           className={cn('max-w-[240px] justify-between gap-1.5 text-muted', className)}
         >
           <Cpu className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-xs">{label ?? placeholder}</span>
+          <span className="truncate text-xs">{label ?? placeholder ?? t('picker.placeholder')}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-[320px] w-[248px] overflow-y-auto">
         {withModels.length === 0 ? (
           <div className="px-2 py-3 text-xs leading-relaxed text-muted">
-            还没有可用模型，先到「配置」添加。
+            {t('picker.empty')}
           </div>
         ) : null}
 
@@ -78,7 +80,7 @@ export function ModelPicker({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onChange(null)}>
-              <span className="flex-1 text-xs text-muted">清除选择</span>
+              <span className="flex-1 text-xs text-muted">{t('picker.clear')}</span>
             </DropdownMenuItem>
           </>
         ) : null}

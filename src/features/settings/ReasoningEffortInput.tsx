@@ -1,5 +1,6 @@
 import { Brain, Check, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -45,11 +46,6 @@ function ensureCatalog(): Promise<CatalogSnapshot> {
   return sharedCatalog
 }
 
-function labelOf(value: string): string {
-  if (!value || value === 'auto') return '自动'
-  return value
-}
-
 export function ReasoningEffortInput({
   value,
   onChange,
@@ -66,6 +62,7 @@ export function ReasoningEffortInput({
   modelConfigs?: Record<string, CustomModelConfig>
   className?: string
 }) {
+  const { t } = useTranslation('settings')
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
   const [matching, setMatching] = useState(true)
   // 保持 draft 与 value 同步：记录上次看到的 value，变化时重置（纯渲染期派生，不写在 useEffect 里触发二次 render）
@@ -100,6 +97,8 @@ export function ReasoningEffortInput({
 
   const current = value && value !== 'auto' ? value : null
   const matchedModels = models.filter((model) => model.trim()).length > 0
+  // 按钮文案里的档位名：'auto'（或空）显示为「自动」，其余原样展示
+  const levelLabel = !value || value === 'auto' ? t('reasoning.auto') : value
 
   return (
     <DropdownMenu>
@@ -114,7 +113,7 @@ export function ReasoningEffortInput({
           )}
         >
           <Brain className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          <span className="truncate text-xs">推理·{labelOf(value)}</span>
+          <span className="truncate text-xs">{t('reasoning.button', { level: levelLabel })}</span>
           <Check className="h-3 w-3 shrink-0 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
@@ -122,7 +121,7 @@ export function ReasoningEffortInput({
         <div className="px-2 pb-1 pt-1.5">
           <Input
             value={draft}
-            placeholder="自动，或输入档位（low / high / xhigh…）"
+            placeholder={t('reasoning.inputPlaceholder')}
             className="h-7 font-mono text-xs"
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
@@ -137,14 +136,14 @@ export function ReasoningEffortInput({
         <DropdownMenuSeparator />
 
         <DropdownMenuItem onSelect={() => commit('auto')}>
-          <span className="flex-1 text-xs">自动（跟随提供商默认）</span>
+          <span className="flex-1 text-xs">{t('reasoning.autoOption')}</span>
           {!value || value === 'auto' ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
         </DropdownMenuItem>
 
         {candidates.levels.length > 0 ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-2xs">该模型支持的档位</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-2xs">{t('reasoning.levelsLabel')}</DropdownMenuLabel>
             {candidates.levels.map((level) => (
               <DropdownMenuItem key={level} onSelect={() => commit(level)}>
                 <span className="flex-1 text-xs font-mono">{level}</span>
@@ -160,13 +159,13 @@ export function ReasoningEffortInput({
         {matching ? (
           <div className="flex items-center gap-1.5 px-2 py-2 text-xs text-muted">
             <Loader2 className="h-3 w-3 animate-spin" />
-            正在匹配模型目录…
+            {t('reasoning.matching')}
           </div>
         ) : !matchedModels ? (
-          <div className="px-2 py-2 text-xs text-faint">还没有模型，先填模型 ID 再匹配</div>
+          <div className="px-2 py-2 text-xs text-faint">{t('reasoning.noModels')}</div>
         ) : candidates.levels.length === 0 ? (
           <div className="px-2 py-2 text-xs leading-relaxed text-faint">
-            未在模型目录中识别到推理档位（或该模型不支持），可在上方自由输入
+            {t('reasoning.noLevels')}
           </div>
         ) : null}
       </DropdownMenuContent>

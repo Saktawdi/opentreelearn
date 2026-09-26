@@ -1,5 +1,6 @@
 import { Loader2, Plus, Trash2, Zap } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,33 +18,35 @@ import {
   MIN_CONTEXT_BUDGET,
 } from '@/domain/defaults'
 import { cn, errorMessage } from '@/lib/utils'
+import i18n from '@/i18n'
 import { PROVIDER_KIND_LABEL, describeProviderModels } from '@/services/llm/catalog'
 import { testProviderConnection } from '@/services/llm/providers'
-import { useSettingsStore, type ModelSlot } from '@/stores/settings-store'
+import { useSettingsStore } from '@/stores/settings-store'
 import { ModelPicker } from './ModelPicker'
 import { ProviderDialog } from './ProviderDialog'
 import { ReasoningEffortInput } from './ReasoningEffortInput'
 
-const MODEL_SLOTS: { slot: ModelSlot; label: string; hint: string }[] = [
+// labelKey/hintKey 是 i18n 键：文案在渲染处用 t() 解析（当前语言），模块级常量只存键
+const MODEL_SLOTS = [
   {
     slot: 'defaultChatModelRef',
-    label: '对话模型',
-    hint: '节点内一问一答使用。',
+    labelKey: 'slot.chat.label',
+    hintKey: 'slot.chat.hint',
   },
   {
     slot: 'titleModelRef',
-    label: '标题模型',
-    hint: '留空则用提问原文当标题。',
+    labelKey: 'slot.title.label',
+    hintKey: 'slot.title.hint',
   },
   {
     slot: 'summaryModelRef',
-    label: '摘要模型',
-    hint: '用于手动生成节点学习摘要；留空则该功能不可用。',
+    labelKey: 'slot.summary.label',
+    hintKey: 'slot.summary.hint',
   },
-]
+] as const
 
 function maskKey(key: string): string {
-  if (!key) return '未填写'
+  if (!key) return i18n.t('settings:providers.keyNotSet')
   if (key.length <= 10) return `${key.slice(0, 2)}····`
   return `${key.slice(0, 5)}····${key.slice(-4)}`
 }
@@ -56,6 +59,7 @@ function formatBudget(value: number): string {
 }
 
 export function SettingsPage() {
+  const { t } = useTranslation('settings')
   const settings = useSettingsStore((state) => state.settings)
   const patch = useSettingsStore((state) => state.patch)
   const setModelRef = useSettingsStore((state) => state.setModelRef)
@@ -86,8 +90,12 @@ export function SettingsPage() {
     await patch({ contextBudget: next })
     toast.success(
       Number.isFinite(parsed) && parsed !== next
-        ? `已保存（超出 ${formatBudget(MIN_CONTEXT_BUDGET)}–${formatBudget(MAX_CONTEXT_BUDGET)}，按 ${formatBudget(next)} 保存）`
-        : '已保存',
+        ? t('toast.budgetClamped', {
+            min: formatBudget(MIN_CONTEXT_BUDGET),
+            max: formatBudget(MAX_CONTEXT_BUDGET),
+            value: formatBudget(next),
+          })
+        : t('toast.saved'),
     )
   }
 
@@ -99,10 +107,10 @@ export function SettingsPage() {
     await patch({ agentMaxSteps: next })
     toast.success(
       Number.isFinite(parsed) && parsed !== next
-        ? `已保存（合法区间 0–${MAX_AGENT_MAX_STEPS}，按 ${next} 保存）`
+        ? t('toast.stepsClamped', { max: MAX_AGENT_MAX_STEPS, value: next })
         : next === 0
-          ? '已保存：不限制步数，生成过程中可随时手动停止'
-          : '已保存',
+          ? t('toast.stepsUnlimited')
+          : t('toast.saved'),
     )
   }
 
@@ -114,11 +122,11 @@ export function SettingsPage() {
       await updateProvider(provider.id, { capabilities: { tools: probe.tools } })
       toast.success(
         probe.tools
-          ? `${provider.label} 连接正常，支持工具调用`
-          : `${provider.label} 连接正常，但没有探测到工具调用能力：后续对话按无工具模式进行`,
+          ? t('toast.testOkTools', { label: provider.label })
+          : t('toast.testOkNoTools', { label: provider.label }),
       )
     } catch (error) {
-      toast.error(`连接失败：${errorMessage(error)}`)
+      toast.error(t('toast.testFailed', { error: errorMessage(error) }))
     } finally {
       setTestingId(null)
     }
@@ -128,14 +136,14 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-7">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">配置</h1>
-          <p className="mt-1 text-xs text-muted">数据与密钥只保存在本机浏览器。</p>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
+          <p className="mt-1 text-xs text-muted">{t('page.subtitle')}</p>
         </div>
 
-        <Section title="上下文">
+        <Section title={t('section.context')}>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <label className="block">
-              <span className="mb-1.5 block text-sm text-ink-soft">上下文预算（tokens）</span>
+              <span className="mb-1.5 block text-sm text-ink-soft">{t('context.budgetLabel')}</span>
               <Input
                 value={budget}
                 inputMode="numeric"
@@ -143,26 +151,28 @@ export function SettingsPage() {
                 className="w-[150px] font-mono text-xs"
               />
               <span className="mt-1 block text-xs text-muted">
-                超出后自动压缩更早的父链对话。可填 {formatBudget(MIN_CONTEXT_BUDGET)}–
-                {formatBudget(MAX_CONTEXT_BUDGET)}，超出部分会按边界保存。
+                {t('context.budgetHint', {
+                  min: formatBudget(MIN_CONTEXT_BUDGET),
+                  max: formatBudget(MAX_CONTEXT_BUDGET),
+                })}
               </span>
             </label>
 
             <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>
-              保存
+              {t('action.save')}
             </Button>
           </div>
         </Section>
 
-        <Section title="偏好">
+        <Section title={t('section.preferences')}>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5">
               <div className="min-w-0 max-w-lg">
-                <p className="text-sm text-ink-soft">新建子节点时弹出快捷小窗</p>
+                <p className="text-sm text-ink-soft">{t('prefs.dialogToggleTitle')}</p>
                 <p className="mt-0.5 text-xs leading-relaxed text-muted">
                   {branchPrompt.showDialog
-                    ? '框选文字点「新建子节点」时弹出小窗：选快捷指令或自行输入，也可在小窗里勾选「记住选择」。'
-                    : '不再弹窗：点击「新建子节点」直接按下方记住的指令发送，框选内容仍会收进引用胶囊。'}
+                    ? t('prefs.dialogOn')
+                    : t('prefs.dialogOff')}
                 </p>
               </div>
               <Switch
@@ -182,9 +192,9 @@ export function SettingsPage() {
             </div>
 
             <div className="rounded-md border border-line px-3 py-2.5">
-              <p className="text-sm text-ink-soft">记住的指令</p>
+              <p className="text-sm text-ink-soft">{t('prefs.rememberedTitle')}</p>
               <p className="mt-0.5 text-xs leading-relaxed text-muted">
-                小窗里勾选「记住选择」会记下当次确认的指令；点芯片可随时换回快捷指令。
+                {t('prefs.rememberedHint')}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {BRANCH_QUICK_CHOICES.map((choice) => {
@@ -210,7 +220,7 @@ export function SettingsPage() {
               {branchPrompt.rememberedPrompt &&
               !findBranchQuickChoice(branchPrompt.rememberedPrompt) ? (
                 <p className="mt-2 break-all text-xs text-muted">
-                  自定义指令：
+                  {t('prefs.customPromptLabel')}
                   <span className="text-ink-soft">{branchPrompt.rememberedPrompt}</span>
                 </p>
               ) : null}
@@ -218,10 +228,10 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="智能体（Agent）">
+        <Section title={t('section.agent')}>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <label className="block max-w-lg">
-              <span className="mb-1.5 block text-sm text-ink-soft">工具调用步数上限</span>
+              <span className="mb-1.5 block text-sm text-ink-soft">{t('agent.maxStepsLabel')}</span>
               <Input
                 value={maxSteps}
                 inputMode="numeric"
@@ -229,9 +239,9 @@ export function SettingsPage() {
                 className="w-[150px] font-mono text-xs"
               />
               <span className="mt-1 block text-xs leading-relaxed text-muted">
-                一轮中模型调用工具的最大步数（一步 = 一次模型调用，含最终作答那一步）。默认 50；
-                <strong className="font-semibold text-ink-soft">填 0 表示不限制</strong>
-                （由模型自行决定何时完成，生成中可随时点击停止按钮中断）。
+                {t('agent.maxStepsHintA')}
+                <strong className="font-semibold text-ink-soft">{t('agent.maxStepsHintEm')}</strong>
+                {t('agent.maxStepsHintB')}
               </span>
             </label>
 
@@ -241,14 +251,14 @@ export function SettingsPage() {
               onClick={() => void saveMaxSteps()}
               disabled={!maxStepsDirty}
             >
-              保存
+              {t('action.save')}
             </Button>
           </div>
         </Section>
 
-        <Section title="模型分配">
+        <Section title={t('section.models')}>
           <div className="space-y-2">
-            {MODEL_SLOTS.map(({ slot, label, hint }) => {
+            {MODEL_SLOTS.map(({ slot, labelKey, hintKey }) => {
               const ref = settings[slot]
               const isChatSlot = slot === 'defaultChatModelRef'
               // 只有对话模型允许配置推理强度；模型在前，推理强度在后
@@ -262,8 +272,8 @@ export function SettingsPage() {
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm text-ink-soft">{label}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-muted">{hint}</p>
+                    <p className="text-sm text-ink-soft">{t(labelKey)}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted">{t(hintKey)}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <ModelPicker
@@ -289,11 +299,11 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="BYOK 提供商">
+        <Section title={t('section.providers')}>
           <div className="space-y-2">
             {settings.providers.length === 0 ? (
               <p className="rounded-md border border-dashed border-line px-4 py-5 text-center text-xs text-muted">
-                还没有提供商。添加一个，填好 API Key 与模型 ID 即可开始对话。
+                {t('providers.empty')}
               </p>
             ) : null}
 
@@ -327,7 +337,7 @@ export function SettingsPage() {
                     ) : (
                       <Zap className="h-3.5 w-3.5" />
                     )}
-                    测试
+                    {t('providers.test')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -337,7 +347,7 @@ export function SettingsPage() {
                       setDialogOpen(true)
                     }}
                   >
-                    编辑
+                    {t('providers.edit')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -360,13 +370,13 @@ export function SettingsPage() {
               }}
             >
               <Plus className="h-3.5 w-3.5" />
-              添加提供商
+              {t('providers.add')}
             </Button>
           </div>
         </Section>
 
         <p className="border-t border-line pt-5 text-xs leading-relaxed text-muted">
-          项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失。
+          {t('page.storageNote')}
         </p>
       </div>
 

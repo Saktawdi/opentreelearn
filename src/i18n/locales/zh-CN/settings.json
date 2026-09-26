@@ -1,1 +1,143 @@
-{}
+{
+  "page": {
+    "title": "配置",
+    "subtitle": "数据与密钥只保存在本机浏览器。",
+    "storageNote": "项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失。"
+  },
+  "section": {
+    "context": "上下文",
+    "preferences": "偏好",
+    "agent": "智能体（Agent）",
+    "models": "模型分配",
+    "providers": "BYOK 提供商"
+  },
+  "action": {
+    "save": "保存"
+  },
+  "toast": {
+    "saved": "已保存",
+    "budgetClamped": "已保存（超出 {{min}}–{{max}}，按 {{value}} 保存）",
+    "stepsClamped": "已保存（合法区间 0–{{max}}，按 {{value}} 保存）",
+    "stepsUnlimited": "已保存：不限制步数，生成过程中可随时手动停止",
+    "testOkTools": "{{label}} 连接正常，支持工具调用",
+    "testOkNoTools": "{{label}} 连接正常，但没有探测到工具调用能力：后续对话按无工具模式进行",
+    "testFailed": "连接失败：{{error}}"
+  },
+  "context": {
+    "budgetLabel": "上下文预算（tokens）",
+    "budgetHint": "超出后自动压缩更早的父链对话。可填 {{min}}–{{max}}，超出部分会按边界保存。"
+  },
+  "prefs": {
+    "dialogToggleTitle": "新建子节点时弹出快捷小窗",
+    "dialogOn": "框选文字点「新建子节点」时弹出小窗：选快捷指令或自行输入，也可在小窗里勾选「记住选择」。",
+    "dialogOff": "不再弹窗：点击「新建子节点」直接按下方记住的指令发送，框选内容仍会收进引用胶囊。",
+    "rememberedTitle": "记住的指令",
+    "rememberedHint": "小窗里勾选「记住选择」会记下当次确认的指令；点芯片可随时换回快捷指令。",
+    "customPromptLabel": "自定义指令："
+  },
+  "agent": {
+    "maxStepsLabel": "工具调用步数上限",
+    "maxStepsHintA": "一轮中模型调用工具的最大步数（一步 = 一次模型调用，含最终作答那一步）。默认 50；",
+    "maxStepsHintEm": "填 0 表示不限制",
+    "maxStepsHintB": "（由模型自行决定何时完成，生成中可随时点击停止按钮中断）。"
+  },
+  "slot": {
+    "chat": {
+      "label": "对话模型",
+      "hint": "节点内一问一答使用。"
+    },
+    "title": {
+      "label": "标题模型",
+      "hint": "留空则用提问原文当标题。"
+    },
+    "summary": {
+      "label": "摘要模型",
+      "hint": "用于手动生成节点学习摘要；留空则该功能不可用。"
+    }
+  },
+  "providers": {
+    "empty": "还没有提供商。添加一个，填好 API Key 与模型 ID 即可开始对话。",
+    "test": "测试",
+    "edit": "编辑",
+    "add": "添加提供商",
+    "keyNotSet": "未填写"
+  },
+  "picker": {
+    "placeholder": "选择模型",
+    "empty": "还没有可用模型，先到「配置」添加。",
+    "clear": "清除选择"
+  },
+  "reasoning": {
+    "auto": "自动",
+    "autoOption": "自动（跟随提供商默认）",
+    "button": "推理·{{level}}",
+    "inputPlaceholder": "自动，或输入档位（low / high / xhigh…）",
+    "levelsLabel": "该模型支持的档位",
+    "matching": "正在匹配模型目录…",
+    "noModels": "还没有模型，先填模型 ID 再匹配",
+    "noLevels": "未在模型目录中识别到推理档位（或该模型不支持），可在上方自由输入"
+  },
+  "dialog": {
+    "addTitle": "添加提供商",
+    "editTitle": "编辑提供商",
+    "keyNote": "API Key 只保存在本机浏览器，不会上传。",
+    "kindLabel": "协议类型",
+    "nameLabel": "名称",
+    "namePlaceholder": "例如：DeepSeek",
+    "baseUrlHint": "留空使用官方默认地址；兼容协议可指向自建代理。",
+    "modelsLabel": "模型管理",
+    "modelsHint": "可从上游拉取模型列表，或手动输入；「智能匹配」拉取线上配置并展示能力标签。",
+    "modelInputPlaceholder": "输入模型 ID，如 deepseek-chat 或 gpt-5.1…",
+    "suggestionsHeader_other": "匹配到 {{count}} 个上游模型（点击或回车添加）：",
+    "alreadyAdded": "已添加",
+    "addModel": "添加",
+    "fetchNeedsKey": "先填写 API Key",
+    "fetchTitle": "从上游接口拉取可用模型列表",
+    "fetching": "拉取中…",
+    "fetchModels": "拉取模型",
+    "matching": "匹配中…",
+    "smartMatch": "智能匹配",
+    "upstreamFound_other": "上游接口发现 {{count}} 个可用模型",
+    "selectAll": "全选添加",
+    "matchedFrom": "线上命中：{{entry}}",
+    "notInCatalog": "未在线上目录找到",
+    "reasoningBadge": "该模型支持推理思考",
+    "reasoningBadgeCustom": "该模型支持推理思考（已自定义档位：{{levels}}）",
+    "thinkingBadge": "思考",
+    "collapseEditor": "收起配置",
+    "editModel": "单独编辑模型能力",
+    "deleteModel": "删除模型",
+    "capabilitiesHeader": "能力开关与上下文（线上未匹配或手改覆盖）：",
+    "basedOn": "基于 {{entry}}",
+    "fullManual": "未在线上目录找到，全手动配置",
+    "reasoningSwitch": "支持思考 (Reasoning)",
+    "visionSwitch": "支持视觉输入",
+    "contextLabel": "上下文:",
+    "contextPlaceholder": "默认（如 1048576）",
+    "levelsHeader": "推理档位（留空跟随通用/线上默认，支持自定义输入，英文逗号分隔）：",
+    "presetThree": "标准三档",
+    "presetThreeTitle": "填入标准三档：low, medium, high",
+    "presetFour": "四档",
+    "presetFourTitle": "填入四档：low, medium, high, xhigh",
+    "presetTwo": "两档",
+    "presetTwoTitle": "填入两档：low, high",
+    "presetToggle": "仅开关",
+    "presetToggleTitle": "填入单档：none（仅开关）",
+    "levelsPlaceholder": "例如：low, medium, high（或使用右侧快捷预设）",
+    "noModels": "尚未添加模型，在上方输入后回车添加。",
+    "testConnection": "测试连接",
+    "cancel": "取消",
+    "matchNeedsModel": "先添加至少一个模型 ID",
+    "matchAll_other": "全部 {{count}} 个模型已匹配线上配置",
+    "matchPartial_other": "{{count}}/{{total}} 个模型已匹配，未命中项可正常使用",
+    "matchNone": "未在线上目录找到匹配项，可正常使用",
+    "fetchEmpty": "上游接口已响应，但未返回可用模型",
+    "fetchOk_other": "成功从上游获取 {{count}} 个模型",
+    "fetchFailed": "拉取模型失败：{{error}}",
+    "addAllOk_other": "已添加全部 {{count}} 个模型",
+    "testNeedsKey": "先填写 API Key 与至少一个模型 ID",
+    "testOkTools": "连接成功：{{model}} 已响应，支持工具调用",
+    "testOkNoTools": "连接成功：{{model}} 已响应，但未探测到工具调用能力（对话将按无工具模式进行）",
+    "testFailed": "连接失败：{{error}}"
+  }
+}
