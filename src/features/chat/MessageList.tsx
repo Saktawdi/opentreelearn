@@ -20,7 +20,9 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import i18n from '@/i18n'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -63,8 +65,6 @@ import {
 import { useAssetUrls } from './useAssetUrls'
 import { useNoteHighlights } from './useNoteHighlights'
 import { useThrottledValue } from './useThrottledValue'
-
-const PRUNE_NOTICE = '最多保留 3 个版本，最早的版本已删除'
 
 /**
  * 新消息进场：只给「这一轮新落库的气泡」播一次浮现（是否播由 on 决定，
@@ -125,13 +125,14 @@ const MessageAction = memo(function MessageAction({
 
 const MessageImages = memo(function MessageImages({ urls }: { urls: string[] }) {
   if (urls.length === 0) return null
+  const { t } = useTranslation('chat')
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {urls.map((url) => (
         <img
           key={url.slice(-40)}
           src={url}
-          alt="粘贴的图片"
+          alt={t('message.pastedImageAlt')}
           className="max-h-56 rounded-lg border border-line object-contain"
         />
       ))}
@@ -154,6 +155,7 @@ const VersionDivider = memo(function VersionDivider({
   disabled: boolean
   onSelect: (version: number) => void
 }) {
+  const { t } = useTranslation('chat')
   const current = info.variants[info.index]
   const previous = info.index > 0 ? info.variants[info.index - 1] : null
   const next = info.index < info.total - 1 ? info.variants[info.index + 1] : null
@@ -169,11 +171,15 @@ const VersionDivider = memo(function VersionDivider({
     >
       <span className="h-px flex-1 bg-line/50" />
       <Tooltip
-        label={previous ? `上一版：${previous.preview ?? '（空版本）'}` : '没有更早的版本了'}
+        label={
+          previous
+            ? t('version.prev', { preview: previous.preview ?? t('version.empty') })
+            : t('version.noPrev')
+        }
       >
         <button
           type="button"
-          aria-label="上一版"
+          aria-label={t('version.prevAria')}
           disabled={disabled || !previous}
           onClick={() => previous && onSelect(previous.version)}
           className={arrowClass}
@@ -181,15 +187,27 @@ const VersionDivider = memo(function VersionDivider({
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
       </Tooltip>
-      <Tooltip label={`第 ${info.index + 1}/${info.total} 版 · ${current?.preview ?? '（空版本）'}`}>
+      <Tooltip
+        label={t('version.current', {
+          index: info.index + 1,
+          total: info.total,
+          preview: current?.preview ?? t('version.empty'),
+        })}
+      >
         <span className="min-w-[34px] text-center text-2xs tabular-nums text-muted">
           {info.index + 1}/{info.total}
         </span>
       </Tooltip>
-      <Tooltip label={next ? `下一版：${next.preview ?? '（空版本）'}` : '已经是最新版了'}>
+      <Tooltip
+        label={
+          next
+            ? t('version.next', { preview: next.preview ?? t('version.empty') })
+            : t('version.noNext')
+        }
+      >
         <button
           type="button"
-          aria-label="下一版"
+          aria-label={t('version.nextAria')}
           disabled={disabled || !next}
           onClick={() => next && onSelect(next.version)}
           className={arrowClass}
@@ -219,6 +237,7 @@ const MessageEditor = memo(function MessageEditor({
   onCancel: () => void
   onSubmit: (parts: MessagePart[]) => void
 }) {
+  const { t } = useTranslation('chat')
   const [text, setText] = useState(() => messageBodyText(message))
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const quotes = messageQuotes(message)
@@ -289,25 +308,25 @@ const MessageEditor = memo(function MessageEditor({
             <img
               key={url.slice(-40)}
               src={url}
-              alt="消息里原有的图片"
+              alt={t('message.existingImageAlt')}
               className="h-14 w-14 rounded-md border border-line object-cover"
             />
           ))}
-          <span className="text-2xs text-faint">图片原样保留</span>
+          <span className="text-2xs text-faint">{t('edit.imagesKept')}</span>
         </div>
       ) : null}
 
       <div className="flex items-center justify-between gap-2">
         <span className="text-2xs text-faint">
           {trimmed.length === 0
-            ? '内容不能为空'
+            ? t('edit.emptyError')
             : trimmed === original
-              ? '内容没有改动'
-              : 'Ctrl/⌘+Enter 发送 · Esc 取消'}
+              ? t('edit.unchanged')
+              : t('edit.submitHint')}
         </span>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            取消
+            {t('action.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -315,7 +334,7 @@ const MessageEditor = memo(function MessageEditor({
             disabled={!canSend}
             onClick={() => onSubmit(replaceMessageText(message, trimmed))}
           >
-            发送
+            {t('action.send')}
           </Button>
         </div>
       </div>
@@ -351,6 +370,7 @@ const MessageBubble = memo(function MessageBubble({
   onCancelEdit: () => void
   onSubmitEdit: (parts: MessagePart[]) => void
 }) {
+  const { t } = useTranslation('chat')
   const isUser = message.role === 'user'
   const text = messageText(message)
   const quotes = messageQuotes(message)
@@ -462,14 +482,14 @@ const MessageBubble = memo(function MessageBubble({
       {message.meta?.error ? (
         <div className="flex flex-col gap-1 px-1 text-2xs text-danger">
           <div className="flex flex-wrap items-center gap-2">
-            <span>生成中断：{message.meta.error}</span>
+            <span>{t('message.aborted', { message: message.meta.error })}</span>
             {isLast ? (
               <button
                 type="button"
                 onClick={onRegenerate}
                 className="rounded-sm border border-danger/40 px-1.5 py-0.5 transition-colors hover:bg-danger-soft"
               >
-                重新生成
+                {t('action.regenerate')}
               </button>
             ) : null}
           </div>
@@ -484,44 +504,40 @@ const MessageBubble = memo(function MessageBubble({
         {isUser ? (
           <MessageAction
             icon={Pencil}
-            label={canEdit ? '编辑这条提问，从它开始整段换一版' : '正在生成，这一轮结束后才能编辑'}
+            label={canEdit ? t('action.editHint') : t('action.editDisabled')}
             disabled={!canEdit}
             onClick={onStartEdit}
           >
-            编辑
+            {t('action.edit')}
           </MessageAction>
         ) : null}
         {/* 两种角色都能 fork：用户消息 = 从这次提问重开，AI 消息 = 从这条回答接着往下走 */}
         <MessageAction
           icon={GitBranch}
           label={
-            isUser
-              ? '以这条提问为起点，在下方新建继承上下文的节点'
-              : '以这条回答为起点，在下方新建继承上下文的节点'
+            isUser ? t('action.branchFromQuestion') : t('action.branchFromAnswer')
           }
           onClick={() => onAction('branch', message.id)}
         >
-          分支
+          {t('action.branch')}
         </MessageAction>
         <MessageAction
           icon={Waypoints}
           label={
-            isUser
-              ? '以这条提问为起点，横向新建继承上下文的节点'
-              : '以这条回答为起点，横向新建继承上下文的节点'
+            isUser ? t('action.divergeFromQuestion') : t('action.divergeFromAnswer')
           }
           onClick={() => onAction('diverge', message.id)}
         >
-          发散
+          {t('action.diverge')}
         </MessageAction>
         {!isUser && isLast ? (
           <MessageAction
             icon={RotateCcw}
-            label={canRegenerate ? '重新生成这条回答' : '正在生成，这一轮结束后才能重新生成'}
+            label={canRegenerate ? t('action.regenerateHint') : t('action.regenerateDisabled')}
             disabled={!canRegenerate}
             onClick={onRegenerate}
           >
-            重新生成
+            {t('action.regenerate')}
           </MessageAction>
         ) : null}
       </div>
@@ -535,13 +551,14 @@ function useRegenerateAction(nodeId: Id): (messageId?: Id) => Promise<void> {
   return useCallback(
     async (messageId?: Id) => {
       const result = await regenerate(nodeId, messageId)
-      if (result?.pruned) toast.info(PRUNE_NOTICE)
+      if (result?.pruned) toast.info(i18n.t('chat:toast.pruned'))
     },
     [nodeId, regenerate],
   )
 }
 
 function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void }) {
+  const { t } = useTranslation('chat')
   const streaming = useWorkspaceStore((state) => state.streaming)
   const maxSteps = useSettingsStore((state) => clampAgentMaxSteps(state.settings.agentMaxSteps))
   const text = useThrottledValue(streaming?.text ?? '', 70)
@@ -559,13 +576,13 @@ function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void 
         transition={ENTER_FAST}
         className="flex flex-wrap items-center gap-2 rounded-xl rounded-bl-sm border border-danger/30 bg-danger-soft/40 px-3.5 py-2.5 text-2xs text-danger"
       >
-        <span>生成中断：{humanizeStreamError(streaming.error)}</span>
+        <span>{t('message.aborted', { message: humanizeStreamError(streaming.error) })}</span>
         <button
           type="button"
           onClick={onRetry}
           className="rounded-sm border border-danger/40 px-1.5 py-0.5 transition-colors hover:bg-danger-soft"
         >
-          重新生成
+          {t('action.regenerate')}
         </button>
       </motion.div>
     )
@@ -589,11 +606,14 @@ function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void 
           <div className="flex items-center gap-2 px-0.5 text-2xs text-faint">
             <span>
               {maxSteps > 0
-                ? `第 ${Math.min(tools.length + (running ? 0 : 1), maxSteps)} / ${maxSteps} 步`
-                : `第 ${tools.length + (running ? 0 : 1)} 步`}
+                ? t('streaming.stepCapped', {
+                    step: Math.min(tools.length + (running ? 0 : 1), maxSteps),
+                    max: maxSteps,
+                  })
+                : t('streaming.step', { step: tools.length + (running ? 0 : 1) })}
             </span>
             <span>·</span>
-            <span>本轮查了 {tools.length} 次项目数据</span>
+            <span>{t('streaming.lookupCount', { count: tools.length })}</span>
           </div>
           <ToolActivities tools={tools} animateIn />
         </div>
@@ -610,7 +630,7 @@ function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void 
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:150ms]" />
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent [animation-delay:300ms]" />
             </span>
-            {running ? '正在查项目数据…' : '正在思考…'}
+            {running ? t('streaming.looking') : t('streaming.thinking')}
           </div>
         )}
         {text ? (
@@ -622,6 +642,7 @@ function StreamingBubble({ nodeId, onRetry }: { nodeId: Id; onRetry: () => void 
 }
 
 export function MessageList({ nodeId }: { nodeId: Id }) {
+  const { t } = useTranslation('chat')
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const messages = useWorkspaceStore((state) => state.messagesByNode[nodeId]) ?? NO_MESSAGES
   const applyAction = useWorkspaceStore((state) => state.applyAction)
@@ -762,7 +783,7 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
     async (messageId: Id, parts: MessagePart[]) => {
       setEditing(null)
       const result = await editUserMessage(nodeId, messageId, parts)
-      if (result?.pruned) toast.info(PRUNE_NOTICE)
+      if (result?.pruned) toast.info(i18n.t('chat:toast.pruned'))
     },
     [editUserMessage, nodeId],
   )
@@ -827,9 +848,9 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
     >
       {visible.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-          <p className="text-sm text-muted">还没有对话</p>
+          <p className="text-sm text-muted">{t('empty.title')}</p>
           <p className="max-w-[220px] text-xs leading-relaxed text-faint">
-            对话就是节点的内容，标题与摘要都由它生成。
+            {t('empty.hint')}
           </p>
         </div>
       ) : null}
@@ -899,7 +920,7 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
             className="pointer-events-auto flex items-center gap-1 rounded-full border border-line bg-elevated/95 px-2.5 py-1 text-2xs text-ink-soft shadow-panel backdrop-blur transition-colors hover:text-ink"
           >
             <ChevronDown className="h-3 w-3" />
-            回到底部
+            {t('action.jumpToBottom')}
           </motion.button>
         ) : null}
       </AnimatePresence>
@@ -910,22 +931,25 @@ export function MessageList({ nodeId }: { nodeId: Id }) {
       <DialogContent className="w-[min(400px,100%)]">
         <DialogHeader>
           <DialogTitle>
-            {pruneConfirm?.kind === 'edit' ? '提交编辑将淘汰最早的版本' : '重新生成将淘汰最早的版本'}
+            {pruneConfirm?.kind === 'edit' ? t('prune.titleEdit') : t('prune.titleRegen')}
           </DialogTitle>
           <DialogDescription>
-            最多保留 {MAX_THREAD_VERSIONS} 个版本。最早的一版（{pruneConfirm?.removedCount ?? 0} 条消息
-            {pruneConfirm && pruneConfirm.notesCount > 0
-              ? `、其中标注笔记 ${pruneConfirm.notesCount} 条`
-              : ''}
-            ）会被删除，无法恢复。
+            {t('prune.body', {
+              max: MAX_THREAD_VERSIONS,
+              removed: pruneConfirm?.removedCount ?? 0,
+              notesPart:
+                pruneConfirm && pruneConfirm.notesCount > 0
+                  ? t('prune.notesPart', { notes: pruneConfirm.notesCount })
+                  : '',
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setPruneConfirm(null)}>
-            取消
+            {t('action.cancel')}
           </Button>
           <Button variant="danger" onClick={confirmPrune}>
-            {pruneConfirm?.kind === 'edit' ? '仍然提交' : '仍然重新生成'}
+            {pruneConfirm?.kind === 'edit' ? t('prune.confirmEdit') : t('prune.confirmRegen')}
           </Button>
         </DialogFooter>
       </DialogContent>

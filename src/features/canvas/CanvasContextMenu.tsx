@@ -11,7 +11,7 @@ import {
 import { motion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NODE_ACTION_HINT, type NodeActionKind } from '@/domain/node-ops/actions'
+import { NODE_ACTION_HINT_KEY, type NodeActionKind } from '@/domain/node-ops/actions'
 import { EXIT_FAST } from '@/lib/motion'
 
 export type CanvasContextMenuTarget =
@@ -138,7 +138,7 @@ export function CanvasContextMenu({
           <MenuItem
             icon={<Plus className="h-3.5 w-3.5" />}
             label={t('menu.newChild')}
-            hint={NODE_ACTION_HINT.child}
+            hint={t(`common:${NODE_ACTION_HINT_KEY.child}`)}
             onClick={() => {
               onNodeAction('child', menu.nodeId)
               onClose()
@@ -147,7 +147,7 @@ export function CanvasContextMenu({
           <MenuItem
             icon={<GitBranch className="h-3.5 w-3.5" />}
             label={t('menu.branch')}
-            hint={NODE_ACTION_HINT.branch}
+            hint={t(`common:${NODE_ACTION_HINT_KEY.branch}`)}
             onClick={() => {
               onNodeAction('branch', menu.nodeId)
               onClose()
@@ -156,7 +156,7 @@ export function CanvasContextMenu({
           <MenuItem
             icon={<Waypoints className="h-3.5 w-3.5" />}
             label={t('menu.diverge')}
-            hint={NODE_ACTION_HINT.diverge}
+            hint={t(`common:${NODE_ACTION_HINT_KEY.diverge}`)}
             onClick={() => {
               onNodeAction('diverge', menu.nodeId)
               onClose()

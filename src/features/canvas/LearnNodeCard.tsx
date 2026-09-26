@@ -7,7 +7,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import {
   cardHeat,
   cardRetention,
-  GRADE_BAND_LABEL,
+  GRADE_BAND_LABEL_KEY,
   gradeOfScore,
   type HeatLevel,
 } from '@/domain/review/schedule'
@@ -65,7 +65,8 @@ function MasteryLine({ data }: { data: LearnFlowNode['data'] }) {
     )
   }
 
-  const band = GRADE_BAND_LABEL[gradeOfScore(mastery.score)]
+  // 学习状态措辞跨命名空间共用，键在 common
+  const band = t(`common:${GRADE_BAND_LABEL_KEY[gradeOfScore(mastery.score)]}`)
 
   return (
     <Tooltip

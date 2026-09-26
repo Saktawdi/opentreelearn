@@ -15,7 +15,7 @@ import {
   retentionLabel,
   assessmentStaleness,
 } from '@/domain/review/enrollment'
-import { GRADE_BAND_LABEL, gradeOfScore } from '@/domain/review/schedule'
+import { GRADE_BAND_LABEL_KEY, gradeOfScore } from '@/domain/review/schedule'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -157,7 +157,7 @@ export function LearningStatusDialog({
                 </span>
                 <div>
                   <span className="font-medium text-ink">
-                    {GRADE_BAND_LABEL[gradeOfScore(mastery.score)]}
+                    {t(`common:${GRADE_BAND_LABEL_KEY[gradeOfScore(mastery.score)]}`)}
                   </span>
                   <p className="text-2xs text-faint">
                     {mastery.gradedAt

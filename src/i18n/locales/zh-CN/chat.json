@@ -1,1 +1,107 @@
-{}
+{
+  "composer": {
+    "placeholder": "问点什么…",
+    "enterHint": "Enter 发送 · Shift+Enter 换行",
+    "insertImage": "插入图片",
+    "pendingImageAlt": "待发送图片",
+    "removeQuoteAria": "移除这条引用",
+    "stop": "停止生成",
+    "sending": "发送中…",
+    "send": "发送",
+    "busyElsewhere": "另一个节点正在生成，等它结束"
+  },
+  "action": {
+    "cancel": "取消",
+    "send": "发送",
+    "edit": "编辑",
+    "editHint": "编辑这条提问，从它开始整段换一版",
+    "editDisabled": "正在生成，这一轮结束后才能编辑",
+    "regenerate": "重新生成",
+    "regenerateHint": "重新生成这条回答",
+    "regenerateDisabled": "正在生成，这一轮结束后才能重新生成",
+    "branch": "分支",
+    "branchFromQuestion": "以这条提问为起点，在下方新建继承上下文的节点",
+    "branchFromAnswer": "以这条回答为起点，在下方新建继承上下文的节点",
+    "diverge": "发散",
+    "divergeFromQuestion": "以这条提问为起点，横向新建继承上下文的节点",
+    "divergeFromAnswer": "以这条回答为起点，横向新建继承上下文的节点",
+    "jumpToBottom": "回到底部"
+  },
+  "message": {
+    "aborted": "生成中断：{{message}}",
+    "pastedImageAlt": "粘贴的图片",
+    "existingImageAlt": "消息里原有的图片"
+  },
+  "edit": {
+    "imagesKept": "图片原样保留",
+    "emptyError": "内容不能为空",
+    "unchanged": "内容没有改动",
+    "submitHint": "Ctrl/⌘+Enter 发送 · Esc 取消"
+  },
+  "version": {
+    "empty": "（空版本）",
+    "prev": "上一版：{{preview}}",
+    "prevAria": "上一版",
+    "noPrev": "没有更早的版本了",
+    "next": "下一版：{{preview}}",
+    "nextAria": "下一版",
+    "noNext": "已经是最新版了",
+    "current": "第 {{index}}/{{total}} 版 · {{preview}}"
+  },
+  "streaming": {
+    "step": "第 {{step}} 步",
+    "stepCapped": "第 {{step}} / {{max}} 步",
+    "lookupCount": "本轮查了 {{count}} 次项目数据",
+    "looking": "正在查项目数据…",
+    "thinking": "正在思考…"
+  },
+  "empty": {
+    "title": "还没有对话",
+    "hint": "对话就是节点的内容，标题与摘要都由它生成。"
+  },
+  "prune": {
+    "titleEdit": "提交编辑将淘汰最早的版本",
+    "titleRegen": "重新生成将淘汰最早的版本",
+    "body": "最多保留 {{max}} 个版本。最早的一版（{{removed}} 条消息{{notesPart}}）会被删除，无法恢复。",
+    "notesPart": "、其中标注笔记 {{notes}} 条",
+    "confirmEdit": "仍然提交",
+    "confirmRegen": "仍然重新生成"
+  },
+  "toast": {
+    "pruned": "最多保留 3 个版本，最早的版本已删除"
+  },
+  "error": {
+    "sendFailed": "发送失败：{{error}}"
+  },
+  "focus": {
+    "renameHint": "双击重命名",
+    "menuLabel": "节点",
+    "newChild": "新建空白子节点",
+    "branchLatest": "从最新消息分支",
+    "divergeLatest": "从最新消息发散",
+    "summarize": "生成学习摘要",
+    "summarizing": "正在生成摘要…",
+    "archive": "归档（含子树）",
+    "delete": "删除（含子树）",
+    "deleteTitle": "删除节点",
+    "deleteBody": "会连同「{{title}}」的全部子节点与对话一起删除，无法恢复。",
+    "expandMap": "展开地图 (Ctrl+M)",
+    "collapseMap": "收起地图 (Ctrl+M)",
+    "inheritedFrom": "继承自 {{title}}",
+    "deletedSource": "已删除的节点",
+    "forkPointGone": "原分支点已不在当前版本中，按整条对话继承",
+    "forkVersionStale": "分支时固定的旧版本已被淘汰，按最新版本继承",
+    "dismissNotice": "不再提示",
+    "noModelPrefix": "未配置对话模型，先到",
+    "settingsPage": "配置",
+    "noModelSuffix": "页添加。"
+  },
+  "mastery": {
+    "assessing": "评估中",
+    "viewStatus": "查看学习状态或生成评估",
+    "status": "学习状态",
+    "score": "掌握 {{score}}",
+    "stale": "· 有新内容",
+    "tooltip": "掌握度 {{score}} · {{band}} · 点击查看依据与复习计划"
+  }
+}

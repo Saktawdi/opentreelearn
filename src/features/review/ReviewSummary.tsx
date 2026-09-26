@@ -1,6 +1,6 @@
 import { ArrowLeft, CheckCircle2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { GRADE_ACTION_LABEL } from '@/domain/review/schedule'
+import { GRADE_ACTION_LABEL_KEY } from '@/domain/review/schedule'
 import { sessionSummary, type ReviewSessionRecord } from '@/domain/review/session'
 import { Button } from '@/components/ui/button'
 
@@ -103,7 +103,7 @@ export function ReviewSummary({
               {row.outcome === 'done' && row.grade ? (
                 <>
                   <span className="rounded bg-accent-soft px-2 py-0.5 text-accent font-medium">
-                    {GRADE_ACTION_LABEL[row.grade]}
+                    {t(`common:${GRADE_ACTION_LABEL_KEY[row.grade]}`)}
                   </span>
                   <span className="text-muted">
                     {t('summary.nextDue', { date: formatDue(row.nextDue) })}

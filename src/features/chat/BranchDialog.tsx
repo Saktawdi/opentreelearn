@@ -1,5 +1,6 @@
 import { Loader2, SendHorizontal } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -38,6 +39,7 @@ export function BranchDialog({
 }) {
   const [draft, setDraft] = useState('')
   const [remember, setRemember] = useState(false)
+  const { t } = useTranslation('chat')
 
   const confirmDraft = () => {
     const prompt = draft.trim()
@@ -54,9 +56,9 @@ export function BranchDialog({
     >
       <DialogContent className="w-[min(440px,100%)]">
         <DialogHeader>
-          <DialogTitle>新建子节点</DialogTitle>
+          <DialogTitle>{t('branch.title')}</DialogTitle>
           <DialogDescription>
-            选中的内容将收进引用胶囊，和下面选定的指令一起发送给新节点。
+            {t('branch.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -66,7 +68,7 @@ export function BranchDialog({
         </blockquote>
 
         <div className="mt-3 space-y-1.5">
-          <span className="block text-sm font-medium text-ink-soft">快捷指令</span>
+          <span className="block text-sm font-medium text-ink-soft">{t('branch.quickLabel')}</span>
           <div className="flex flex-wrap gap-1.5">
             {BRANCH_QUICK_CHOICES.map((choice) => (
               <button
@@ -98,7 +100,7 @@ export function BranchDialog({
               confirmDraft()
             }
           }}
-          placeholder="或自己写指令，例如「用费曼技巧讲解这段内容」…"
+          placeholder={t('branch.customPlaceholder')}
           className="mt-3 resize-none"
         />
 
@@ -109,12 +111,12 @@ export function BranchDialog({
             onChange={(event) => setRemember(event.target.checked)}
             className="h-3.5 w-3.5 accent-accent"
           />
-          记住选择，下次不再弹出窗口
+          {t('branch.rememberChoice')}
         </label>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-            取消
+            {t('action.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -127,7 +129,7 @@ export function BranchDialog({
             ) : (
               <SendHorizontal className="h-3.5 w-3.5" />
             )}
-            发送
+            {t('action.send')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,1 +1,107 @@
-{}
+{
+  "composer": {
+    "placeholder": "Ask anything…",
+    "enterHint": "Enter to send · Shift+Enter for a new line",
+    "insertImage": "Insert image",
+    "pendingImageAlt": "Pending image",
+    "removeQuoteAria": "Remove this quote",
+    "stop": "Stop generating",
+    "sending": "Sending…",
+    "send": "Send",
+    "busyElsewhere": "Another node is generating; wait for it to finish"
+  },
+  "action": {
+    "cancel": "Cancel",
+    "send": "Send",
+    "edit": "Edit",
+    "editHint": "Edit this question and rewrite the whole round from it",
+    "editDisabled": "Generating — editing unlocks when this round finishes",
+    "regenerate": "Regenerate",
+    "regenerateHint": "Regenerate this answer",
+    "regenerateDisabled": "Generating — regeneration unlocks when this round finishes",
+    "branch": "Branch",
+    "branchFromQuestion": "Create a child node below, inheriting context from this question",
+    "branchFromAnswer": "Create a child node below, inheriting context from this answer",
+    "diverge": "Diverge",
+    "divergeFromQuestion": "Create a sibling node, inheriting context from this question",
+    "divergeFromAnswer": "Create a sibling node, inheriting context from this answer",
+    "jumpToBottom": "Back to bottom"
+  },
+  "message": {
+    "aborted": "Generation interrupted: {{message}}",
+    "pastedImageAlt": "Pasted image",
+    "existingImageAlt": "Image already in this message"
+  },
+  "edit": {
+    "imagesKept": "Images kept as-is",
+    "emptyError": "Content cannot be empty",
+    "unchanged": "No changes made",
+    "submitHint": "Ctrl/⌘+Enter to send · Esc to cancel"
+  },
+  "version": {
+    "empty": "(empty version)",
+    "prev": "Previous version: {{preview}}",
+    "prevAria": "Previous version",
+    "noPrev": "This is the earliest version",
+    "next": "Next version: {{preview}}",
+    "nextAria": "Next version",
+    "noNext": "This is already the latest version",
+    "current": "Version {{index}}/{{total}} · {{preview}}"
+  },
+  "streaming": {
+    "step": "Step {{step}}",
+    "stepCapped": "Step {{step}} / {{max}}",
+    "lookupCount": "Queried project data {{count}} times this round",
+    "looking": "Looking up project data…",
+    "thinking": "Thinking…"
+  },
+  "empty": {
+    "title": "No conversation yet",
+    "hint": "The conversation is the node's content — its title and summary are generated from it."
+  },
+  "prune": {
+    "titleEdit": "Submitting this edit will drop the earliest version",
+    "titleRegen": "Regenerating will drop the earliest version",
+    "body": "Up to {{max}} versions are kept. The earliest one ({{removed}} messages{{notesPart}}) will be deleted and cannot be recovered.",
+    "notesPart": ", including {{notes}} annotation notes",
+    "confirmEdit": "Submit anyway",
+    "confirmRegen": "Regenerate anyway"
+  },
+  "toast": {
+    "pruned": "Only 3 versions are kept; the earliest has been dropped"
+  },
+  "error": {
+    "sendFailed": "Send failed: {{error}}"
+  },
+  "focus": {
+    "renameHint": "Double-click to rename",
+    "menuLabel": "Node",
+    "newChild": "New blank child node",
+    "branchLatest": "Branch from latest message",
+    "divergeLatest": "Diverge from latest message",
+    "summarize": "Generate learning summary",
+    "summarizing": "Generating summary…",
+    "archive": "Archive (with subtree)",
+    "delete": "Delete (with subtree)",
+    "deleteTitle": "Delete node",
+    "deleteBody": "This deletes \"{{title}}\" together with all its child nodes and conversations. It cannot be undone.",
+    "expandMap": "Expand map (Ctrl+M)",
+    "collapseMap": "Collapse map (Ctrl+M)",
+    "inheritedFrom": "Inherited from {{title}}",
+    "deletedSource": "Deleted node",
+    "forkPointGone": "The fork point is no longer in the current version; the whole conversation is inherited",
+    "forkVersionStale": "The version frozen at fork time has been pruned; inheriting the latest version",
+    "dismissNotice": "Don't show again",
+    "noModelPrefix": "No chat model configured. Add one in the ",
+    "settingsPage": "Settings",
+    "noModelSuffix": " page."
+  },
+  "mastery": {
+    "assessing": "Assessing",
+    "viewStatus": "View learning status or generate an assessment",
+    "status": "Learning status",
+    "score": "Mastery {{score}}",
+    "stale": "· New content",
+    "tooltip": "Mastery {{score}} · {{band}} · Click to see the rationale and review plan"
+  }
+}

@@ -1,5 +1,6 @@
 import { ImagePlus, Loader2, MessageSquareQuote, SendHorizontal, Square, X } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,7 @@ export function Composer({
     (state) => Boolean(state.streaming && !state.streaming.error) && !isStreamingIn(state.streaming, nodeId),
   )
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
+  const { t } = useTranslation('chat')
 
   const [text, setText] = useState('')
   const [quotes, setQuotes] = useState<string[]>([])
@@ -160,7 +162,7 @@ export function Composer({
 
       await sendMessage(nodeId, parts)
     } catch (error) {
-      toast.error(`发送失败：${errorMessage(error)}`)
+      toast.error(t('error.sendFailed', { error: errorMessage(error) }))
     } finally {
       setBusy(false)
     }
@@ -203,7 +205,7 @@ export function Composer({
             >
               <img
                 src={item.url}
-                alt={item.asset.name ?? '待发送图片'}
+                alt={item.asset.name ?? t('composer.pendingImageAlt')}
                 className="h-16 w-16 rounded-md border border-line object-cover"
               />
               <button
@@ -236,7 +238,7 @@ export function Composer({
                 <span className="max-w-[280px] truncate">{normalizeWhitespace(quote)}</span>
                 <button
                   type="button"
-                  aria-label="移除引用"
+                  aria-label={t('composer.removeQuoteAria')}
                   onClick={() => removeQuote(quote)}
                   className="rounded-full p-0.5 text-muted transition-colors hover:text-ink"
                 >
@@ -268,7 +270,7 @@ export function Composer({
               void submit()
             }
           }}
-          placeholder="继续追问，或粘贴一张图片…"
+          placeholder={t('composer.placeholder')}
           className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
         />
 
@@ -286,7 +288,7 @@ export function Composer({
               </>
             ) : null}
 
-            <Tooltip label="插入图片">
+            <Tooltip label={t('composer.insertImage')}>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -308,17 +310,17 @@ export function Composer({
               }}
             />
             <span className="hidden pl-1 text-2xs text-faint sm:inline">
-              Enter 发送 · Shift+Enter 换行
+              {t('composer.enterHint')}
             </span>
           </div>
 
           {isStreaming ? (
-            <Tooltip label="停止生成">
+            <Tooltip label={t('composer.stop')}>
               <Button
                 variant="subtle"
                 size="icon-sm"
                 onClick={stopStreaming}
-                aria-label="停止生成"
+                aria-label={t('composer.stop')}
                 className="rounded-full"
               >
                 <Square className="h-3 w-3" />
@@ -327,7 +329,11 @@ export function Composer({
           ) : (
             <Tooltip
               label={
-                isStreamingElsewhere ? '另一个节点正在生成，等它结束' : busy ? '发送中…' : '发送'
+                isStreamingElsewhere
+                  ? t('composer.busyElsewhere')
+                  : busy
+                    ? t('composer.sending')
+                    : t('composer.send')
               }
             >
               <Button
@@ -335,7 +341,7 @@ export function Composer({
                 size="icon-sm"
                 onClick={() => void submit()}
                 disabled={!canSend}
-                aria-label="发送"
+                aria-label={t('composer.send')}
                 className="rounded-full"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SendHorizontal className="h-3.5 w-3.5" />}

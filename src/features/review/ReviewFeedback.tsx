@@ -3,8 +3,8 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ReviewGrade } from '@/domain/models'
 import {
-  GRADE_ACTION_LABEL,
-  GRADE_HINT_LABEL,
+  GRADE_ACTION_LABEL_KEY,
+  GRADE_HINT_LABEL_KEY,
   previewGrade,
   type GradePreview,
 } from '@/domain/review/schedule'
@@ -77,7 +77,7 @@ export function ReviewFeedback({
         {aiSuggestion ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-soft px-2 py-0.5 text-2xs text-accent">
             <Sparkles className="h-3 w-3" />
-            {t('feedback.aiSuggestion', { grade: GRADE_ACTION_LABEL[aiSuggestion] })}
+            {t('feedback.aiSuggestion', { grade: t(`common:${GRADE_ACTION_LABEL_KEY[aiSuggestion]}`) })}
           </span>
         ) : (
           <span className="text-2xs text-muted">{t('feedback.choosePrompt')}</span>
@@ -113,7 +113,7 @@ export function ReviewFeedback({
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-ink">
-                    {GRADE_ACTION_LABEL[grade]}
+                    {t(`common:${GRADE_ACTION_LABEL_KEY[grade]}`)}
                   </span>
                   {isSelected ? (
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-accent-ink">
@@ -126,7 +126,7 @@ export function ReviewFeedback({
                   ) : null}
                 </div>
                 <p className="mt-1 text-2xs leading-relaxed text-muted">
-                  {GRADE_HINT_LABEL[grade]}
+                  {t(`common:${GRADE_HINT_LABEL_KEY[grade]}`)}
                 </p>
               </div>
 

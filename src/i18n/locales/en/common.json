@@ -7,5 +7,28 @@
   },
   "splash": {
     "loading": "Loading…"
+  },
+  "grade": {
+    "again": "Couldn't recall",
+    "hard": "Struggled",
+    "good": "Mostly got it",
+    "easy": "Confident"
+  },
+  "gradeHint": {
+    "again": "Needs to rework the key points",
+    "hard": "Recalled part of it, but needed a hint",
+    "good": "Can explain the main points on my own",
+    "easy": "Can explain and apply it fluently"
+  },
+  "band": {
+    "again": "Needs consolidation",
+    "hard": "Early understanding",
+    "good": "Basically mastered",
+    "easy": "Fairly familiar"
+  },
+  "hint": {
+    "diverge": "Create a sibling node here, inheriting this conversation's context",
+    "child": "Create a blank node below, injecting only your personal background",
+    "branch": "Create a child node below, inheriting this conversation's context"
   }
 }

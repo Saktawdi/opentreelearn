@@ -3,19 +3,18 @@ import { newId } from '@/lib/id'
 
 export type NodeActionKind = 'diverge' | 'child' | 'branch'
 
-export const NODE_ACTION_LABEL: Record<NodeActionKind, string> = {
-  diverge: '发散节点',
-  child: '子节点',
-  branch: '分支节点',
-}
-
-export const NODE_ACTION_HINT: Record<NodeActionKind, string> = {
-  diverge: '在当前节点横向新建，并继承这段对话的上下文',
-  child: '在当前节点下方新建空白节点，只注入个人背景',
-  branch: '在当前节点下方新建，并继承这段对话的上下文',
-}
-
+/** 新建节点未命名时的落库默认标题（数据层默认值，随节点创建写入列表）。 */
 export const PLACEHOLDER_TITLE = '新节点'
+
+/**
+ * 节点操作提示语的 i18n 键（渲染处用 t() 解析为当前语言）。
+ * 消费方：FocusChatView 的菜单（chat 命名空间）、CanvasContextMenu（canvas 命名空间）。
+ */
+export const NODE_ACTION_HINT_KEY: Record<NodeActionKind, string> = {
+  diverge: 'hint.diverge',
+  child: 'hint.child',
+  branch: 'hint.branch',
+}
 
 export interface CreateNodeParams {
   projectId: Id

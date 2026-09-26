@@ -23,10 +23,10 @@ import {
 import { Tooltip } from '@/components/ui/tooltip'
 import { ENTER_SOFT } from '@/lib/motion'
 import { isMasteryStale } from '@/domain/mastery/aggregate'
-import { NODE_ACTION_HINT } from '@/domain/node-ops/actions'
+import { NODE_ACTION_HINT_KEY } from '@/domain/node-ops/actions'
 import { messagePreview } from '@/domain/messages'
 import type { Id } from '@/domain/models'
-import { GRADE_BAND_LABEL, gradeOfScore } from '@/domain/review/schedule'
+import { GRADE_BAND_LABEL_KEY, gradeOfScore } from '@/domain/review/schedule'
 import { resolveThread, staleSelectionSlots } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { cn } from '@/lib/utils'
@@ -37,6 +37,7 @@ import { LearningStatusDialog } from '@/features/review/LearningStatusDialog'
 import { useArchiveNodeWithUndo } from '@/features/canvas/use-archive-node'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
+import { useTranslation } from 'react-i18next'
 import { SelectionMenu } from './SelectionMenu'
 
 export function FocusChatView({
@@ -48,6 +49,7 @@ export function FocusChatView({
   isMapCollapsed?: boolean
   onToggleMap: () => void
 }) {
+  const { t } = useTranslation('chat')
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
@@ -97,14 +99,14 @@ export function FocusChatView({
           .path
       : []
     const sourceMessage = visible.find((message) => message.id === node.forkFrom?.messageId)
-    const title = sourceNode?.title ?? '已删除的节点'
+    const title = sourceNode?.title ?? t('focus.deletedSource')
     const preview = sourceMessage ? messagePreview(sourceMessage, 96) : null
     const stale = sourceNode ? staleSelectionSlots(sourceNode, node.forkFrom.selection).length > 0 : false
     // 找不到 fork 点与被淘汰的固定版本都要在提示条上说清楚：继承内容与源节点当前显示的不一样
     const note = !sourceMessage
-      ? '原分支点已不在当前版本中，按整条对话继承'
+      ? t('focus.forkPointGone')
       : stale
-        ? '分支时固定的旧版本已被淘汰，按最新版本继承'
+        ? t('focus.forkVersionStale')
         : null
     // 源消息文本常常就是源节点标题，此时再展示一次只会读成重复
     return { title, preview: preview && preview !== title ? preview : null, note }
@@ -163,7 +165,7 @@ export function FocusChatView({
                 setDraftTitle(node.title)
                 setRenaming(true)
               }}
-              title="双击重命名"
+              title={t('focus.renameHint')}
               className="max-w-[320px] truncate text-left text-base font-medium text-ink transition-colors hover:text-accent sm:max-w-[420px]"
             >
               {node.title}
@@ -189,26 +191,26 @@ export function FocusChatView({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[212px]">
-              <DropdownMenuLabel>节点</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('focus.menuLabel')}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => void applyAction('child', node.id)}>
                 <GitBranch className="h-3.5 w-3.5" />
                 <span className="min-w-0">
-                  <span className="block">新建空白子节点</span>
-                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.child}</span>
+                  <span className="block">{t('focus.newChild')}</span>
+                  <span className="block text-2xs text-faint">{t(`common:${NODE_ACTION_HINT_KEY.child}`)}</span>
                 </span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void applyAction('branch', node.id)}>
                 <GitBranch className="h-3.5 w-3.5" />
                 <span className="min-w-0">
-                  <span className="block">从最新消息分支</span>
-                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.branch}</span>
+                  <span className="block">{t('focus.branchLatest')}</span>
+                  <span className="block text-2xs text-faint">{t(`common:${NODE_ACTION_HINT_KEY.branch}`)}</span>
                 </span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void applyAction('diverge', node.id)}>
                 <Waypoints className="h-3.5 w-3.5" />
                 <span className="min-w-0">
-                  <span className="block">从最新消息发散</span>
-                  <span className="block text-2xs text-faint">{NODE_ACTION_HINT.diverge}</span>
+                  <span className="block">{t('focus.divergeLatest')}</span>
+                  <span className="block text-2xs text-faint">{t(`common:${NODE_ACTION_HINT_KEY.diverge}`)}</span>
                 </span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -217,19 +219,19 @@ export function FocusChatView({
                 onSelect={() => void refreshSummary(node.id)}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', isSummarizing && 'animate-spin')} />
-                {isSummarizing ? '正在生成摘要…' : '生成学习摘要'}
+                {isSummarizing ? t('focus.summarizing') : t('focus.summarize')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void archiveWithUndo(node.id)}>
                 <Archive className="h-3.5 w-3.5" />
-                归档（含子树）
+                {t('focus.archive')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-danger focus:text-danger"
                 onSelect={() => setConfirmDelete(true)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                删除（含子树）
+                {t('focus.delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -237,11 +239,11 @@ export function FocusChatView({
           <span className="mx-0.5 h-4 w-px bg-line/40" />
 
           {/* 切换/展开折叠右侧知识树地图 */}
-          <Tooltip label={isMapCollapsed ? '展开地图 (Ctrl+M)' : '收起地图 (Ctrl+M)'}>
+          <Tooltip label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={isMapCollapsed ? '展开地图' : '收起地图'}
+              aria-label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}
               onClick={onToggleMap}
               className="text-muted hover:text-ink"
             >
@@ -259,7 +261,7 @@ export function FocusChatView({
       {forkInfo ? (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-line/60 px-5 py-1.5 text-xs text-muted">
           <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent/70" />
-          <span className="shrink-0">继承自 {forkInfo.title}</span>
+          <span className="shrink-0">{t('focus.inheritedFrom', { title: forkInfo.title })}</span>
           {forkInfo.preview ? (
             <span className="truncate text-faint">“{forkInfo.preview}”</span>
           ) : null}
@@ -292,11 +294,11 @@ export function FocusChatView({
                 onClick={() => void undoAgentChange()}
                 className="shrink-0 rounded-sm border border-accent/40 px-1.5 py-0.5 text-accent transition-colors hover:bg-accent-soft"
               >
-                撤销
+                {t('action.undo')}
               </button>
               <button
                 type="button"
-                aria-label="不再提示"
+                aria-label={t('focus.dismissNotice')}
                 onClick={dismissAgentChange}
                 className="shrink-0 rounded-sm p-0.5 text-faint transition-colors hover:text-ink"
               >
@@ -325,11 +327,11 @@ export function FocusChatView({
           </>
         ) : (
           <div className="shrink-0 border-t border-line/60 px-5 py-4 text-sm text-muted">
-            未配置对话模型，先到{' '}
+            {t('focus.noModelPrefix')}
             <Link to="/settings" className="text-accent underline underline-offset-4">
-              配置
-            </Link>{' '}
-            页添加。
+              {t('focus.settingsPage')}
+            </Link>
+            {t('focus.noModelSuffix')}
           </div>
         )}
       </div>
@@ -354,14 +356,14 @@ export function FocusChatView({
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent className="w-[min(400px,100%)]">
           <DialogHeader>
-            <DialogTitle>删除节点</DialogTitle>
+            <DialogTitle>{t('focus.deleteTitle')}</DialogTitle>
             <DialogDescription>
-              会连同「{node.title}」的全部子节点与对话一起删除，无法恢复。
+              {t('focus.deleteBody', { title: node.title })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
-              取消
+              {t('action.cancel')}
             </Button>
             <Button
               variant="danger"
@@ -370,7 +372,7 @@ export function FocusChatView({
                 void deleteNode(node.id)
               }}
             >
-              删除
+              {t('action.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -394,6 +396,7 @@ function MasteryIndicator({
   summarizing: boolean
   onClick: () => void
 }) {
+  const { t } = useTranslation('chat')
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const mastery = node?.mastery
   const lastStudiedAt = node?.lastStudiedAt
@@ -402,31 +405,34 @@ function MasteryIndicator({
     return (
       <span className="inline-flex shrink-0 items-center gap-1 text-2xs text-muted">
         <RefreshCw className="h-3 w-3 animate-spin" />
-        评估中
+        {t('mastery.assessing')}
       </span>
     )
   }
 
   if (!mastery) {
     return (
-      <Tooltip label="查看学习状态或生成评估">
+      <Tooltip label={t('mastery.viewStatus')}>
         <button
           type="button"
           onClick={onClick}
           className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent/50 hover:text-accent"
         >
           <Brain className="h-3 w-3" />
-          学习状态
+          {t('mastery.status')}
         </button>
       </Tooltip>
     )
   }
 
   const stale = isMasteryStale(mastery, lastStudiedAt)
-  const band = GRADE_BAND_LABEL[gradeOfScore(mastery.score)]
+  // 学习状态措辞跨命名空间共用，键在 common
+  const band = t(`common:${GRADE_BAND_LABEL_KEY[gradeOfScore(mastery.score)]}`)
 
   return (
-    <Tooltip label={`掌握度 ${mastery.score} · ${band} · 点击查看依据与复习计划`}>
+    <Tooltip
+      label={t('mastery.tooltip', { score: mastery.score, band })}
+    >
       <button
         type="button"
         onClick={onClick}
@@ -438,8 +444,8 @@ function MasteryIndicator({
         )}
       >
         <Brain className="h-3 w-3" />
-        <span className="tabular-nums">掌握 {mastery.score}</span>
-        {stale ? <span className="text-faint">· 有新内容</span> : null}
+        <span className="tabular-nums">{t('mastery.score', { score: mastery.score })}</span>
+        {stale ? <span className="text-faint">{t('mastery.stale')}</span> : null}
       </button>
     </Tooltip>
   )
