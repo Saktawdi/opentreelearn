@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import i18n from '@/i18n'
 import { createDefaultSettings } from '@/domain/defaults'
 import { makeNode } from '@/test/fixtures'
 import { runFreeAskRequest } from '@/services/llm/free-ask'
@@ -62,7 +63,7 @@ describe('自由问答 store', () => {
     expect(first.messages[0].text).toBe('今天我学了什么？')
     expect(first.messages[1].text).toBe('你今天学了《极限》')
     expect(first.streaming).toBeNull()
-    expect(first.contextNote).toBe('本次参考了 2 / 2 个主题')
+    expect(first.contextNote).toBe(i18n.t('common:ask.contextNote', { listed: 2, total: 2, notes: '' }))
     // 首次提问时上下文里只有本轮问题
     expect(mocked.mock.calls[0][0].history).toEqual([])
     expect(mocked.mock.calls[0][0].nodes).toHaveLength(1)

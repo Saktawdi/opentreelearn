@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { generateText, stepCountIs, tool, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import type { GlobalSettings, ModelRef, ProviderConfig } from '@/domain/models'
@@ -31,7 +32,7 @@ export async function createLanguageModel(
     }
     case 'openai-compatible': {
       if (!baseURL) {
-        throw new ModelResolutionError('OpenAI 兼容提供商需要填写 Base URL')
+        throw new ModelResolutionError(i18n.t('common:llm.baseUrlRequiredCompatible'))
       }
       const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
       return createOpenAICompatible({
@@ -43,7 +44,9 @@ export async function createLanguageModel(
     }
   }
 
-  throw new ModelResolutionError(`未知的提供商类型：${String(provider.kind)}`)
+  throw new ModelResolutionError(
+    i18n.t('common:llm.unknownProviderKind', { kind: String(provider.kind) }),
+  )
 }
 
 export async function resolveModel(
@@ -62,7 +65,7 @@ export async function requireModel(
 ): Promise<LanguageModel> {
   const model = await resolveModel(settings, ref)
   if (!model) {
-    throw new ModelResolutionError(`尚未配置${label}，请前往「配置」页添加提供商与模型`)
+    throw new ModelResolutionError(i18n.t('common:llm.modelNotConfigured', { label }))
   }
   return model
 }
@@ -78,7 +81,7 @@ export async function requireModel(
 export async function fetchUpstreamModels(provider: ProviderConfig): Promise<string[]> {
   const baseURL = effectiveProviderBaseUrl(provider)
   if (!baseURL && provider.kind === 'openai-compatible') {
-    throw new Error('请先填写 Base URL')
+    throw new Error(i18n.t('common:llm.baseUrlRequired'))
   }
 
   const base = (baseURL || '').replace(/\/+$/, '')
@@ -113,7 +116,7 @@ export async function fetchUpstreamModels(provider: ProviderConfig): Promise<str
   const proxyFetch = createLlmProxyFetch()
   const response = await proxyFetch(targetUrl, { headers })
   if (!response.ok) {
-    throw new Error(`上游返回 HTTP ${response.status}`)
+    throw new Error(i18n.t('common:llm.upstreamHttp', { status: response.status }))
   }
 
   const json: unknown = await response.json()

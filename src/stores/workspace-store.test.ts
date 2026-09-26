@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Project } from '@/domain/models'
 import { getDatabase, getRepositories } from '@/data'
+import i18n from '@/i18n'
 import { createDefaultSettings } from '@/domain/defaults'
 import { messageBodyText } from '@/domain/messages'
 import { resolveThread } from '@/domain/thread/resolve'
@@ -86,7 +87,7 @@ describe('workspace store', () => {
     expect(messages).toHaveLength(1)
     expect(messages[0].role).toBe('user')
 
-    expect(state.streaming?.error).toContain('尚未配置')
+    expect(state.streaming?.error).toContain(i18n.t('common:llm.chatModelLabel'))
   })
 
   it('creates diverge, child and branch nodes with the expected shape', async () => {
@@ -361,7 +362,7 @@ describe('regenerate', () => {
     // 这一轮没配模型：新回答没落库，悬空 id 已被摘掉
     expect(node.thread?.slots['m-answer'].versions[1].entries).toEqual([])
     expect(node.thread?.selection).toEqual({ 'm-answer': 2 })
-    expect(store().streaming?.error).toContain('尚未配置')
+    expect(store().streaming?.error).toContain(i18n.t('common:llm.chatModelLabel'))
 
     // 旧回答、笔记都没丢，只是暂时不在显示路径上
     expect(await getRepositories().messages.get('m-answer')).toBeDefined()

@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Project } from '@/domain/models'
 import { getDatabase, getRepositories } from '@/data'
+import i18n from '@/i18n'
 import { createDefaultSettings } from '@/domain/defaults'
 import { messageText, messageToolParts } from '@/domain/messages'
 import { useSettingsStore } from './settings-store'
@@ -207,7 +208,7 @@ describe('写工具（默认关闭 + 撤销）', () => {
       { kind: 'child', title: '拆解一', seed: '什么叫守恒？' },
       {},
     )
-    expect(result).toContain('新建了节点《拆解一》')
+    expect(result).toContain(i18n.t('common:agent.nodeCreated', { title: '拆解一' }))
 
     const state = useWorkspaceStore.getState()
     const created = state.nodes.find((item) => item.title === '拆解一')!
@@ -252,7 +253,7 @@ describe('写工具（默认关闭 + 撤销）', () => {
       { messageId, quote: '忽略竖直方向', labels: ['mistake'] },
       {},
     )
-    expect(ok).toContain('已打标签 [错题]')
+    expect(ok).toContain(i18n.t('common:agent.taggedDone', { labels: '[错题]' }))
 
     const note = (useWorkspaceStore.getState().notesByMessage[messageId] ?? [])[0]
     expect(note).toMatchObject({ labels: ['mistake'], start: 0, end: 6 })

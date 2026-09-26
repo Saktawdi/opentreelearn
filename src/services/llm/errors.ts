@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { ProviderConfig } from '@/domain/models'
 import { PROVIDER_KIND_BASE_URL } from './catalog'
 
@@ -39,59 +40,59 @@ export function describeLlmError(error: unknown): LlmErrorInfo {
   ) {
     return {
       kind: 'cors',
-      message: '请求被浏览器跨域策略拦截或网络不可达',
-      hint: '本应用已把请求改走同源 /api-proxy（开发由 Vite 中间件、生产由 docker/nginx.conf 提供）。若仍报跨域，多半是部署侧缺少这段代理配置：请确认用的新镜像、nginx.conf 已带上 location = /api-proxy。',
+      message: i18n.t('common:errors.llm.cors'),
+      hint: i18n.t('common:errors.llm.corsHint'),
     }
   }
 
   if (/no output generated/.test(lower)) {
     return {
       kind: 'empty',
-      message: '模型没有返回有效内容',
-      hint: '通常是因为跨域拦截、Base URL 未以 /v1 结尾、或模型 ID 不支持流式。可先测试提供商连通性。',
+      message: i18n.t('common:errors.llm.empty'),
+      hint: i18n.t('common:errors.llm.emptyHint'),
     }
   }
 
   if (/401|403|unauthorized|invalid[_\s]api[_\s]key|authentication/.test(lower)) {
     return {
       kind: 'auth',
-      message: 'API Key 无效或没有访问权限',
-      hint: '请前往「配置」页检查 API Key 与模型权限。',
+      message: i18n.t('common:errors.llm.auth'),
+      hint: i18n.t('common:errors.llm.authHint'),
     }
   }
 
   if (/429|rate limit|too many requests|quota|insufficient_quota/.test(lower)) {
     return {
       kind: 'rate',
-      message: '触发频率限制或额度已用尽',
-      hint: '请稍后重试，或检查账户余额与账单设置。',
+      message: i18n.t('common:errors.llm.rate'),
+      hint: i18n.t('common:errors.llm.rateHint'),
     }
   }
 
   if (/404|not found|does not exist|model_not_found|unknown model/.test(lower)) {
     return {
       kind: 'model',
-      message: '接口路径或模型 ID 不存在',
-      hint: '请确认 Base URL 是否完整（如包含 /v1），并核对模型 ID 拼写。',
+      message: i18n.t('common:errors.llm.model'),
+      hint: i18n.t('common:errors.llm.modelHint'),
     }
   }
 
   if (/400|bad request|invalid_request_error/.test(lower)) {
     return {
       kind: 'request',
-      message: '请求被服务端拒绝',
-      hint: '请检查模型 ID 是否支持当前提问格式（如图片输入）。',
+      message: i18n.t('common:errors.llm.request'),
+      hint: i18n.t('common:errors.llm.requestHint'),
     }
   }
 
   if (/timeout|timed out|abort/.test(lower)) {
     return {
       kind: 'timeout',
-      message: '请求超时或已取消',
+      message: i18n.t('common:errors.llm.timeout'),
     }
   }
 
-  const primary = chain[0] || '请求发生未知错误'
+  const primary = chain[0] || i18n.t('common:errors.llm.unknown')
   return {
     kind: 'unknown',
     message: primary,

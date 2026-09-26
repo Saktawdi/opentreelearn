@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import i18n from '@/i18n'
 import type { ContextMessage } from '@/domain/context/assemble'
 import type { Id } from '@/domain/models'
 import { stripReviewRating } from '@/domain/review/protocol'
@@ -150,17 +151,22 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
       const answer: FreeAskMessage = {
         id: newId(),
         role: 'assistant',
-        text: output.clean || '（模型没有返回内容）',
+        text: output.clean || i18n.t('common:ask.emptyAnswer'),
         createdAt: Date.now(),
         incomplete: output.aborted ? true : undefined,
       }
       set((state) => ({
         messages: [...state.messages, answer],
         streaming: null,
-        error: output.aborted ? '回答被中断，内容不完整。' : null,
-        contextNote: `本次参考了 ${output.listed} / ${output.total} 个主题${
-          output.notes > 0 ? `、${output.notes} 条用户标注` : ''
-        }`,
+        error: output.aborted ? i18n.t('common:ask.abortedError') : null,
+        contextNote: i18n.t('common:ask.contextNote', {
+          listed: output.listed,
+          total: output.total,
+          notes:
+            output.notes > 0
+              ? i18n.t('common:ask.contextNoteNotes', { count: output.notes })
+              : '',
+        }),
       }))
       return
     }

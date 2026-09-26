@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import i18n from '@/i18n'
 import { deleteProjectData, getRepositories } from '@/data'
 import type { Id, Project } from '@/domain/models'
 import { newId } from '@/lib/id'
@@ -48,7 +49,7 @@ export const useProjectsStore = create<ProjectsState>()(
       const now = Date.now()
       const project: Project = {
         id: newId(),
-        name: input.name.trim() || '未命名项目',
+        name: input.name.trim() || i18n.t('common:fallback.unnamedProject'),
         description: input.description?.trim() || undefined,
         tags: input.tags.map((tag) => tag.trim()).filter(Boolean),
         createdAt: now,

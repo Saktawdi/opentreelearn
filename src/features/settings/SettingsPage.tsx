@@ -19,7 +19,7 @@ import {
 } from '@/domain/defaults'
 import { cn, errorMessage } from '@/lib/utils'
 import i18n from '@/i18n'
-import { PROVIDER_KIND_LABEL, describeProviderModels } from '@/services/llm/catalog'
+import { describeProviderModels, providerKindLabel } from '@/services/llm/catalog'
 import { testProviderConnection } from '@/services/llm/providers'
 import { useSettingsStore } from '@/stores/settings-store'
 import { ModelPicker } from './ModelPicker'
@@ -317,7 +317,7 @@ export function SettingsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-ink">{provider.label}</span>
-                    <Badge tone="neutral">{PROVIDER_KIND_LABEL[provider.kind]}</Badge>
+                    <Badge tone="neutral">{providerKindLabel(provider.kind)}</Badge>
                     <span className="font-mono text-2xs text-faint">
                       {maskKey(provider.apiKey)}
                     </span>

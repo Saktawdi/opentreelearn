@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { errorMessage } from '@/lib/utils'
 import {
   ApiError as AccountApiError,
@@ -116,7 +117,10 @@ async function request<T>(
     response = await fetch(url, init)
   } catch (error) {
     // 网络层失败（离线、DNS、证书、被拦截）不会有响应体，单独给一句能行动的提示。
-    throw new AccountApiError(`无法连接账号服务：${errorMessage(error)}`, 0)
+    throw new AccountApiError(
+      i18n.t('common:account.connectFailed', { reason: errorMessage(error) }),
+      0,
+    )
   }
 
   return interpretEnvelope<T>(await readJson(response), response.status)
@@ -128,7 +132,7 @@ export async function login(input: LoginInput): Promise<string> {
     method: 'POST',
     form: { username: input.username, password: input.password },
   })
-  if (!envelope.token) throw new AccountApiError('登录成功但账号服务没有返回 token', 0)
+  if (!envelope.token) throw new AccountApiError(i18n.t('common:account.loginNoToken'), 0)
   return envelope.token
 }
 
@@ -164,7 +168,7 @@ export async function refreshAccountToken(token: string): Promise<string> {
     method: 'POST',
     token,
   })
-  if (!envelope.token) throw new AccountApiError('刷新成功但账号服务没有返回 token', 0)
+  if (!envelope.token) throw new AccountApiError(i18n.t('common:account.refreshNoToken'), 0)
   return envelope.token
 }
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import i18n from '@/i18n'
 import { errorMessage } from '@/lib/utils'
 import { bindAccountDatabase } from './data-session'
 import {
@@ -145,7 +146,10 @@ export const useAccountStore = create<AccountState>()(
       try {
         await get().login({ username: input.loginName, password: input.password })
       } catch (error) {
-        throw new Error(`注册成功，但自动登录失败：${errorMessage(error)}`, { cause: error })
+        throw new Error(
+          i18n.t('common:account.autoLoginFailed', { reason: errorMessage(error) }),
+          { cause: error },
+        )
       }
     },
 

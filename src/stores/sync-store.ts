@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import i18n from '@/i18n'
 import { GUEST_DATABASE_NAME, getDatabase, getSyncLocal, openDatabase } from '@/data'
 import { importRecordsInto } from '@/data/sync-local'
 import type { FirstLoginPolicy, RemoteSyncStatus } from '@/domain/sync'
@@ -73,7 +74,7 @@ interface SyncState {
  */
 async function withToken<T>(run: (token: string) => Promise<T>): Promise<T> {
   const token = useAccountStore.getState().token
-  if (!token) throw new ApiError('未登录，无法同步', 401)
+  if (!token) throw new ApiError(i18n.t('common:sync.notLoggedIn'), 401)
 
   try {
     return await run(token)
@@ -225,7 +226,9 @@ export const useSyncStore = create<SyncState>()(
     },
 
     syncNow: async () => {
-      if (get().phase === 'syncing') return { ok: false, pushed: 0, pulled: 0, error: '正在同步' }
+      if (get().phase === 'syncing') {
+        return { ok: false, pushed: 0, pulled: 0, error: i18n.t('common:sync.alreadySyncing') }
+      }
 
       set((draft) => {
         draft.phase = 'syncing'

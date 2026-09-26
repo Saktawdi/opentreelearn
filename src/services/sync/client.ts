@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type {
   PullResult,
   PushResult,
@@ -47,7 +48,10 @@ async function request<T>(
       body,
     })
   } catch (error) {
-    throw new ApiError(`无法连接同步服务：${errorMessage(error)}`, 0)
+    throw new ApiError(
+      i18n.t('common:sync.connectFailed', { reason: errorMessage(error) }),
+      0,
+    )
   }
 
   const envelope = interpretEnvelope<unknown>(await readJson(response), response.status)

@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { getRepositories } from '@/data'
 import type { Project } from '@/domain/models'
 import {
@@ -16,7 +17,7 @@ export async function getProjectTreeExportData(projectId: string): Promise<RawTr
   const repos = getRepositories()
   const project = await repos.projects.get(projectId)
   if (!project) {
-    throw new Error('项目不存在或已被删除')
+    throw new Error(i18n.t('common:errors.projectMissing'))
   }
 
   const nodes = await repos.nodes.listByProject(projectId)

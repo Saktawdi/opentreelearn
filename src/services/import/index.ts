@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { getDatabase, getRepositories } from '@/data'
 import type { Message, Node, Note, Project } from '@/domain/models'
 import { newId } from '@/lib/id'
@@ -48,7 +49,7 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
   const project: Project = {
     id: newId(),
     name: parsed.name,
-    tags: ['导入'],
+    tags: [i18n.t('common:import.tag')],
     createdAt: parsed.createdAt || now,
     updatedAt: parsed.updatedAt || now,
   }
@@ -207,7 +208,7 @@ function importNotes(
 
 export async function importTreeFile(file: File): Promise<ImportResult> {
   const text = await file.text()
-  const fallback = file.name.replace(/\.(tree|json)$/i, '') || '导入项目'
+  const fallback = file.name.replace(/\.(tree|json)$/i, '') || i18n.t('common:import.importedProject')
   const parsed = parseTreeFileText(text, fallback)
   return importParsedProject(parsed)
 }

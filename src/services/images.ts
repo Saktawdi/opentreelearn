@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { AssetRepository } from '@/data/repository'
 import type { Asset, Id } from '@/domain/models'
 import { newId } from '@/lib/id'
@@ -19,7 +20,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
+    reader.onerror = () => reject(reader.error ?? new Error(i18n.t('common:errors.imageRead')))
     reader.readAsDataURL(blob)
   })
 }
@@ -42,7 +43,7 @@ async function loadSource(file: File): Promise<ImageBitmap | HTMLImageElement> {
     }
     image.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error('无法解析该图片'))
+      reject(new Error(i18n.t('common:errors.imageDecode')))
     }
     image.src = url
   })
@@ -78,7 +79,7 @@ export async function createImageAsset(file: File, projectId: Id): Promise<Asset
   canvas.height = target.height
 
   const context = canvas.getContext('2d')
-  if (!context) throw new Error('当前浏览器不支持画布绘制')
+  if (!context) throw new Error(i18n.t('common:errors.canvasUnsupported'))
 
   context.drawImage(source, 0, 0, target.width, target.height)
   if ('close' in source && typeof source.close === 'function') source.close()
@@ -88,7 +89,7 @@ export async function createImageAsset(file: File, projectId: Id): Promise<Asset
     canvas.toBlob(resolve, outputType, outputType === 'image/jpeg' ? 0.86 : undefined),
   )
 
-  if (!blob) throw new Error('图片压缩失败')
+  if (!blob) throw new Error(i18n.t('common:errors.imageCompress'))
 
   return {
     id: newId(),

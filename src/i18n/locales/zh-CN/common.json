@@ -48,6 +48,7 @@
     "unnamedProject": "未命名项目",
     "unnamedNode": "未命名节点",
     "newNodeTitle": "新节点",
+    "newTopicTitle": "新主题",
     "imagePlaceholder": "［图片］",
     "imageQuestionTitle": "［图片提问］"
   },
@@ -65,5 +66,96 @@
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
+  },
+  "errors": {
+    "projectMissing": "项目不存在或已被删除",
+    "busyGenerating": "另一个节点正在生成，等它结束或先停止",
+    "imageRead": "读取图片失败",
+    "imageDecode": "无法解析该图片",
+    "canvasUnsupported": "当前浏览器不支持画布绘制",
+    "imageCompress": "图片压缩失败",
+    "envelopeUnparseable": "服务返回了无法解析的响应（HTTP {{status}}）",
+    "envelopeFailed": "服务返回错误（code {{code}}）",
+    "llm": {
+      "cors": "请求被浏览器跨域策略拦截或网络不可达",
+      "corsHint": "本应用已把请求改走同源 /api-proxy（开发由 Vite 中间件、生产由 docker/nginx.conf 提供）。若仍报跨域，多半是部署侧缺少这段代理配置：请确认用的新镜像、nginx.conf 已带上 location = /api-proxy。",
+      "empty": "模型没有返回有效内容",
+      "emptyHint": "通常是因为跨域拦截、Base URL 未以 /v1 结尾、或模型 ID 不支持流式。可先测试提供商连通性。",
+      "auth": "API Key 无效或没有访问权限",
+      "authHint": "请前往「配置」页检查 API Key 与模型权限。",
+      "rate": "触发频率限制或额度已用尽",
+      "rateHint": "请稍后重试，或检查账户余额与账单设置。",
+      "model": "接口路径或模型 ID 不存在",
+      "modelHint": "请确认 Base URL 是否完整（如包含 /v1），并核对模型 ID 拼写。",
+      "request": "请求被服务端拒绝",
+      "requestHint": "请检查模型 ID 是否支持当前提问格式（如图片输入）。",
+      "timeout": "请求超时或已取消",
+      "unknown": "请求发生未知错误"
+    }
+  },
+  "llm": {
+    "baseUrlRequired": "请先填写 Base URL",
+    "baseUrlRequiredCompatible": "OpenAI 兼容提供商需要填写 Base URL",
+    "unknownProviderKind": "未知的提供商类型：{{kind}}",
+    "modelNotConfigured": "尚未配置{{label}}，请前往「配置」页添加提供商与模型",
+    "chatModelLabel": "对话模型",
+    "upstreamHttp": "上游返回 HTTP {{status}}"
+  },
+  "agent": {
+    "nodeCreated": "新建了节点《{{title}}》",
+    "renamed": "把《{{previous}}》改名为《{{title}}》",
+    "renamedDone": "《{{previous}}》改名为《{{title}}》",
+    "tagged": "给一段原文打了标签 {{labels}}",
+    "taggedDone": "已打标签 {{labels}}"
+  },
+  "session": {
+    "imageAnswer": "（提交了图片作答）",
+    "cantRecall": "暂时想不起来。",
+    "gradeRequired": "请先选择一个掌握档位",
+    "recordedNotice": "已记录「{{title}}」的掌握情况",
+    "skippedByUser": "用户跳过",
+    "nodeDeleted": "主题节点已被删除",
+    "undelivered": "模型未交付内容，请重试",
+    "progressNote": "第 {{current}} / {{total}} 个主题（《{{title}}》）",
+    "teachMessage": "**关键点**\n\n{{keyPoints}}\n\n{{explanation}}",
+    "feedbackMessage": "**做对的地方**\n\n{{strengths}}\n\n**待补充 / 需要修正**\n\n{{gaps}}",
+    "activity": {
+      "searchNotes": "查了标注",
+      "searchNodes": "搜了主题",
+      "getNode": "看了主题资料",
+      "getTreeOutline": "看了树大纲",
+      "listNoteLabels": "看了标签统计",
+      "getReviewHistory": "看了复习记录"
+    }
+  },
+  "ask": {
+    "emptyAnswer": "（模型没有返回内容）",
+    "abortedError": "回答被中断，内容不完整。",
+    "contextNote": "本次参考了 {{listed}} / {{total}} 个主题{{notes}}",
+    "contextNoteNotes": "、{{count}} 条用户标注"
+  },
+  "bootstrap": {
+    "timeout": "本地数据库在 {{seconds}} 秒内没有响应"
+  },
+  "account": {
+    "connectFailed": "无法连接账号服务：{{reason}}",
+    "loginNoToken": "登录成功但账号服务没有返回 token",
+    "refreshNoToken": "刷新成功但账号服务没有返回 token",
+    "autoLoginFailed": "注册成功，但自动登录失败：{{reason}}"
+  },
+  "sync": {
+    "notLoggedIn": "未登录，无法同步",
+    "alreadySyncing": "正在同步",
+    "connectFailed": "无法连接同步服务：{{reason}}"
+  },
+  "import": {
+    "tag": "导入",
+    "importedProject": "导入项目",
+    "invalidStructure": "数据结构与预期不符",
+    "invalidTreeFile": "不是合法的 .tree 项目文件（{{reason}}）",
+    "invalidJson": "文件不是合法的 JSON：{{reason}}"
+  },
+  "providerKind": {
+    "openaiCompatible": "OpenAI 兼容"
   }
 }

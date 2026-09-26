@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import i18n from '@/i18n'
 import { getRepositories } from '@/data'
 import { assembleContext, collectHistorySegments } from '@/domain/context/assemble'
 import {
@@ -317,7 +318,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       if (!project) {
         set((state) => {
           state.loading = false
-          state.error = '项目不存在或已被删除'
+          state.error = i18n.t('common:errors.projectMissing')
         })
         return
       }
@@ -412,7 +413,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         projectId,
         parentId: null,
         forkFrom: null,
-        title: '新节点',
+        title: i18n.t('common:fallback.newNodeTitle'),
         position,
         status: 'active',
         createdAt: now,
@@ -461,7 +462,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
 
     setNodeTitle: async (id, title) => {
-      const trimmed = title.trim() || '新节点'
+      const trimmed = title.trim() || i18n.t('common:fallback.newNodeTitle')
       await getRepositories().nodes.update(id, { title: trimmed, updatedAt: Date.now() })
       set((state) => {
         const node = state.nodes.find((item) => item.id === id)
@@ -733,7 +734,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       const busy = state.streaming
       if (busy && !busy.error) {
         if (busy.nodeId === nodeId) return
-        throw new Error('另一个节点正在生成，等它结束或先停止')
+        throw new Error(i18n.t('common:errors.busyGenerating'))
       }
 
       const hasContent = parts.some(
@@ -1175,7 +1176,7 @@ function createWriteHandlers(
       const created = await store.getState().applyAction(kind, nodeId, forkPoint)
       if (!created) return null
 
-      const trimmed = title.trim() || '新节点'
+      const trimmed = title.trim() || i18n.t('common:fallback.newNodeTitle')
       await store.getState().setNodeTitle(created.id, trimmed)
 
       // seed 只落成这个节点的第一条提问，**不触发新一轮对话** ——
@@ -1201,13 +1202,14 @@ function createWriteHandlers(
         }
       }
 
+      const createdLabel = i18n.t('common:agent.nodeCreated', { title: trimmed })
       remember({
-        label: `新建了节点《${trimmed}》`,
+        label: createdLabel,
         undo: async () => {
           await store.getState().deleteNode(created.id)
         },
       })
-      return { label: `新建了节点《${trimmed}》`, nodeId: created.id }
+      return { label: createdLabel, nodeId: created.id }
     },
 
     renameNode: async ({ nodeId: target, title }) => {
@@ -1219,13 +1221,17 @@ function createWriteHandlers(
       if (!trimmed || trimmed === previous) return null
 
       await store.getState().setNodeTitle(target, trimmed)
+      const renamedLabel = i18n.t('common:agent.renamed', { previous, title: trimmed })
       remember({
-        label: `把《${previous}》改名为《${trimmed}》`,
+        label: renamedLabel,
         undo: async () => {
           await store.getState().setNodeTitle(target, previous)
         },
       })
-      return { label: `《${previous}》改名为《${trimmed}》`, nodeId: target }
+      return {
+        label: i18n.t('common:agent.renamedDone', { previous, title: trimmed }),
+        nodeId: target,
+      }
     },
 
     tagSpan: async ({ messageId, quote, labels, body, start: hint }) => {
@@ -1255,13 +1261,14 @@ function createWriteHandlers(
       if (!note) return null
 
       const label = formatNoteLabels(note.labels)
+      const taggedLabel = i18n.t('common:agent.tagged', { labels: label })
       remember({
-        label: `给一段原文打了标签 ${label}`,
+        label: taggedLabel,
         undo: async () => {
           await store.getState().removeNote(note.id)
         },
       })
-      return { label: `已打标签 ${label}`, noteId: note.id }
+      return { label: i18n.t('common:agent.taggedDone', { labels: label }), noteId: note.id }
     },
   }
 }
@@ -1289,7 +1296,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
 
   let model
   try {
-    model = await requireModel(settings, modelRef, '对话模型')
+    model = await requireModel(settings, modelRef, i18n.t('common:llm.chatModelLabel'))
   } catch (error) {
     const info = describeLlmError(error)
     store.setState((draft) => {

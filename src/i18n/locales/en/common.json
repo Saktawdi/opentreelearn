@@ -48,6 +48,7 @@
     "unnamedProject": "Untitled project",
     "unnamedNode": "Untitled node",
     "newNodeTitle": "New node",
+    "newTopicTitle": "New topic",
     "imagePlaceholder": "[image]",
     "imageQuestionTitle": "[image question]"
   },
@@ -68,5 +69,97 @@
     "hoursAgo_other": "{{count}} hours ago",
     "daysAgo_one": "{{count}} day ago",
     "daysAgo_other": "{{count}} days ago"
+  },
+  "copyCode": "Copy code",
+  "errors": {
+    "projectMissing": "This project no longer exists or has been deleted",
+    "busyGenerating": "Another node is generating; wait for it to finish or stop it first",
+    "imageRead": "Couldn't read the image",
+    "imageDecode": "This image could not be decoded",
+    "canvasUnsupported": "This browser does not support canvas drawing",
+    "imageCompress": "Image compression failed",
+    "envelopeUnparseable": "The service returned a response that could not be parsed (HTTP {{status}})",
+    "envelopeFailed": "The service returned an error (code {{code}})",
+    "llm": {
+      "cors": "The request was blocked by the browser's cross-origin policy, or the network is unreachable",
+      "corsHint": "This app routes requests through the same-origin /api-proxy (the Vite middleware in dev, docker/nginx.conf in production). If you still see a CORS error, the deployment is probably missing this proxy configuration: make sure you are running the new image and that nginx.conf includes location = /api-proxy.",
+      "empty": "The model returned no usable content",
+      "emptyHint": "This is usually a blocked cross-origin request, a Base URL that does not end in /v1, or a model ID that does not support streaming. Try testing the provider connection first.",
+      "auth": "The API key is invalid or does not have access",
+      "authHint": "Check the API key and model permissions in Settings.",
+      "rate": "Rate limit reached or quota used up",
+      "rateHint": "Try again in a moment, or check your account balance and billing settings.",
+      "model": "The endpoint path or model ID does not exist",
+      "modelHint": "Make sure the Base URL is complete (for example it ends in /v1) and the model ID is spelled correctly.",
+      "request": "The request was rejected by the server",
+      "requestHint": "Check whether the model ID supports the current message format (for example image input).",
+      "timeout": "The request timed out or was cancelled",
+      "unknown": "The request failed for an unknown reason"
+    }
+  },
+  "llm": {
+    "baseUrlRequired": "Fill in the Base URL first",
+    "baseUrlRequiredCompatible": "An OpenAI-compatible provider needs a Base URL",
+    "unknownProviderKind": "Unknown provider type: {{kind}}",
+    "modelNotConfigured": "No {{label}} is configured yet — add a provider and model in Settings",
+    "chatModelLabel": "chat model",
+    "upstreamHttp": "The upstream returned HTTP {{status}}"
+  },
+  "agent": {
+    "nodeCreated": "Created the node “{{title}}”",
+    "renamed": "Renamed “{{previous}}” to “{{title}}”",
+    "renamedDone": "“{{previous}}” renamed to “{{title}}”",
+    "tagged": "Tagged a passage with {{labels}}",
+    "taggedDone": "Tagged with {{labels}}"
+  },
+  "session": {
+    "imageAnswer": "(answered with an image)",
+    "cantRecall": "I can't recall it right now.",
+    "gradeRequired": "Pick a mastery level first",
+    "recordedNotice": "Recorded mastery for “{{title}}”",
+    "skippedByUser": "Skipped by the learner",
+    "nodeDeleted": "This topic's node has been deleted",
+    "undelivered": "The model delivered no content — try again",
+    "progressNote": "Topic {{current}} / {{total}} (“{{title}}”)",
+    "teachMessage": "**Key points**\n\n{{keyPoints}}\n\n{{explanation}}",
+    "feedbackMessage": "**What you got right**\n\n{{strengths}}\n\n**What to add or fix**\n\n{{gaps}}",
+    "activity": {
+      "searchNotes": "Searched annotations",
+      "searchNodes": "Searched topics",
+      "getNode": "Opened topic details",
+      "getTreeOutline": "Viewed the tree outline",
+      "listNoteLabels": "Viewed label stats",
+      "getReviewHistory": "Viewed review history"
+    }
+  },
+  "ask": {
+    "emptyAnswer": "(The model returned no content)",
+    "abortedError": "The answer was interrupted, so it is incomplete.",
+    "contextNote": "Drew on {{listed}} / {{total}} topics{{notes}}",
+    "contextNoteNotes": " and {{count}} of your annotations"
+  },
+  "bootstrap": {
+    "timeout": "The local database did not respond within {{seconds}} seconds"
+  },
+  "account": {
+    "connectFailed": "Could not reach the account service: {{reason}}",
+    "loginNoToken": "Login succeeded, but the account service did not return a token",
+    "refreshNoToken": "Refresh succeeded, but the account service did not return a token",
+    "autoLoginFailed": "Registration succeeded, but automatic login failed: {{reason}}"
+  },
+  "sync": {
+    "notLoggedIn": "You are not signed in, so syncing is unavailable",
+    "alreadySyncing": "Already syncing",
+    "connectFailed": "Could not reach the sync service: {{reason}}"
+  },
+  "import": {
+    "tag": "Imported",
+    "importedProject": "Imported project",
+    "invalidStructure": "The data structure is not what was expected",
+    "invalidTreeFile": "This is not a valid .tree project file ({{reason}})",
+    "invalidJson": "The file is not valid JSON: {{reason}}"
+  },
+  "providerKind": {
+    "openaiCompatible": "OpenAI-compatible"
   }
 }

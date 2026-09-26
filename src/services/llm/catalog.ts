@@ -1,10 +1,11 @@
+import i18n from '@/i18n'
 import type { ModelRef, ProviderConfig, ProviderKind } from '@/domain/models'
 
-export const PROVIDER_KIND_LABEL: Record<ProviderKind, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  google: 'Google Gemini',
-  'openai-compatible': 'OpenAI 兼容',
+/** 提供商类型的展示标签；品牌名保持原样，只有 openai-compatible 走本地化。
+ *  是函数而非模块级常量：语言切换后要立刻拿到新译文。 */
+export function providerKindLabel(kind: ProviderKind): string {
+  if (kind === 'openai-compatible') return i18n.t('common:providerKind.openaiCompatible')
+  return kind === 'anthropic' ? 'Anthropic' : kind === 'google' ? 'Google Gemini' : 'OpenAI'
 }
 
 export const PROVIDER_KIND_HINT: Record<ProviderKind, string> = {

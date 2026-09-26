@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import i18n from '@/i18n'
 import { getRepositories } from '@/data'
 import type { Id, Node, Note, ReviewGrade } from '@/domain/models'
 import {
@@ -201,7 +202,8 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         return existing
       }
 
-      const titleOf = (id: Id) => nodes.find((n) => n.id === id)?.title ?? '新主题'
+      const titleOf = (id: Id) =>
+        nodes.find((n) => n.id === id)?.title ?? i18n.t('common:fallback.newTopicTitle')
       const versionOf = (id: Id) => {
         const target = nodes.find((n) => n.id === id)
         if (!target) return undefined
@@ -315,7 +317,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         session,
         item.itemId,
         {
-          answer: trimmed || '（提交了图片作答）',
+          answer: trimmed || i18n.t('common:session.imageAnswer'),
           draft: '',
           phase: 'evaluating',
           interacted: true,
@@ -354,12 +356,13 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
 
       const now = Date.now()
       // 「暂时想不起来」算一次回答，自动建议 again，但仍需用户明确确认
+      const giveUpText = i18n.t('common:session.cantRecall')
       const messages = [
         ...item.messages,
         {
           id: newId(),
           role: 'user' as const,
-          text: '暂时想不起来。',
+          text: giveUpText,
           purpose: 'answer' as const,
           createdAt: now,
         },
@@ -368,7 +371,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         session,
         item.itemId,
         {
-          answer: '暂时想不起来。',
+          answer: giveUpText,
           draft: '',
           phase: 'evaluating',
           interacted: true,
@@ -379,7 +382,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       )
       set({ session: cloneForPublish(session)! })
       await getRepositories().reviewSessions.save(session)
-      await executeModelTurn('answer', '暂时想不起来。')
+      await executeModelTurn('answer', giveUpText)
     },
 
     confirmRelearnReady: async () => {
@@ -432,7 +435,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       // 选档优先：手选 > AI 建议；都没有时必须由用户选，不默认记 good
       const grade = item.selectedGrade ?? suggestionFromMessages(item.messages)
       if (!grade) {
-        set({ error: '请先选择一个掌握档位' })
+        set({ error: i18n.t('common:session.gradeRequired') })
         return false
       }
 
@@ -460,7 +463,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
         set({
           session: outcome.session,
           error: null,
-          lastUndoneNotice: `已记录「${snapshotTitle}」的掌握情况`,
+          lastUndoneNotice: i18n.t('common:session.recordedNotice', { title: snapshotTitle }),
         })
         // 自动出下一题
         void get().ensureCurrentItemContent()
@@ -487,7 +490,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       return false
     },
 
-    skipCurrent: async (reason = '用户跳过') => {
+    skipCurrent: async (reason = i18n.t('common:session.skippedByUser')) => {
       const session = get().session
       const item = currentItem(session)
       if (!session || !item) return
@@ -683,7 +686,10 @@ function createDeliveryHandlers(
       const message: ReviewSessionMessage = {
         id: newId(),
         role: 'assistant',
-        text: `**关键点**\n\n${keyPointLines}\n\n${input.explanation}`,
+        text: i18n.t('common:session.teachMessage', {
+          keyPoints: keyPointLines,
+          explanation: input.explanation,
+        }),
         purpose: 'relearn',
         createdAt: Date.now(),
       }
@@ -728,7 +734,10 @@ function createDeliveryHandlers(
       const message: ReviewSessionMessage = {
         id: newId(),
         role: 'assistant',
-        text: `**做对的地方**\n\n${input.strengths}\n\n**待补充 / 需要修正**\n\n${input.gaps}`,
+        text: i18n.t('common:session.feedbackMessage', {
+          strengths: input.strengths,
+          gaps: input.gaps,
+        }),
         purpose,
         createdAt: Date.now(),
       }
@@ -786,14 +795,18 @@ const REVIEW_DELIVERY_TOOL_NAMES = new Set([
   'submit_feedback',
 ])
 
-/** 活动行文案：模型查了什么，用户一行看得懂。 */
-const TOOL_ACTIVITY_LABEL: Record<string, string> = {
-  search_notes: '查了标注',
-  search_nodes: '搜了主题',
-  get_node: '看了主题资料',
-  get_tree_outline: '看了树大纲',
-  list_note_labels: '看了标签统计',
-  get_review_history: '看了复习记录',
+/**
+ * 活动行文案的键：模型查了什么，用户一行看得懂。
+ *
+ * 存键不存译文 —— 模块加载时还没有语言可用，取值时（onToolCall）才解析。
+ */
+const TOOL_ACTIVITY_LABEL_KEY: Record<string, string> = {
+  search_notes: 'common:session.activity.searchNotes',
+  search_nodes: 'common:session.activity.searchNodes',
+  get_node: 'common:session.activity.getNode',
+  get_tree_outline: 'common:session.activity.getTreeOutline',
+  list_note_labels: 'common:session.activity.listNoteLabels',
+  get_review_history: 'common:session.activity.getReviewHistory',
 }
 
 /**
@@ -868,7 +881,7 @@ async function executeModelTurn(
   if (!node) {
     store.setState({
       streaming: null,
-      error: '主题节点已被删除',
+      error: i18n.t('common:session.nodeDeleted'),
     })
     return
   }
@@ -900,7 +913,11 @@ async function executeModelTurn(
 
   const total = session.items.length
   const currentIdx = session.cursor + 1
-  const progressNote = `第 ${currentIdx} / ${total} 个主题（《${item.title}》）`
+  const progressNote = i18n.t('common:session.progressNote', {
+    current: currentIdx,
+    total,
+    title: item.title,
+  })
 
   // Agent 主路径：handler 负责守卫与交付即落库。forceLegacy（能力降级重试）时
   // 不给 handler —— 服务层走散文协议，行为与工具化之前一致。
@@ -955,7 +972,12 @@ async function executeModelTurn(
             ...cur,
             activities: [
               ...(cur.activities ?? []),
-              { name: activity.name, label: TOOL_ACTIVITY_LABEL[activity.name] ?? activity.name },
+              {
+                name: activity.name,
+                label: TOOL_ACTIVITY_LABEL_KEY[activity.name]
+                  ? i18n.t(TOOL_ACTIVITY_LABEL_KEY[activity.name])
+                  : activity.name,
+              },
             ],
           },
         })
@@ -988,7 +1010,7 @@ async function executeModelTurn(
     // Agent 路径：产物只能来自交付工具。没交付 = 模型失职，按失败处理，可重试。
     if (output.usedDelivery) {
       if (!delivery?.state.delivered) {
-        await rollbackTurn(currentSession, item, '模型未交付内容，请重试', now)
+        await rollbackTurn(currentSession, item, i18n.t('common:session.undelivered'), now)
         return
       }
       // 交付成功：消息与阶段已由 handler 原子落库，这里补材料快照、清在途标记

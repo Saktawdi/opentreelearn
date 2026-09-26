@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { z } from 'zod'
 import type {
   AssessmentSource,
@@ -304,14 +305,17 @@ function orderCardsDfs(cards: ParsedCard[]): ParsedCard[] {
   return ordered
 }
 
-export function parseTreeJson(rawJson: unknown, fallbackName = '未命名项目'): ParsedProject {
+export function parseTreeJson(
+  rawJson: unknown,
+  fallbackName = i18n.t('common:fallback.unnamedProject'),
+): ParsedProject {
   const parsed = treeFileSchema.safeParse(rawJson)
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0]
     const hint = firstIssue
       ? `${firstIssue.path.join('.') || 'root'}: ${firstIssue.message}`
-      : '数据结构与预期不符'
-    throw new TreeParseError(`不是合法的 .tree 项目文件（${hint}）`)
+      : i18n.t('common:import.invalidStructure')
+    throw new TreeParseError(i18n.t('common:import.invalidTreeFile', { reason: hint }))
   }
 
   const fileData = parsed.data.data
@@ -376,7 +380,7 @@ export function parseTreeJson(rawJson: unknown, fallbackName = '未命名项目'
     const title =
       card.title?.trim() ||
       messages.find((message) => message.role === 'user')?.content.split('\n')[0]?.slice(0, 42) ||
-      '未命名节点'
+      i18n.t('common:fallback.unnamedNode')
 
     if (seedSet.size > 0) totalContextSeeds += 1
 
@@ -459,7 +463,11 @@ export function parseTreeFileText(text: string, fallbackName?: string): ParsedPr
   try {
     raw = JSON.parse(text)
   } catch (error) {
-    throw new TreeParseError(`文件不是合法的 JSON：${error instanceof Error ? error.message : String(error)}`)
+    throw new TreeParseError(
+      i18n.t('common:import.invalidJson', {
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    )
   }
   return parseTreeJson(raw, fallbackName)
 }

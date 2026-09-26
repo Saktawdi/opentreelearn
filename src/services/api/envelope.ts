@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 /**
  * 账号系统、同步服务与 Blog BFF 共用的响应信封。
  *
@@ -27,13 +29,16 @@ export class ApiError extends Error {
 /** 解析信封：非 0 业务码一律转成带原始 `msg` 的错误。 */
 export function interpretEnvelope<T>(payload: unknown, httpStatus: number): ApiEnvelope<T> {
   if (!payload || typeof payload !== 'object') {
-    throw new ApiError(`服务返回了无法解析的响应（HTTP ${httpStatus}）`, httpStatus)
+    throw new ApiError(i18n.t('common:errors.envelopeUnparseable', { status: httpStatus }), httpStatus)
   }
 
   const envelope = payload as ApiEnvelope<T>
   const code = typeof envelope.code === 'number' ? envelope.code : httpStatus
   if (code !== 0) {
-    throw new ApiError(envelope.msg?.trim() || `服务返回错误（code ${code}）`, code)
+    throw new ApiError(
+      envelope.msg?.trim() || i18n.t('common:errors.envelopeFailed', { code }),
+      code,
+    )
   }
   return envelope
 }

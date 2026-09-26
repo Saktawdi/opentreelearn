@@ -21,7 +21,7 @@ import { cn, errorMessage } from '@/lib/utils'
 import {
   PROVIDER_KIND_BASE_URL,
   PROVIDER_KIND_HINT,
-  PROVIDER_KIND_LABEL,
+  providerKindLabel,
 } from '@/services/llm/catalog'
 import {
   loadModelCatalog,
@@ -297,7 +297,7 @@ export function ProviderDialog({
                       : 'border-line text-muted hover:border-line-strong hover:text-ink-soft',
                   )}
                 >
-                  {PROVIDER_KIND_LABEL[kind]}
+                  {providerKindLabel(kind)}
                 </button>
               ))}
             </div>

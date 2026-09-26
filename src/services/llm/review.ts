@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { Id, Message, ModelRef, Node, Note, ProjectSettings } from '@/domain/models'
 import { messageText } from '@/domain/messages'
 import {
@@ -137,7 +138,7 @@ export async function requireReviewModel(
   projectSettings?: ProjectSettings | null,
 ): Promise<{ model: Awaited<ReturnType<typeof requireModel>>; ref?: ModelRef }> {
   const ref = projectSettings?.chatModelRef ?? settings.defaultChatModelRef ?? undefined
-  const model = await requireModel(settings, ref ?? null, '对话模型')
+  const model = await requireModel(settings, ref ?? null, i18n.t('common:llm.chatModelLabel'))
   return { model, ref }
 }
 

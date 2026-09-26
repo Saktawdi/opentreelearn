@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import i18n from '@/i18n'
 import { errorMessage } from '@/lib/utils'
 import { useAccountStore } from './account-store'
 import { bindStoredAccountDatabase } from './data-session'
@@ -55,7 +56,9 @@ export function useBootstrap(): BootstrapState {
     const timer = window.setTimeout(() => {
       if (cancelled) return
       setPhase('error')
-      setMessage(`本地数据库在 ${BOOTSTRAP_TIMEOUT_MS / 1000} 秒内没有响应`)
+      setMessage(
+        i18n.t('common:bootstrap.timeout', { seconds: BOOTSTRAP_TIMEOUT_MS / 1000 }),
+      )
     }, BOOTSTRAP_TIMEOUT_MS)
 
     void (async () => {
