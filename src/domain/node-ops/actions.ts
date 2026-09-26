@@ -1,10 +1,8 @@
+import i18n from '@/i18n'
 import type { ForkRef, Id, Node } from '@/domain/models'
 import { newId } from '@/lib/id'
 
 export type NodeActionKind = 'diverge' | 'child' | 'branch'
-
-/** 新建节点未命名时的落库默认标题（数据层默认值，随节点创建写入列表）。 */
-export const PLACEHOLDER_TITLE = '新节点'
 
 /**
  * 节点操作提示语的 i18n 键（渲染处用 t() 解析为当前语言）。
@@ -53,7 +51,7 @@ export function createNodeFromAction(params: CreateNodeParams): Node {
     projectId: params.projectId,
     parentId: resolveParentId(params.kind, params.sourceNode),
     forkFrom: resolveForkFrom(params.kind, params.sourceNode, params.sourceMessageId),
-    title: params.title ?? PLACEHOLDER_TITLE,
+    title: params.title ?? i18n.t('common:fallback.newNodeTitle'),
     position: null,
     status: 'active',
     createdAt: timestamp,
