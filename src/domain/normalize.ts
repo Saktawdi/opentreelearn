@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget, DEFAULT_BRANCH_PROMPT } from './defaults'
 import type {
   AssessmentMeta,
@@ -138,7 +139,7 @@ export function normalizeProvider(value: unknown): ProviderConfig | null {
 
   return {
     id,
-    label: readString(value.label) ?? '未命名提供商',
+    label: readString(value.label) ?? i18n.t('common:fallback.unnamedProvider'),
     kind,
     apiKey: readString(value.apiKey) ?? '',
     baseURL: readString(value.baseURL),
@@ -158,7 +159,7 @@ export function normalizeProject(value: unknown, now = Date.now()): Project | nu
 
   return {
     id,
-    name: readString(value.name) ?? '未命名项目',
+    name: readString(value.name) ?? i18n.t('common:fallback.unnamedProject'),
     description: readString(value.description),
     tags: readStringArray(value.tags),
     createdAt,
@@ -359,7 +360,7 @@ export function normalizeNode(value: unknown): Node | null {
     projectId,
     parentId: typeof value.parentId === 'string' ? value.parentId : null,
     forkFrom: isRecord(value.forkFrom) ? (value.forkFrom as unknown as Node['forkFrom']) : null,
-    title: readString(value.title) ?? '未命名节点',
+    title: readString(value.title) ?? i18n.t('common:fallback.unnamedNode'),
     summary: readString(value.summary),
     contextSeed: Array.isArray(value.contextSeed) ? readStringArray(value.contextSeed) : undefined,
     position,

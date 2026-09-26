@@ -42,5 +42,10 @@
     "confusing": "The learner explicitly says they didn't understand",
     "key": "Key conclusion or core definition, worth revisiting",
     "example": "Typical example or a transferable solution"
+  },
+  "fallback": {
+    "unnamedProvider": "Unnamed provider",
+    "unnamedProject": "Untitled project",
+    "unnamedNode": "Untitled node"
   }
 }

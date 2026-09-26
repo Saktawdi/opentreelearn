@@ -42,5 +42,10 @@
     "confusing": "学习者明确表示没有理解的地方",
     "key": "关键结论或核心定义，值得反复回看",
     "example": "典型例题或可迁移的解法"
+  },
+  "fallback": {
+    "unnamedProvider": "未命名提供商",
+    "unnamedProject": "未命名项目",
+    "unnamedNode": "未命名节点"
   }
 }
