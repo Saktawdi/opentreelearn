@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import { findBranchQuickChoice } from '@/domain/defaults'
 import { stripReviewRating } from '@/domain/review/protocol'
@@ -107,7 +108,7 @@ export function replaceMessageText(message: Message, text: string): MessagePart[
  */
 export function messagePreview(message: Message, max = 120): string {
   const text = stripReviewRating(messageText(message))
-  const label = text ? normalizeForPreview(text) : '［图片］'
+  const label = text ? normalizeForPreview(text) : i18n.t('common:fallback.imagePlaceholder')
   return truncate(label, max)
 }
 
@@ -122,7 +123,9 @@ export function deriveTitle(message: Message): string {
   const quote = messageQuotes(message)[0]
   if (body && !(quote && findBranchQuickChoice(body))) return firstLine(body, 42)
   if (quote) return firstLine(quote, 42)
-  return hasImage(message) ? '［图片提问］' : '新节点'
+  return hasImage(message)
+    ? i18n.t('common:fallback.imageQuestionTitle')
+    : i18n.t('common:fallback.newNodeTitle')
 }
 
 /**

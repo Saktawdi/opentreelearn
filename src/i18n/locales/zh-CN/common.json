@@ -46,6 +46,9 @@
   "fallback": {
     "unnamedProvider": "未命名提供商",
     "unnamedProject": "未命名项目",
-    "unnamedNode": "未命名节点"
+    "unnamedNode": "未命名节点",
+    "newNodeTitle": "新节点",
+    "imagePlaceholder": "［图片］",
+    "imageQuestionTitle": "［图片提问］"
   }
 }

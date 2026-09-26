@@ -46,6 +46,9 @@
   "fallback": {
     "unnamedProvider": "Unnamed provider",
     "unnamedProject": "Untitled project",
-    "unnamedNode": "Untitled node"
+    "unnamedNode": "Untitled node",
+    "newNodeTitle": "New node",
+    "imagePlaceholder": "[image]",
+    "imageQuestionTitle": "[image question]"
   }
 }
