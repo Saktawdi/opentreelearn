@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { Asset, Id, NodeReview, ReviewGrade } from '@/domain/models'
 import type {
@@ -36,17 +37,20 @@ import { ReviewAnnotatableText } from './ReviewAnnotatable'
 import { useReviewMessageNotes } from './use-review-notes'
 import { ReviewFeedback } from './ReviewFeedback'
 
-/** 非题目区消息的标签：复述题、换问法都是「题」，反馈轮里的补讲标「补学」，不能混进「反馈」。 */
-const OTHER_MESSAGE_LABEL: Partial<Record<ReviewRequestPurpose, string>> = {
-  question: '复述题',
-  hint: '提示',
-  rephrase: '换个问法',
-  relearn: '补学',
-}
-
-/** 用户消息自己的标签（回答 vs 追问）。 */
-function userMessageLabel(purpose: ReviewRequestPurpose): string {
-  return purpose === 'followup' ? '追问' : '我的回答'
+/** 非题目区消息的标签键（i18n 键，渲染时解析为当前语言）：复述题、换问法都是「题」，反馈轮里的补讲标「补学」，不能混进「反馈」。 */
+const OTHER_MESSAGE_LABEL_KEY: Partial<
+  Record<
+    ReviewRequestPurpose,
+    | 'practice.labelQuestion'
+    | 'practice.labelHint'
+    | 'practice.labelRephrase'
+    | 'practice.labelRelearn'
+  >
+> = {
+  question: 'practice.labelQuestion',
+  hint: 'practice.labelHint',
+  rephrase: 'practice.labelRephrase',
+  relearn: 'practice.labelRelearn',
 }
 
 interface ReviewPracticeProps {
@@ -111,6 +115,7 @@ export function ReviewPractice({
   onRetry,
   onAskFollowup,
 }: ReviewPracticeProps) {
+  const { t } = useTranslation('review')
   const [draft, setDraft] = useState(item.draft ?? '')
   const [prevItemId, setPrevItemId] = useState(item.itemId)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -194,7 +199,7 @@ export function ReviewPractice({
       )
       setPendingImages((previous) => [...previous, ...created])
     } catch (error) {
-      toast.error(`图片读取失败：${errorMessage(error)}`)
+      toast.error(t('practice.toastImageReadFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -217,7 +222,7 @@ export function ReviewPractice({
         imageIds.push(pending.asset.id)
       }
     } catch (error) {
-      toast.error(`图片保存失败：${errorMessage(error)}`)
+      toast.error(t('practice.toastImageSaveFailed', { error: errorMessage(error) }))
       return
     }
     for (const pending of pendingImages) URL.revokeObjectURL(pending.url)
@@ -328,7 +333,7 @@ export function ReviewPractice({
       {/* 撤销提示横幅 */}
       {undoable && (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-line/60 bg-surface px-3 py-2 text-xs text-muted">
-          <span>{lastUndoneNotice ?? '已记录上一项评分'}</span>
+          <span>{lastUndoneNotice ?? t('practice.undoBannerFallback')}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -336,7 +341,7 @@ export function ReviewPractice({
             className="h-6 text-accent hover:text-accent/80"
           >
             <RotateCcw className="mr-1 h-3 w-3" />
-            撤销上次评分
+            {t('practice.undoLast')}
           </Button>
         </div>
       )}
@@ -350,7 +355,7 @@ export function ReviewPractice({
           </div>
           <Button variant="secondary" size="sm" onClick={onRetry} className="h-6">
             <RefreshCw className="mr-1 h-3 w-3" />
-            重试
+            {t('practice.retry')}
           </Button>
         </div>
       ) : null}
@@ -359,7 +364,7 @@ export function ReviewPractice({
       <div ref={questionCardRef} className="rounded-xl border border-line/70 bg-surface p-5 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-2xs font-medium text-accent">
-            {item.mode === 'relearn' ? '关键点补学' : '主动回忆题'}
+            {item.mode === 'relearn' ? t('practice.modeRelearn') : t('practice.modeRecall')}
           </span>
           <Button
             variant="ghost"
@@ -368,7 +373,7 @@ export function ReviewPractice({
             className="h-6 text-2xs text-muted hover:text-ink gap-1"
           >
             <BookOpen className="h-3 w-3" />
-            查看原资料
+            {t('practice.viewSource')}
           </Button>
         </div>
 
@@ -376,7 +381,9 @@ export function ReviewPractice({
           <div className="py-6 text-xs text-muted">
             <div className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-accent" />
-              <span>正在为你准备{item.mode === 'relearn' ? '补学关键点' : '回忆题目'}…</span>
+              <span>
+                {item.mode === 'relearn' ? t('practice.preparingRelearn') : t('practice.preparingRecall')}
+              </span>
             </div>
             {activityLabel ? <div className="mt-1.5 pl-6 text-2xs text-faint">{activityLabel}</div> : null}
           </div>
@@ -398,7 +405,7 @@ export function ReviewPractice({
         {isRelearning && (
           <div className="mt-4 border-t border-line/40 pt-4 flex justify-end">
             <Button variant="primary" size="sm" onClick={onConfirmRelearnReady}>
-              准备好了，试着复述
+              {t('practice.relearnReady')}
               <ChevronRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
@@ -422,7 +429,7 @@ export function ReviewPractice({
             <>
               <div className="mb-1 flex items-center gap-1.5 text-2xs text-accent">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                <span>正在出复述题…</span>
+                <span>{t('practice.generatingQuestion')}</span>
               </div>
               {activityLabel ? <div className="mb-1 text-2xs text-faint">{activityLabel}</div> : null}
               {streamingText ? (
@@ -432,10 +439,10 @@ export function ReviewPractice({
           ) : (
             /* 刷新 / 暂停后请求丢了：不自动重发（重发等于替用户再付一次调用），给手动重试 */
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted">复述题没有生成出来。</span>
+              <span className="text-muted">{t('practice.questionMissing')}</span>
               <Button variant="secondary" size="sm" onClick={onRetry} className="h-6">
                 <RefreshCw className="mr-1 h-3 w-3" />
-                重新生成
+                {t('practice.regenerate')}
               </Button>
             </div>
           )}
@@ -447,7 +454,9 @@ export function ReviewPractice({
         <div className="mt-5 rounded-lg border border-line/60 bg-surface p-4 text-xs leading-relaxed text-ink-soft mr-8">
           <div className="mb-1 flex items-center gap-1.5 text-2xs text-accent">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>{streamingPurpose === 'hint' ? '正在给一点提示…' : '正在换个问法…'}</span>
+            <span>
+              {streamingPurpose === 'hint' ? t('practice.streamingHint') : t('practice.streamingRephrase')}
+            </span>
           </div>
           {activityLabel ? <div className="mb-1 text-2xs text-faint">{activityLabel}</div> : null}
           {streamingText ? (
@@ -461,7 +470,7 @@ export function ReviewPractice({
         <div className="mt-4 rounded-lg border border-line/60 bg-surface p-4 text-xs leading-relaxed text-muted mr-8">
           <div className="mb-1 flex items-center gap-1.5 text-2xs text-accent">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>正在生成反馈…</span>
+            <span>{t('practice.streamingFeedback')}</span>
           </div>
           {streamingText ? (
             <MarkdownView content={stripStreamingReviewRating(streamingText)} />
@@ -473,7 +482,7 @@ export function ReviewPractice({
       {isAnswering && !isRelearnAwaitingQuestion && (
         <div className="mt-5 rounded-xl border border-line/70 bg-surface p-4 shadow-sm">
           <label htmlFor="review-answer-input" className="block mb-2 text-xs font-medium text-ink">
-            我的回答
+            {t('practice.labelMyAnswer')}
           </label>
 
           {/* 待提交图片预览：与聊天输入框同款胶囊 */}
@@ -482,12 +491,12 @@ export function ReviewPractice({
               <div key={pending.asset.id} className="group/img relative">
                 <img
                   src={pending.url}
-                  alt={pending.asset.name ?? '待发送图片'}
+                  alt={pending.asset.name ?? t('practice.imagePendingAlt')}
                   className="h-16 w-16 rounded-md border border-line object-cover"
                 />
                 <button
                   type="button"
-                  aria-label="移除这张图片"
+                  aria-label={t('practice.removeImage')}
                   onClick={() => removePendingImage(pending.asset.id)}
                   className="absolute -right-1.5 -top-1.5 rounded-full border border-line bg-canvas p-0.5 text-muted transition-colors hover:text-ink"
                 >
@@ -518,7 +527,7 @@ export function ReviewPractice({
               isComposingRef.current = false
             }}
             onKeyDown={handleKeyDown}
-            placeholder="用自己的话简述答案，可粘贴/上传图片（如手写过程）… (Ctrl+Enter 发送)"
+            placeholder={t('practice.answerPlaceholder')}
             className="w-full text-xs leading-relaxed"
           />
           <input
@@ -540,43 +549,43 @@ export function ReviewPractice({
                 size="sm"
                 disabled={isEvaluating}
                 onClick={() => fileInputRef.current?.click()}
-                title="上传图片作答"
+                title={t('practice.insertImageTitle')}
                 className="text-2xs text-muted hover:text-ink disabled:opacity-50"
               >
                 <ImagePlus className="mr-1 h-3.5 w-3.5" />
-                插入图片
+                {t('practice.insertImage')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 disabled={isAssistStreaming}
                 onClick={onRequestHint}
-                title="回忆卡住时，看一点小提示"
+                title={t('practice.hintTitle')}
                 className="text-2xs text-muted hover:text-ink disabled:opacity-50"
               >
                 <Lightbulb className="mr-1 h-3.5 w-3.5" />
-                给一点提示
+                {t('practice.hintButton')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 disabled={isAssistStreaming}
                 onClick={onRequestRephrase}
-                title="换一种表达方式重新问"
+                title={t('practice.rephraseTitle')}
                 className="text-2xs text-muted hover:text-ink disabled:opacity-50"
               >
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                换个问法
+                {t('practice.rephraseButton')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onRequestGiveUp}
-                title="实在想不起来，直接看讲解并自评"
+                title={t('practice.giveUpTitle')}
                 className="text-2xs text-muted hover:text-ink"
               >
                 <HelpCircle className="mr-1 h-3.5 w-3.5" />
-                暂时想不起来
+                {t('practice.giveUpButton')}
               </Button>
               <Button
                 variant="ghost"
@@ -585,7 +594,7 @@ export function ReviewPractice({
                 className="text-2xs text-faint hover:text-ink"
               >
                 <SkipForward className="mr-1 h-3.5 w-3.5" />
-                跳过
+                {t('practice.skip')}
               </Button>
             </div>
 
@@ -595,7 +604,7 @@ export function ReviewPractice({
               disabled={(!draft.trim() && pendingImages.length === 0) || isEvaluating}
               onClick={() => void submitAnswer()}
             >
-              提交回答
+              {t('practice.submitAnswer')}
             </Button>
           </div>
         </div>
@@ -605,7 +614,7 @@ export function ReviewPractice({
       {followup && isFollowupAllowedPhase && (
         <div className="mt-5 rounded-xl border border-line/70 bg-surface p-4 shadow-sm">
           <label htmlFor="review-followup-input" className="block mb-2 text-xs font-medium text-ink">
-            就标记的内容追问
+            {t('practice.followupTitle')}
           </label>
           {followup.quote ? (
             <blockquote className="mb-2 max-h-24 overflow-y-auto rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs text-muted">
@@ -630,12 +639,12 @@ export function ReviewPractice({
                 submitFollowup()
               }
             }}
-            placeholder="这段哪里没讲清楚，或者想让它再考考你… (Ctrl+Enter 发送)"
+            placeholder={t('practice.followupPlaceholder')}
             className="w-full text-xs leading-relaxed"
           />
           <div className="mt-3 flex items-center justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setFollowup(null)}>
-              取消
+              {t('practice.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -643,7 +652,7 @@ export function ReviewPractice({
               disabled={!followup.text.trim()}
               onClick={submitFollowup}
             >
-              提交追问
+              {t('practice.submitFollowup')}
             </Button>
           </div>
         </div>
@@ -663,9 +672,9 @@ export function ReviewPractice({
 
           <div className="flex items-center justify-between border-t border-line/60 pt-4">
             <div className="text-2xs text-muted">
-              {item.usedHint ? '本次参考过提示 · ' : ''}
-              {item.usedSource ? '本次查看过资料 · ' : ''}
-              点击确认后将更新复习排期
+              {item.usedHint ? t('practice.usedHint') : ''}
+              {item.usedSource ? t('practice.usedSource') : ''}
+              {t('practice.confirmNote')}
             </div>
             <Button
               variant="primary"
@@ -677,11 +686,11 @@ export function ReviewPractice({
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  保存中…
+                  {t('practice.saving')}
                 </>
               ) : (
                 <>
-                  {isLastItem ? '确认并查看小结' : '确认并继续'}
+                  {isLastItem ? t('practice.confirmLast') : t('practice.confirmNext')}
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -710,6 +719,7 @@ export function ReviewPractice({
  * messageId 分组，组件化之后每张卡自己订阅自己的桶，互不牵连重渲染。
  */
 function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
+  const { t } = useTranslation('review')
   const notes = useReviewMessageNotes(message.id)
   const imageUrls = useAssetUrls((message.imageIds ?? []).join(','))
   const isUser = message.role === 'user'
@@ -724,8 +734,8 @@ function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
     >
       <div className="mb-1 text-2xs text-faint">
         {isUser
-          ? userMessageLabel(message.purpose)
-          : (OTHER_MESSAGE_LABEL[message.purpose] ?? '反馈')}
+          ? (message.purpose === 'followup' ? t('practice.labelFollowup') : t('practice.labelMyAnswer'))
+          : t(OTHER_MESSAGE_LABEL_KEY[message.purpose] ?? 'practice.labelFeedback')}
       </div>
       {message.text ? (
         <ReviewAnnotatableText messageId={message.id} source={stripReviewRating(message.text)} />

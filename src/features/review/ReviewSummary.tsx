@@ -1,4 +1,5 @@
 import { ArrowLeft, CheckCircle2, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { GRADE_ACTION_LABEL } from '@/domain/review/schedule'
 import { sessionSummary, type ReviewSessionRecord } from '@/domain/review/session'
 import { Button } from '@/components/ui/button'
@@ -25,14 +26,19 @@ export function ReviewSummary({
   onUndoLast,
   canUndoLast = false,
 }: ReviewSummaryProps) {
+  const { t, i18n } = useTranslation('review')
   const summary = sessionSummary(session)
   const isAllSkipped = summary.done === 0 && summary.skipped > 0
 
   const formatDue = (timestamp?: number) => {
-    if (!timestamp) return '未排期'
-    const date = new Date(timestamp)
-    return `${date.getMonth() + 1}月${date.getDate()}日`
+    if (!timestamp) return t('summary.notScheduled')
+    return new Intl.DateTimeFormat(i18n.language, { month: 'numeric', day: 'numeric' }).format(
+      new Date(timestamp),
+    )
   }
+
+  const joinWeakPoints = (points: string[]) =>
+    new Intl.ListFormat(i18n.language, { type: 'unit' }).format(points)
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto px-4 py-8 sm:px-12 max-w-3xl mx-auto w-full">
@@ -44,12 +50,16 @@ export function ReviewSummary({
           } mb-3`}
         />
         <h2 className="text-xl font-bold tracking-tight text-ink">
-          {isAllSkipped ? '本次复习已结束' : '本次复习完成！'}
+          {isAllSkipped ? t('summary.titleEnded') : t('summary.titleDone')}
         </h2>
         <p className="mt-1.5 text-xs text-muted">
-          已巩固 <span className="font-semibold text-ink">{summary.done}</span> 个主题
-          {summary.skipped > 0 ? ` · 跳过 ${summary.skipped} 个` : ''}
-          {summary.unfinished > 0 ? ` · 未完成 ${summary.unfinished} 个` : ''}
+          {t('summary.consolidatedPrefix')}{' '}
+          <span className="font-semibold text-ink">{summary.done}</span>{' '}
+          {t('summary.consolidatedSuffix', { count: summary.done })}
+          {summary.skipped > 0 ? t('summary.skippedCount', { count: summary.skipped }) : ''}
+          {summary.unfinished > 0
+            ? t('summary.unfinishedCount', { count: summary.unfinished })
+            : ''}
         </p>
 
         {canUndoLast && onUndoLast ? (
@@ -61,7 +71,7 @@ export function ReviewSummary({
               className="text-2xs text-accent"
             >
               <RotateCcw className="mr-1 h-3 w-3" />
-              撤销最后一题评分
+              {t('summary.undoLast')}
             </Button>
           </div>
         ) : null}
@@ -69,7 +79,7 @@ export function ReviewSummary({
 
       {/* 每项明细列表 */}
       <div className="mt-6 space-y-2.5">
-        <h3 className="text-xs font-semibold text-muted px-1">本批主题小结</h3>
+        <h3 className="text-xs font-semibold text-muted px-1">{t('summary.listTitle')}</h3>
         {summary.rows.map((row) => (
           <div
             key={row.itemId}
@@ -81,7 +91,10 @@ export function ReviewSummary({
               </span>
               {row.weakPoints && row.weakPoints.length > 0 ? (
                 <p className="mt-1 text-2xs text-faint">
-                  待巩固（{row.weakPointsSource}）：{row.weakPoints.join('、')}
+                  {t('summary.weakPoints', {
+                    source: row.weakPointsSource,
+                    points: joinWeakPoints(row.weakPoints),
+                  })}
                 </p>
               ) : null}
             </div>
@@ -93,13 +106,17 @@ export function ReviewSummary({
                     {GRADE_ACTION_LABEL[row.grade]}
                   </span>
                   <span className="text-muted">
-                    下次：{formatDue(row.nextDue)}
+                    {t('summary.nextDue', { date: formatDue(row.nextDue) })}
                   </span>
                 </>
               ) : row.outcome === 'skipped' ? (
-                <span className="rounded bg-elevated px-2 py-0.5 text-muted">已跳过</span>
+                <span className="rounded bg-elevated px-2 py-0.5 text-muted">
+                  {t('summary.skipped')}
+                </span>
               ) : (
-                <span className="rounded bg-danger-soft px-2 py-0.5 text-danger">未完成</span>
+                <span className="rounded bg-danger-soft px-2 py-0.5 text-danger">
+                  {t('summary.unfinished')}
+                </span>
               )}
             </div>
           </div>
@@ -109,11 +126,11 @@ export function ReviewSummary({
       {/* 底部动作操作 */}
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Button variant="secondary" size="md" onClick={onStartAnotherBatch}>
-          再选一批
+          {t('summary.startAnother')}
         </Button>
         <Button variant="primary" size="md" onClick={onReturnToLearning} className="gap-1.5">
           <ArrowLeft className="h-4 w-4" />
-          返回学习工作区
+          {t('summary.backToWorkspace')}
         </Button>
       </div>
     </div>

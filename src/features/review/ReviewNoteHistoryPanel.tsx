@@ -1,5 +1,6 @@
 import { Pencil, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ export function ReviewNoteHistoryPanel({
   onClose,
   onReveal,
 }: ReviewNoteHistoryPanelProps) {
+  const { t } = useTranslation('review')
   const notesByMessage = useWorkspaceStore((state) => state.notesByMessage)
   const updateNote = useWorkspaceStore((state) => state.updateNote)
   const removeNote = useWorkspaceStore((state) => state.removeNote)
@@ -47,8 +49,8 @@ export function ReviewNoteHistoryPanel({
 
   const titleOf = useMemo(() => {
     const map = new Map<Id, string>(nodes.map((node) => [node.id, node.title]))
-    return (nodeId: Id) => map.get(nodeId) ?? '（节点已删除）'
-  }, [nodes])
+    return (nodeId: Id) => map.get(nodeId) ?? t('notes.nodeDeleted')
+  }, [nodes, t])
 
   const scopeNodeIds = useMemo(() => {
     if (scope === 'current') return new Set(currentNodeId ? [currentNodeId] : [])
@@ -80,7 +82,7 @@ export function ReviewNoteHistoryPanel({
       })
       setEditingId(null)
     } catch (error) {
-      toast.error(`保存标注失败：${errorMessage(error)}`)
+      toast.error(t('notes.toastSaveFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -88,9 +90,13 @@ export function ReviewNoteHistoryPanel({
     try {
       await removeNote(note.id)
       setEditingId(null)
-      toast.success(note.labels.length > 0 ? `已删除标注 ${formatNoteLabels(note.labels)}` : '已删除高亮')
+      toast.success(
+        note.labels.length > 0
+          ? t('notes.toastDeletedLabels', { labels: formatNoteLabels(note.labels) })
+          : t('notes.toastDeletedHighlight'),
+      )
     } catch (error) {
-      toast.error(`删除标注失败：${errorMessage(error)}`)
+      toast.error(t('notes.toastDeleteFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -99,17 +105,17 @@ export function ReviewNoteHistoryPanel({
   return (
     <aside
       role="region"
-      aria-label="笔记历史面板"
+      aria-label={t('notes.panelAria')}
       className="flex h-full w-full flex-col border-l border-line/60 bg-surface/95 backdrop-blur-md"
     >
       {/* 头部 */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-line/60 px-4">
         <div className="flex items-center gap-2">
           <Pencil className="h-4 w-4 text-accent" />
-          <span className="text-xs font-medium text-ink">笔记历史</span>
+          <span className="text-xs font-medium text-ink">{t('notes.title')}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭笔记历史">
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('notes.close')}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -127,7 +133,7 @@ export function ReviewNoteHistoryPanel({
                 : 'border-transparent text-muted hover:text-ink'
             }`}
           >
-            当前主题
+            {t('notes.scopeCurrent')}
           </button>
           <button
             type="button"
@@ -138,32 +144,32 @@ export function ReviewNoteHistoryPanel({
                 : 'border-transparent text-muted hover:text-ink'
             }`}
           >
-            本次复习全部主题
+            {t('notes.scopeSession')}
           </button>
         </div>
       ) : null}
 
       <div className="border-b border-line/60 px-4 py-2 text-2xs text-faint">
-        点击条目定位到原文；复习期的标记会作为下一轮出题的重点信号（只送标签与备注，不送原文）。
+        {t('notes.hint')}
       </div>
 
       {/* 分组列表 */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <NoteGroup
-          title={`学习期标注（${chatNotes.length}）`}
-          hint="学习对话里划的标签与高亮"
+          title={t('notes.chatGroupTitle', { count: chatNotes.length })}
+          hint={t('notes.chatGroupHint')}
           notes={chatNotes}
-          emptyText="这个主题还没有学习期标注"
+          emptyText={t('notes.chatEmpty')}
           showNodeTitle={scope === 'session'}
           titleOf={titleOf}
           onReveal={onReveal}
           onEdit={setEditingId}
         />
         <NoteGroup
-          title={`复习期标记（${reviewNotes.length}）`}
-          hint="复习时在题目、讲解或资料上划的"
+          title={t('notes.reviewGroupTitle', { count: reviewNotes.length })}
+          hint={t('notes.reviewGroupHint')}
           notes={reviewNotes}
-          emptyText="还没有复习期标记；在题目、讲解或资料上划选文字即可打标签"
+          emptyText={t('notes.reviewEmpty')}
           showNodeTitle={scope === 'session'}
           titleOf={titleOf}
           onReveal={onReveal}
@@ -206,6 +212,7 @@ function NoteGroup({
   onReveal: (note: Note) => void
   onEdit: (id: Id) => void
 }) {
+  const { t } = useTranslation('review')
   return (
     <section className="mb-5 last:mb-0">
       <div className="mb-1.5 flex items-baseline gap-2">
@@ -227,7 +234,7 @@ function NoteGroup({
                 <button
                   type="button"
                   onClick={() => onReveal(note)}
-                  title="定位到原文里的这段文字"
+                  title={t('notes.revealTitle')}
                   className="min-w-0 flex-1 text-left"
                 >
                   <div className="flex flex-wrap items-center gap-1">
@@ -238,7 +245,7 @@ function NoteGroup({
                         </Badge>
                       ))
                     ) : (
-                      <span className="text-2xs text-faint">高亮</span>
+                      <span className="text-2xs text-faint">{t('notes.highlight')}</span>
                     )}
                     <span className="text-2xs text-faint">{formatRelativeTime(note.createdAt)}</span>
                     {showNodeTitle ? (
@@ -253,7 +260,7 @@ function NoteGroup({
                 </button>
                 <button
                   type="button"
-                  aria-label="编辑这条标注"
+                  aria-label={t('notes.editAria')}
                   onClick={() => onEdit(note.id)}
                   className={cn(
                     'shrink-0 rounded-full p-1 text-faint transition-colors hover:text-ink',

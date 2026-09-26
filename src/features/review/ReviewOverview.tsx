@@ -6,6 +6,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Id, Node } from '@/domain/models'
 import {
   buildReviewQueue,
@@ -54,6 +55,7 @@ export function ReviewOverview({
   onOpenFreeAsk,
   hasLegacyCenters = false,
 }: ReviewOverviewProps) {
+  const { t } = useTranslation('review')
   const now = useDecayClock()
 
   // 全部到期候选与提前复习候选
@@ -112,17 +114,21 @@ export function ReviewOverview({
         <div className="mb-6 rounded-xl border border-accent/40 bg-accent-soft/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-ink">当前有尚未完成的复习</h3>
+              <h3 className="text-sm font-semibold text-ink">{t('overview.bannerTitle')}</h3>
               <p className="mt-1 text-xs text-muted">
-                本批已完成 {activeProgress.done} / {activeProgress.total} 个主题，可随时恢复同一题继续作答。
+                {t('overview.bannerProgress', {
+                  done: activeProgress.done,
+                  total: activeProgress.total,
+                  count: activeProgress.total,
+                })}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={onEndActiveSession}>
-                结束本次
+                {t('overview.endSession')}
               </Button>
               <Button variant="primary" size="sm" onClick={onResumeSession}>
-                继续复习
+                {t('overview.resume')}
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
@@ -135,13 +141,13 @@ export function ReviewOverview({
         <div className="min-w-0">
           <h2 className="text-lg font-bold tracking-tight text-ink">
             {dueQueue.length > 0
-              ? `今天有 ${dueQueue.length} 个主题适合巩固`
-              : '当前没有到期的复习主题'}
+              ? t('overview.headingDue', { count: dueQueue.length })
+              : t('overview.headingEmpty')}
           </h2>
           <p className="mt-1 text-xs text-muted">
             {dueQueue.length > 0
-              ? '默认推荐前 3 个开始，你可以根据需要勾选调整。'
-              : '可以查看已加入计划的安排，或选择已学过的主题提前复习。'}
+              ? t('overview.subDue')
+              : t('overview.subEmpty')}
           </p>
         </div>
 
@@ -151,11 +157,11 @@ export function ReviewOverview({
             variant="secondary"
             size="sm"
             onClick={onOpenFreeAsk}
-            title="随时问问进度：今天学了什么、哪些主题快忘了（不写入节点、不影响排期）"
+            title={t('overview.freeAskTitle')}
             className="shrink-0 gap-1.5 text-xs"
           >
             <Sparkles className="h-3.5 w-3.5 text-accent" />
-            自由问答
+            {t('overview.freeAsk')}
           </Button>
         ) : null}
       </div>
@@ -219,7 +225,7 @@ export function ReviewOverview({
                       className="h-7 text-2xs text-muted hover:text-ink gap-1"
                     >
                       <BookOpen className="h-3 w-3" />
-                      查看资料
+                      {t('overview.viewSource')}
                     </Button>
                   ) : null}
                 </div>
@@ -230,7 +236,7 @@ export function ReviewOverview({
       ) : (
         <div className="rounded-xl border border-line/60 bg-surface/30 p-8 text-center text-xs text-muted">
           <CheckCircle2 className="mx-auto h-8 w-8 text-success/80 mb-2" />
-          <p>太棒了，今天计划内的所有复习已全部搞定！</p>
+          <p>{t('overview.emptyTitle')}</p>
         </div>
       )}
 
@@ -239,7 +245,7 @@ export function ReviewOverview({
         <div className="mt-8 border-t border-line/50 pt-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-semibold text-ink">
-              其他已计划主题（提前复习 · {earlyQueue.length}）
+              {t('overview.earlyTitle', { count: earlyQueue.length })}
             </span>
             <Button
               variant="ghost"
@@ -247,7 +253,7 @@ export function ReviewOverview({
               onClick={() => setShowEarly((v) => !v)}
               className="text-2xs text-accent"
             >
-              {showEarly ? '收起' : '展开选择'}
+              {showEarly ? t('overview.collapse') : t('overview.expand')}
             </Button>
           </div>
 
@@ -278,7 +284,7 @@ export function ReviewOverview({
                         {node.title}
                       </span>
                       <span className="rounded bg-elevated px-1.5 py-0.5 text-2xs text-muted border border-line/40">
-                        提前复习
+                        {t('overview.earlyBadge')}
                       </span>
                     </div>
                   </div>
@@ -297,7 +303,7 @@ export function ReviewOverview({
             onClick={onOpenLegacyHistory}
             className="text-2xs text-faint hover:text-accent underline transition-colors"
           >
-            查看旧复习中心历史记录
+            {t('overview.legacyHistory')}
           </button>
         </div>
       )}
@@ -305,15 +311,17 @@ export function ReviewOverview({
       {/* 底部动作条 */}
       <div className="mt-8 sticky bottom-4 z-10 flex items-center justify-between rounded-xl border border-line bg-surface/95 p-4 shadow-panel backdrop-blur-md">
         <div className="text-xs text-muted">
-          已选择 <span className="font-semibold text-ink tabular-nums">{selectedIds.size}</span> 个主题
+          {t('overview.selectedPrefix')}{' '}
+          <span className="font-semibold text-ink tabular-nums">{selectedIds.size}</span>{' '}
+          {t('overview.selectedCount', { count: selectedIds.size })}
           {selectedIds.size >= MAX_BATCH_SIZE && (
-            <span className="ml-2 text-2xs text-accent">（单批最多 20 个）</span>
+            <span className="ml-2 text-2xs text-accent">{t('overview.maxBatchHint')}</span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           {!hasChatModel ? (
-            <span className="text-2xs text-danger">未配置对话模型，请先去配置</span>
+            <span className="text-2xs text-danger">{t('overview.noChatModel')}</span>
           ) : null}
           <Button
             variant="primary"
@@ -323,7 +331,7 @@ export function ReviewOverview({
             className="gap-1.5"
           >
             <Play className="h-4 w-4" />
-            开始这 {selectedIds.size} 个
+            {t('overview.startButton', { count: selectedIds.size })}
           </Button>
         </div>
       </div>

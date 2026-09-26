@@ -1,5 +1,6 @@
 import { ArrowLeft, BookOpen, NotebookText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { Id, Note } from '@/domain/models'
@@ -39,6 +40,7 @@ interface ReviewWorkspaceProps {
  * - 与学习工作区完全解耦，不创建 kind: 'review' 节点。
  */
 export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
+  const { t } = useTranslation('review')
   const [searchParams, setSearchParams] = useSearchParams()
   const sessionIdFromUrl = searchParams.get('session') ?? undefined
 
@@ -145,7 +147,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
       return
     }
     if (!bodyElement(note.messageId) || !registeredSource(note.messageId)) {
-      toast.info('这条标记所在的内容当前不在屏幕上（可能属于其他主题或更早的轮次）')
+      toast.info(t('workspace.toastNoteOffScreen'))
       return
     }
     revealNote(note)
@@ -157,7 +159,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
       return
     }
     if (attempts <= 0) {
-      toast.info('标注所在的内容还没渲染出来，请稍后再点一次')
+      toast.info(t('workspace.toastNoteNotRendered'))
       return
     }
     window.setTimeout(() => revealWhenMounted(note, attempts - 1), 150)
@@ -185,7 +187,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 className="text-xs text-muted hover:text-ink gap-1.5"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                稍后继续
+                {t('workspace.later')}
               </Button>
             ) : (
               <Button
@@ -195,7 +197,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 className="text-xs text-muted hover:text-ink gap-1.5"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                返回学习
+                {t('workspace.backToLearning')}
               </Button>
             )}
 
@@ -208,12 +210,18 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                   {current.title}
                 </span>
                 <span className="rounded-full bg-elevated px-2 py-0.5 text-2xs font-medium text-muted border border-line/60">
-                  {session.cursor + 1} / {session.items.length} 个主题
+                  {t('workspace.topicsProgress', {
+                    current: session.cursor + 1,
+                    total: session.items.length,
+                    count: session.items.length,
+                  })}
                 </span>
               </div>
             ) : (
               <span className="text-xs font-medium text-ink">
-                {project?.name ?? '项目'} · 复习
+                {t('workspace.headerTitle', {
+                  name: project?.name ?? t('workspace.untitledProject'),
+                })}
               </span>
             )}
           </div>
@@ -231,7 +239,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                   }`}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
-                  学习资料
+                  {t('workspace.learningMaterials')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -242,7 +250,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                   }`}
                 >
                   <NotebookText className="h-3.5 w-3.5" />
-                  笔记历史
+                  {t('workspace.noteHistory')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -250,7 +258,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                   onClick={() => void endSession()}
                   className="text-2xs text-faint hover:text-ink"
                 >
-                  结束本次
+                  {t('workspace.endSession')}
                 </Button>
               </>
             )}

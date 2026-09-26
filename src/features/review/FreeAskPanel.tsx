@@ -1,5 +1,6 @@
 import { CornerDownLeft, Loader2, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { Id } from '@/domain/models'
 import { stripStreamingReviewRating } from '@/domain/review/protocol'
@@ -18,7 +19,7 @@ interface FreeAskPanelProps {
 }
 
 /** 空态的三句起手式：都是「快速回忆今天 / 安排下一步」的问题，而不是知识问答。 */
-const STARTERS = ['今天学了什么？', '哪些主题快忘了？', '现在最该复习什么？']
+const STARTER_KEYS = ['freeAsk.starterToday', 'freeAsk.starterFading', 'freeAsk.starterNext']
 
 /**
  * 复习工作区的「自由问答」面板。
@@ -31,6 +32,7 @@ const STARTERS = ['今天学了什么？', '哪些主题快忘了？', '现在�
  * 用户需要知道随口问一句不会改变他的学习数据。
  */
 export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: FreeAskPanelProps) {
+  const { t } = useTranslation('review')
   const messages = useFreeAskStore((state) => state.messages)
   const streaming = useFreeAskStore((state) => state.streaming)
   const error = useFreeAskStore((state) => state.error)
@@ -89,11 +91,11 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 shrink-0 text-accent" />
-              <h2 className="text-base font-semibold text-ink">自由问答</h2>
+              <h2 className="text-base font-semibold text-ink">{t('freeAsk.title')}</h2>
             </div>
             <p className="mt-1 text-2xs text-muted">
-              随时问问进度：今天学了什么、哪些主题快忘了。参考当前掌握度与复习排期作答，
-              <span className="text-faint">不写入任何节点，也不影响复习排期。</span>
+              {t('freeAsk.subtitle')}
+              <span className="text-faint">{t('freeAsk.subtitleNote')}</span>
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -105,10 +107,15 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                 className="text-2xs text-faint hover:text-ink gap-1"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                清空对话
+                {t('freeAsk.clearConversation')}
               </Button>
             )}
-            <Button variant="ghost" size="icon-sm" onClick={() => onOpenChange(false)} aria-label="关闭">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onOpenChange(false)}
+              aria-label={t('freeAsk.close')}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -119,19 +126,22 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           {messages.length === 0 && !isStreaming ? (
             <div className="py-8 text-center">
               <Sparkles className="mx-auto mb-3 h-7 w-7 text-accent/70" />
-              <p className="text-xs text-muted">想知道今天学了什么、从哪里接着复习，直接问就好。</p>
+              <p className="text-xs text-muted">{t('freeAsk.emptyHint')}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                {STARTERS.map((starter) => (
-                  <button
-                    key={starter}
-                    type="button"
-                    onClick={() => submit(starter)}
-                    disabled={!hasChatModel}
-                    className="rounded-full border border-line bg-elevated/60 px-3 py-1.5 text-2xs text-ink-soft transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-45"
-                  >
-                    {starter}
-                  </button>
-                ))}
+                {STARTER_KEYS.map((starterKey) => {
+                  const starter = t(starterKey)
+                  return (
+                    <button
+                      key={starterKey}
+                      type="button"
+                      onClick={() => submit(starter)}
+                      disabled={!hasChatModel}
+                      className="rounded-full border border-line bg-elevated/60 px-3 py-1.5 text-2xs text-ink-soft transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-45"
+                    >
+                      {starter}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           ) : null}
@@ -146,7 +156,7 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
               }`}
             >
               <div className="mb-1.5 flex items-center justify-between text-2xs text-faint">
-                <span>{message.role === 'assistant' ? '导师' : '学习者'}</span>
+                <span>{message.role === 'assistant' ? t('roles.mentor') : t('roles.learner')}</span>
                 <span>{formatRelativeTime(message.createdAt)}</span>
               </div>
               {message.role === 'assistant' ? (
@@ -157,7 +167,7 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                 </p>
               )}
               {message.incomplete ? (
-                <p className="mt-2 text-2xs text-faint">（内容不完整）</p>
+                <p className="mt-2 text-2xs text-faint">{t('freeAsk.incomplete')}</p>
               ) : null}
             </div>
           ))}
@@ -166,10 +176,12 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           {streaming ? (
             <div className="rounded-xl border border-line/60 bg-elevated/40 p-3.5">
               <div className="mb-1.5 flex items-center justify-between text-2xs text-faint">
-                <span>导师</span>
+                <span>{t('roles.mentor')}</span>
                 <span className="flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  {streaming.tools.length > 0 ? '正在查项目数据…' : '正在查阅学习记录…'}
+                  {streaming.tools.length > 0
+                    ? t('freeAsk.queryingProject')
+                    : t('freeAsk.queryingRecords')}
                 </span>
               </div>
               {streaming.tools.length > 0 ? (
@@ -180,7 +192,7 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
               {streamingText ? (
                 <MarkdownView content={streamingText} />
               ) : (
-                <p className="text-xs text-faint">正在生成…</p>
+                <p className="text-xs text-faint">{t('freeAsk.generating')}</p>
               )}
             </div>
           ) : null}
@@ -188,7 +200,7 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           {error ? (
             <div className="rounded-xl border border-danger/30 bg-danger-soft/40 p-3 text-2xs text-danger">
               {error}
-              <span className="ml-2 text-faint">改一下问法或稍后重试即可。</span>
+              <span className="ml-2 text-faint">{t('freeAsk.errorHint')}</span>
             </div>
           ) : null}
 
@@ -217,14 +229,14 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                     if (canSend) submit(draft)
                   }
                 }}
-                placeholder="问点关于进度的：今天我学了什么、哪几个主题该复习了…"
+                placeholder={t('freeAsk.placeholder')}
                 className="text-xs"
               />
               <div className="mt-2.5 flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-2xs text-faint">
                   <span className="flex items-center gap-1">
                     <CornerDownLeft className="h-3 w-3" />
-                    Enter 发送 · Shift+Enter 换行
+                    {t('freeAsk.enterHint')}
                   </span>
                   {contextNote ? <span className="text-muted">{contextNote}</span> : null}
                 </span>
@@ -237,7 +249,7 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                     className="gap-1.5 text-2xs"
                   >
                     <Square className="h-3 w-3" />
-                    停止
+                    {t('freeAsk.stop')}
                   </Button>
                 ) : (
                   <Button
@@ -248,18 +260,18 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                     className="gap-1.5 text-2xs"
                   >
                     <Send className="h-3.5 w-3.5" />
-                    发送
+                    {t('freeAsk.send')}
                   </Button>
                 )}
               </div>
             </>
           ) : (
             <p className="text-xs text-muted">
-              未配置对话模型，先到{' '}
+              {t('freeAsk.noModelBefore')}{' '}
               <Link to="/settings" className="text-accent underline underline-offset-4">
-                配置
+                {t('freeAsk.noModelLink')}
               </Link>{' '}
-              页添加。
+              {t('freeAsk.noModelAfter')}
             </p>
           )}
         </div>

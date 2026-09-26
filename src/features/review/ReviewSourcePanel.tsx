@@ -1,5 +1,6 @@
 import { BookOpen, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Id, Message, Node } from '@/domain/models'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { resolveThread } from '@/domain/thread/resolve'
@@ -40,6 +41,7 @@ export function ReviewSourcePanel({
   onClose,
   onLeaveToNode,
 }: ReviewSourcePanelProps) {
+  const { t } = useTranslation('review')
   const node = nodes.find((n) => n.id === nodeId)
   const [tab, setTab] = useState<'dialogue' | 'snapshot'>('dialogue')
 
@@ -66,14 +68,16 @@ export function ReviewSourcePanel({
   return (
     <aside
       role="region"
-      aria-label="学习资料面板"
+      aria-label={t('sourcePanel.panelAria')}
       className="flex h-full w-full flex-col border-l border-line/60 bg-surface/95 backdrop-blur-md"
     >
       {/* 头部 */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-line/60 px-4">
         <div className="flex items-center gap-2">
           <BookOpen className="h-4 w-4 text-accent" />
-          <span className="text-xs font-medium text-ink">学习资料 · 《{node.title}》</span>
+          <span className="text-xs font-medium text-ink">
+            {t('sourcePanel.title', { title: node.title })}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           {onLeaveToNode ? (
@@ -82,12 +86,12 @@ export function ReviewSourcePanel({
               size="sm"
               onClick={() => onLeaveToNode(node.id)}
               className="text-2xs text-muted hover:text-ink"
-              title="离开复习模式，直接打开该节点学习"
+              title={t('sourcePanel.openNodeTitle')}
             >
-              去原节点
+              {t('sourcePanel.openNode')}
             </Button>
           ) : null}
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭资料">
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('sourcePanel.close')}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -96,7 +100,7 @@ export function ReviewSourcePanel({
       {/* 版本不一致提示 */}
       {versionMismatch ? (
         <div className="border-b border-line/60 bg-accent-soft/30 px-4 py-2 text-2xs text-ink-soft">
-          提示：该节点在别处产生了新的对话版本，本次出题依据的是题目生成时的题材快照。
+          {t('sourcePanel.versionMismatch')}
         </div>
       ) : null}
 
@@ -112,7 +116,7 @@ export function ReviewSourcePanel({
                 : 'border-transparent text-muted hover:text-ink'
             }`}
           >
-            原对话（{visibleMessages.length}）
+            {t('sourcePanel.dialogueTab', { count: visibleMessages.length })}
           </button>
           <button
             type="button"
@@ -123,7 +127,7 @@ export function ReviewSourcePanel({
                 : 'border-transparent text-muted hover:text-ink'
             }`}
           >
-            出题依据快照
+            {t('sourcePanel.snapshotTab')}
           </button>
         </div>
       ) : null}
@@ -132,20 +136,20 @@ export function ReviewSourcePanel({
       <div className="flex-1 overflow-y-auto p-4 text-xs leading-relaxed text-ink-soft">
         {tab === 'snapshot' && snapshotText ? (
           <div className="rounded-md border border-line/60 bg-elevated/40 p-3">
-            <p className="mb-2 text-2xs text-faint">本次出题依据的快照：</p>
+            <p className="mb-2 text-2xs text-faint">{t('sourcePanel.snapshotIntro')}</p>
             <MarkdownView content={snapshotText} />
           </div>
         ) : (
           <div className="space-y-4">
             {node.summary ? (
               <div className="rounded-md border border-line/60 bg-elevated/40 p-3">
-                <p className="text-2xs font-medium text-muted">学习摘要</p>
+                <p className="text-2xs font-medium text-muted">{t('sourcePanel.summaryLabel')}</p>
                 <p className="mt-1 text-ink">{node.summary}</p>
               </div>
             ) : null}
 
             {visibleMessages.length === 0 ? (
-              <p className="py-6 text-center text-2xs text-muted">该主题暂无原对话记录</p>
+              <p className="py-6 text-center text-2xs text-muted">{t('sourcePanel.emptyDialogue')}</p>
             ) : (
               visibleMessages.map((msg) => <SourceMessageCard key={msg.id} message={msg} />)
             )}
@@ -167,6 +171,7 @@ export function ReviewSourcePanel({
  * 同一套标注」而不是两套平行的记录。
  */
 function SourceMessageCard({ message }: { message: Message }) {
+  const { t } = useTranslation('review')
   const notes = useReviewMessageNotes(message.id)
   const isAssistant = message.role === 'assistant'
 
@@ -177,7 +182,7 @@ function SourceMessageCard({ message }: { message: Message }) {
       }`}
     >
       <div className="mb-1 flex items-center justify-between text-2xs text-muted">
-        <span className="font-medium">{isAssistant ? '导师' : '学习者'}</span>
+        <span className="font-medium">{isAssistant ? t('roles.mentor') : t('roles.learner')}</span>
         <span>{formatRelativeTime(message.createdAt)}</span>
       </div>
       <ReviewAnnotatableText messageId={message.id} source={messageText(message)} />

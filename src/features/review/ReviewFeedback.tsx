@@ -1,5 +1,6 @@
 import { Check, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ReviewGrade } from '@/domain/models'
 import {
   GRADE_ACTION_LABEL,
@@ -37,6 +38,7 @@ export function ReviewFeedback({
   onSelectGrade,
   disabled = false,
 }: ReviewFeedbackProps) {
+  const { t, i18n } = useTranslation('review')
   const now = useDecayClock()
 
   // 尝试从助手反馈消息中解析 AI 判定标记
@@ -59,29 +61,32 @@ export function ReviewFeedback({
 
   const formatDue = (preview?: GradePreview) => {
     if (!preview) return ''
-    if (preview.scheduledDays === 0) return '今天晚些时候'
-    if (preview.scheduledDays === 1) return '明天'
-    const date = new Date(preview.due)
-    return `${date.getMonth() + 1}月${date.getDate()}日 (${preview.scheduledDays}天后)`
+    if (preview.scheduledDays === 0) return t('feedback.dueLaterToday')
+    if (preview.scheduledDays === 1) return t('feedback.dueTomorrow')
+    const date = new Intl.DateTimeFormat(i18n.language, {
+      month: 'numeric',
+      day: 'numeric',
+    }).format(new Date(preview.due))
+    return t('feedback.inDays', { date, count: preview.scheduledDays })
   }
 
   return (
     <div className="rounded-lg border border-line/60 bg-elevated/40 p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold text-ink">自我评价掌握情况</h4>
+        <h4 className="text-xs font-semibold text-ink">{t('feedback.title')}</h4>
         {aiSuggestion ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-soft px-2 py-0.5 text-2xs text-accent">
             <Sparkles className="h-3 w-3" />
-            AI 根据本次回答建议「{GRADE_ACTION_LABEL[aiSuggestion]}」· 可直接改选
+            {t('feedback.aiSuggestion', { grade: GRADE_ACTION_LABEL[aiSuggestion] })}
           </span>
         ) : (
-          <span className="text-2xs text-muted">请选择符合本次回忆情况的档位</span>
+          <span className="text-2xs text-muted">{t('feedback.choosePrompt')}</span>
         )}
       </div>
 
       <div
         role="radiogroup"
-        aria-label="复习评分档位选择"
+        aria-label={t('feedback.groupAria')}
         className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4"
       >
         {(['again', 'hard', 'good', 'easy'] as ReviewGrade[]).map((grade) => {
@@ -116,7 +121,7 @@ export function ReviewFeedback({
                     </span>
                   ) : isAi ? (
                     <span className="rounded bg-accent/20 px-1 py-0.2 text-2xs text-accent">
-                      AI 建议
+                      {t('feedback.aiBadge')}
                     </span>
                   ) : null}
                 </div>
@@ -127,7 +132,7 @@ export function ReviewFeedback({
 
               {preview ? (
                 <div className="mt-3 border-t border-line/40 pt-2 text-2xs text-faint">
-                  <span>下次复习：</span>
+                  <span>{t('feedback.nextReview')}</span>
                   <span className="font-medium text-ink-soft">{formatDue(preview)}</span>
                 </div>
               ) : null}

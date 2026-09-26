@@ -6,6 +6,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Node } from '@/domain/models'
 import {
   enrollmentOf,
@@ -57,6 +58,7 @@ export function LearningStatusDialog({
   onUnenrollFromReview,
   onStartSingleReview,
 }: LearningStatusDialogProps) {
+  const { t, i18n } = useTranslation('review')
   const [busy, setBusy] = useState(false)
   const now = useDecayClock()
 
@@ -95,9 +97,10 @@ export function LearningStatusDialog({
   }
 
   const formatDue = (due?: number | null) => {
-    if (!due) return '无'
-    const date = new Date(due)
-    return `${date.getMonth() + 1}月${date.getDate()}日`
+    if (!due) return t('learning.noDue')
+    return new Intl.DateTimeFormat(i18n.language, { month: 'numeric', day: 'numeric' }).format(
+      new Date(due),
+    )
   }
 
   return (
@@ -107,11 +110,11 @@ export function LearningStatusDialog({
           <div className="flex items-center gap-2">
             <Brain className="h-5 w-5 text-accent" />
             <DialogTitle className="text-base font-semibold text-ink">
-              学习状态详情 · 《{node.title}》
+              {t('learning.title', { title: node.title })}
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs text-muted">
-            查看掌握度依据、薄弱点与复习计划安排。
+            {t('learning.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,32 +122,32 @@ export function LearningStatusDialog({
           {/* 1. 摘要与评估依据 */}
           <div className="rounded-xl border border-line/60 bg-surface/50 p-3.5 space-y-2">
             <div className="flex items-center justify-between text-2xs text-muted">
-              <span className="font-medium text-ink">学习摘要</span>
+              <span className="font-medium text-ink">{t('learning.summaryLabel')}</span>
               {node.assessmentMeta?.assessedAt ? (
-                <span>评估于 {formatRelativeTime(node.assessmentMeta.assessedAt)}</span>
+                <span>
+                  {t('learning.assessedAt', {
+                    time: formatRelativeTime(node.assessmentMeta.assessedAt),
+                  })}
+                </span>
               ) : null}
             </div>
             <p className="leading-relaxed text-ink-soft">
-              {node.summary || '尚未生成学习摘要'}
+              {node.summary || t('learning.noSummary')}
             </p>
             {staleness === 'newStudy' && (
-              <p className="text-2xs text-accent">
-                提示：生成评估后有新的学习对话，掌握度与摘要可能需要更新。
-              </p>
+              <p className="text-2xs text-accent">{t('learning.staleNewStudy')}</p>
             )}
             {staleness === 'otherVersion' && (
-              <p className="text-2xs text-accent">
-                提示：当前对话切换到了其它版本，评估基于历史另一版本。
-              </p>
+              <p className="text-2xs text-accent">{t('learning.staleOtherVersion')}</p>
             )}
           </div>
 
           {/* 2. 掌握度与来源 */}
           <div className="rounded-xl border border-line/60 bg-surface/50 p-3.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-2xs font-medium text-ink">当前掌握状态</span>
+              <span className="text-2xs font-medium text-ink">{t('learning.masteryLabel')}</span>
               <span className="rounded bg-elevated px-1.5 py-0.5 text-2xs text-muted border border-line/40">
-                来源：{sourceLabel}
+                {t('learning.sourcePrefix', { source: sourceLabel })}
               </span>
             </div>
             {mastery ? (
@@ -158,21 +161,19 @@ export function LearningStatusDialog({
                   </span>
                   <p className="text-2xs text-faint">
                     {mastery.gradedAt
-                      ? `最后评分于 ${formatRelativeTime(mastery.gradedAt)}`
-                      : `评估于 ${formatRelativeTime(mastery.updatedAt)}`}
+                      ? t('learning.lastGraded', { time: formatRelativeTime(mastery.gradedAt) })
+                      : t('learning.assessedAt', { time: formatRelativeTime(mastery.updatedAt) })}
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-2xs text-faint">
-                还没有掌握度数据。生成学习评估后即可获得参考分数。
-              </p>
+              <p className="text-2xs text-faint">{t('learning.noMastery')}</p>
             )}
 
             {/* 薄弱点 */}
             {mastery?.weakPoints && mastery.weakPoints.length > 0 ? (
               <div className="mt-2 border-t border-line/40 pt-2">
-                <span className="text-2xs text-faint">上次评估发现的薄弱点：</span>
+                <span className="text-2xs text-faint">{t('learning.weakPointsLabel')}</span>
                 <ul className="mt-1 list-disc pl-4 space-y-0.5 text-2xs text-ink-soft">
                   {mastery.weakPoints.map((pt, i) => (
                     <li key={i}>{pt}</li>
@@ -185,33 +186,31 @@ export function LearningStatusDialog({
           {/* 3. 复习计划 */}
           <div className="rounded-xl border border-line/60 bg-surface/50 p-3.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-2xs font-medium text-ink">复习计划</span>
+              <span className="text-2xs font-medium text-ink">{t('learning.planLabel')}</span>
               <span
                 className={`rounded px-1.5 py-0.5 text-2xs font-medium ${
                   enrolled ? 'bg-accent-soft text-accent' : 'bg-elevated text-muted'
                 }`}
               >
-                {enrolled ? '已加入计划' : '未加入计划'}
+                {enrolled ? t('learning.enrolled') : t('learning.notEnrolled')}
               </span>
             </div>
 
             {enrolled ? (
               <div className="grid grid-cols-2 gap-2 text-2xs pt-1">
                 <div>
-                  <span className="text-faint">下次安排：</span>
+                  <span className="text-faint">{t('learning.nextDue')}</span>
                   <span className="text-ink font-medium">
                     {formatDue(node.review?.card.due)} ({reason.label})
                   </span>
                 </div>
                 <div>
-                  <span className="text-faint">记忆保持率：</span>
+                  <span className="text-faint">{t('learning.retention')}</span>
                   <span className="text-ink font-medium">{retention}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-2xs text-faint">
-                未加入复习计划的主题不会产生到期提醒。
-              </p>
+              <p className="text-2xs text-faint">{t('learning.notEnrolledHint')}</p>
             )}
           </div>
         </div>
@@ -228,12 +227,12 @@ export function LearningStatusDialog({
             {isSummarizing ? (
               <>
                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                正在评估…
+                {t('learning.assessing')}
               </>
             ) : (
               <>
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                {node.summary ? '更新学习评估' : '生成学习评估'}
+                {node.summary ? t('learning.updateAssessment') : t('learning.generateAssessment')}
               </>
             )}
           </Button>
@@ -248,7 +247,7 @@ export function LearningStatusDialog({
                 className="text-xs text-muted hover:text-danger"
               >
                 <MinusCircle className="mr-1 h-3.5 w-3.5" />
-                移出计划
+                {t('learning.removeFromPlan')}
               </Button>
             ) : (
               <Button
@@ -259,7 +258,7 @@ export function LearningStatusDialog({
                 className="text-xs text-accent"
               >
                 <PlusCircle className="mr-1 h-3.5 w-3.5" />
-                加入复习计划
+                {t('learning.addToPlan')}
               </Button>
             )}
 
@@ -273,7 +272,7 @@ export function LearningStatusDialog({
               }}
               className="text-xs"
             >
-              复习这个主题
+              {t('learning.reviewTopic')}
             </Button>
           </div>
         </div>

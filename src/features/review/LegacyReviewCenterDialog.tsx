@@ -1,4 +1,5 @@
 import { History, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Message, Node } from '@/domain/models'
 import { messageText } from '@/domain/messages'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
@@ -25,6 +26,7 @@ export function LegacyReviewCenterDialog({
   centerNodes,
   messagesByNode,
 }: LegacyReviewCenterDialogProps) {
+  const { t } = useTranslation('review')
   if (!open || centerNodes.length === 0) return null
 
   return (
@@ -33,7 +35,7 @@ export function LegacyReviewCenterDialog({
         <div className="flex items-center justify-between border-b border-line/60 pb-4">
           <div className="flex items-center gap-2">
             <History className="h-5 w-5 text-accent" />
-            <h2 className="text-base font-semibold text-ink">旧复习中心历史记录</h2>
+            <h2 className="text-base font-semibold text-ink">{t('legacy.title')}</h2>
           </div>
           <Button variant="ghost" size="icon-sm" onClick={() => onOpenChange(false)}>
             <X className="h-4 w-4" />
@@ -41,9 +43,7 @@ export function LegacyReviewCenterDialog({
         </div>
 
         <div className="flex-1 overflow-y-auto pt-4 space-y-6 text-xs text-ink-soft">
-          <p className="text-2xs text-muted">
-            这里展示以前版本中作为「复习中心」创建的根节点及其对话。此内容仅供历史回溯查阅，不影响当前复习工作区排期。
-          </p>
+          <p className="text-2xs text-muted">{t('legacy.intro')}</p>
 
           {centerNodes.map((center) => {
             const msgs = messagesByNode[center.id] ?? []
@@ -54,17 +54,17 @@ export function LegacyReviewCenterDialog({
                     <span className="font-semibold text-ink">{center.title}</span>
                     {center.status === 'archived' && (
                       <span className="rounded bg-elevated px-1.5 py-0.2 text-2xs text-faint">
-                        已归档
+                        {t('legacy.archived')}
                       </span>
                     )}
                   </div>
                   <span className="text-2xs text-faint">
-                    创建于 {formatRelativeTime(center.createdAt)}
+                    {t('legacy.createdAt', { time: formatRelativeTime(center.createdAt) })}
                   </span>
                 </div>
 
                 {msgs.length === 0 ? (
-                  <p className="text-2xs text-faint py-2">此节点暂无消息记录</p>
+                  <p className="text-2xs text-faint py-2">{t('legacy.emptyMessages')}</p>
                 ) : (
                   <div className="space-y-3">
                     {msgs.map((msg) => (
@@ -77,7 +77,7 @@ export function LegacyReviewCenterDialog({
                         }`}
                       >
                         <div className="flex items-center justify-between text-2xs text-faint mb-1">
-                          <span>{msg.role === 'assistant' ? '导师' : '学习者'}</span>
+                          <span>{msg.role === 'assistant' ? t('roles.mentor') : t('roles.learner')}</span>
                           <span>{formatRelativeTime(msg.createdAt)}</span>
                         </div>
                         <MarkdownView content={messageText(msg)} />
@@ -92,7 +92,7 @@ export function LegacyReviewCenterDialog({
 
         <div className="border-t border-line/60 pt-4 flex justify-end">
           <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
-            关闭
+            {t('legacy.close')}
           </Button>
         </div>
       </div>
