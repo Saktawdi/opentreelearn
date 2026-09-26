@@ -1,5 +1,6 @@
 import { RotateCcw } from 'lucide-react'
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { errorMessage } from '@/lib/utils'
@@ -12,6 +13,7 @@ import { errorMessage } from '@/lib/utils'
  */
 export function RouteError() {
   const error = useRouteError()
+  const { t } = useTranslation('components')
 
   useEffect(() => {
     console.error('[RouteError]', error)
@@ -19,7 +21,7 @@ export function RouteError() {
 
   const title = isRouteErrorResponse(error)
     ? `${error.status} ${error.statusText}`
-    : '页面渲染出错'
+    : t('routeError.title')
   const detail = isRouteErrorResponse(error) ? error.data?.toString() ?? '' : errorMessage(error)
   const stack = error instanceof Error ? error.stack : undefined
 
@@ -40,13 +42,13 @@ export function RouteError() {
         <div className="mt-5 flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
             <RotateCcw className="h-3.5 w-3.5" />
-            重新加载
+            {t('routeError.reload')}
           </Button>
           <a
             href="/"
             className="rounded-md px-2.5 py-1 text-sm text-muted transition-colors hover:text-ink"
           >
-            返回项目列表
+            {t('routeError.backToProjects')}
           </a>
         </div>
       </div>

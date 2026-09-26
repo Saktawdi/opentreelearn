@@ -1,1 +1,13 @@
-{}
+{
+  "bootstrap": {
+    "title": "本地数据加载失败",
+    "unknownError": "未知错误",
+    "description": "项目与配置都存在浏览器 IndexedDB 里。常见原因是数据库被其他标签页占用、当前处于隐私模式，或本站数据已损坏。可在 DevTools → Application → Storage 里清除本站数据后重试；清除会一并删除本地项目。",
+    "retry": "重试"
+  },
+  "routeError": {
+    "title": "页面渲染出错",
+    "reload": "重新加载",
+    "backToProjects": "返回项目列表"
+  }
+}

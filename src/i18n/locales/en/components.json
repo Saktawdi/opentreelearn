@@ -1,1 +1,13 @@
-{}
+{
+  "bootstrap": {
+    "title": "Local data failed to load",
+    "unknownError": "Unknown error",
+    "description": "Projects and settings are stored in your browser's IndexedDB. The database may be locked by another tab, the browser may be in private mode, or the site data may be corrupted. Clear this site's data in DevTools → Application → Storage and retry; clearing also deletes local projects.",
+    "retry": "Retry"
+  },
+  "routeError": {
+    "title": "This page failed to render",
+    "reload": "Reload",
+    "backToProjects": "Back to projects"
+  }
+}

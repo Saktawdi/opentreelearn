@@ -1,4 +1,5 @@
 import { AlertTriangle, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
 interface BootstrapErrorProps {
@@ -14,24 +15,23 @@ interface BootstrapErrorProps {
  * 不给任何线索。这里把原因、影响范围和可执行的动作一次性摆出来。
  */
 export function BootstrapError({ message, onRetry }: BootstrapErrorProps) {
+  const { t } = useTranslation('components')
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="w-full max-w-md rounded-lg border border-danger/40 bg-danger-soft/60 p-5">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-medium text-ink">本地数据加载失败</h2>
+            <h2 className="text-base font-medium text-ink">{t('bootstrap.title')}</h2>
             <p className="mt-1 break-words font-mono text-xs leading-relaxed text-danger">
-              {message ?? '未知错误'}
+              {message ?? t('bootstrap.unknownError')}
             </p>
             <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-              项目与配置都存在浏览器 IndexedDB 里。常见原因是数据库被其他标签页占用、当前处于隐私模式，
-              或本站数据已损坏。可在 DevTools → Application → Storage 里清除本站数据后重试；清除会
-              一并删除本地项目。
+              {t('bootstrap.description')}
             </p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={onRetry}>
               <RotateCcw className="h-3.5 w-3.5" />
-              重试
+              {t('bootstrap.retry')}
             </Button>
           </div>
         </div>
