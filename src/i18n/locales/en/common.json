@@ -1,0 +1,11 @@
+{
+  "nav": {
+    "projects": "Projects",
+    "me": "Me",
+    "settings": "Settings",
+    "show": "Show navigation"
+  },
+  "splash": {
+    "loading": "Loading…"
+  }
+}

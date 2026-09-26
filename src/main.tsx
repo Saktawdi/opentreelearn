@@ -4,6 +4,7 @@ import { MotionConfig } from 'motion/react'
 import { RouterProvider } from 'react-router-dom'
 import '@xyflow/react/dist/style.css'
 import 'katex/dist/katex.min.css'
+import '@/i18n'
 import '@/styles/index.css'
 import { router } from '@/router'
 

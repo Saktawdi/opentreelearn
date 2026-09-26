@@ -1,0 +1,11 @@
+{
+  "nav": {
+    "projects": "项目",
+    "me": "我的",
+    "settings": "配置",
+    "show": "显示导航"
+  },
+  "splash": {
+    "loading": "正在载入…"
+  }
+}

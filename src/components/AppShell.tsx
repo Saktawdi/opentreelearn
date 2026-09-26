@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { FolderKanban, Settings, UserRound } from 'lucide-react'
 import { motion } from 'motion/react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Toaster } from 'sonner'
 import { BootstrapError } from '@/components/BootstrapError'
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip'
@@ -12,11 +13,12 @@ import { cn } from '@/lib/utils'
 import { useBootstrap } from '@/stores/bootstrap'
 import { useSyncRuntime } from '@/stores/sync-runtime'
 
+// labelKey 是 i18n 键：文案在渲染处用 t() 解析（当前语言），模块级常量只存键
 const NAV_ITEMS = [
-  { to: '/', label: '项目', icon: FolderKanban, end: true },
-  { to: '/me', label: '我的', icon: UserRound, end: false },
-  { to: '/settings', label: '配置', icon: Settings, end: false },
-]
+  { to: '/', labelKey: 'nav.projects', icon: FolderKanban, end: true },
+  { to: '/me', labelKey: 'nav.me', icon: UserRound, end: false },
+  { to: '/settings', labelKey: 'nav.settings', icon: Settings, end: false },
+] as const
 
 /** 品牌标记（树）：树干 + 两条枝 + 两个节点。 */
 function TreeMark() {
@@ -38,15 +40,17 @@ function TreeMark() {
 }
 
 function SplashScreen() {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-1 items-center justify-center gap-2.5 text-muted">
       <TreeMark />
-      <span className="text-sm">正在载入…</span>
+      <span className="text-sm">{t('splash.loading')}</span>
     </div>
   )
 }
 
 export function AppShell() {
+  const { t } = useTranslation()
   const bootstrap = useBootstrap()
   const { phase } = bootstrap
   const location = useLocation()
@@ -141,7 +145,7 @@ export function AppShell() {
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 return (
-                  <Tooltip key={item.to} label={item.label}>
+                  <Tooltip key={item.to} label={t(item.labelKey)}>
                     {/* className 必须是字符串常量：Tooltip 用 radix Slot 克隆子元素，
                         而 Slot 合并 className 时走的是 `[a, b].filter(Boolean).join(' ')`，
                         函数式 className 会被拼成它的源码文本 —— `relative` 随之失效，
@@ -151,7 +155,7 @@ export function AppShell() {
                     <NavLink
                       to={item.to}
                       end={item.end}
-                      aria-label={item.label}
+                      aria-label={t(item.labelKey)}
                       className="group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150"
                     >
                       {({ isActive }) => (
@@ -194,7 +198,7 @@ export function AppShell() {
           >
             <button
               type="button"
-              aria-label="显示导航"
+              aria-label={t('nav.show')}
               aria-expanded={revealed}
               aria-controls="global-nav"
               onClick={() => setPinned((v) => !v)}
@@ -238,12 +242,12 @@ export function AppShell() {
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 return (
-                  <Tooltip key={item.to} label={item.label}>
+                  <Tooltip key={item.to} label={t(item.labelKey)}>
                     {/* 与上方 Header 同因同解：className 保持字符串常量，激活配色放到图标层。 */}
                     <NavLink
                       to={item.to}
                       end={item.end}
-                      aria-label={item.label}
+                      aria-label={t(item.labelKey)}
                       className="group relative flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150"
                     >
                       {({ isActive }) => (
