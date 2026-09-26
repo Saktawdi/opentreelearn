@@ -26,4 +26,14 @@ i18n
     },
   })
 
+// <html lang> 跟随当前语言（可访问性/拼写检查依赖它）；
+// node 测试环境没有 document，跳过
+if (typeof document !== 'undefined') {
+  const syncDocLang = (lng: string) => {
+    document.documentElement.lang = lng
+  }
+  i18n.on('languageChanged', syncDocLang)
+  syncDocLang(i18n.language)
+}
+
 export default i18n
