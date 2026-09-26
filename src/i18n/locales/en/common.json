@@ -50,5 +50,23 @@
     "newNodeTitle": "New node",
     "imagePlaceholder": "[image]",
     "imageQuestionTitle": "[image question]"
+  },
+  "error": {
+    "unknown": "Something went wrong",
+    "aborted": "Generation stopped",
+    "network": "Network connection failed — check your network or proxy and retry",
+    "auth": "Model service authentication failed — check your API key in Settings",
+    "rateLimit": "Too many requests or quota exhausted — try again later",
+    "timeout": "Request timed out — try again later",
+    "unavailable": "The model service is temporarily unavailable — try again later"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo_one": "{{count}} minute ago",
+    "minutesAgo_other": "{{count}} minutes ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago"
   }
 }

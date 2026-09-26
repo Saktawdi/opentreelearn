@@ -50,5 +50,20 @@
     "newNodeTitle": "新节点",
     "imagePlaceholder": "［图片］",
     "imageQuestionTitle": "［图片提问］"
+  },
+  "error": {
+    "unknown": "发生未知错误",
+    "aborted": "已停止生成",
+    "network": "网络连接失败，请检查网络或代理后重试",
+    "auth": "模型服务鉴权失败，请到「配置」检查 API Key",
+    "rateLimit": "请求太频繁或额度不足，稍后再试",
+    "timeout": "请求超时，稍后再试",
+    "unavailable": "模型服务暂时不可用，稍后再试"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前"
   }
 }
