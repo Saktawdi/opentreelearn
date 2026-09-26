@@ -48,6 +48,11 @@
   /* 导航胶囊靠近时的引导脉冲：一圈琥珀色光环扩散一次即散 */
   --animate-nav-glint: nav-glint 0.7s ease-out 1;
 
+  /* 导航唤起点的呼吸提示：三枚小点轮番微亮，示意「这里有交互」，极度克制。
+     reduced-motion 降级由使用处的 motion-reduce:animate-none 变体承担
+     （@theme 块里只允许自定义属性与 @keyframes，不能放 @media）。 */
+  --animate-nav-hint: nav-hint 2.4s ease-in-out infinite;
+
   @keyframes nav-glint {
     0% {
       box-shadow:
@@ -58,6 +63,16 @@
       box-shadow:
         var(--shadow-panel),
         0 0 0 12px rgb(224 167 104 / 0);
+    }
+  }
+
+  @keyframes nav-hint {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 0.9;
     }
   }
 }

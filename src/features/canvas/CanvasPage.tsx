@@ -35,6 +35,7 @@ import { isBlankCanvasOpen } from '@/lib/blank-canvas'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
+import { CanvasSkeleton } from './CanvasSkeleton'
 import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
@@ -390,6 +391,15 @@ function CanvasWorkspace() {
     await startRootNode(q, pos)
   }
 
+  /**
+   * 项目数据是否已就绪：路由上的这个项目已完整载入工作区。
+   * 单看 loading 不够 —— 挂载后 openProject 生效前的头几帧里 loading 还是
+   * false，store 里是首页残留/初始状态，空态与提问面板会先闪一两秒
+   * （见 /p/{uuid} 冷启动的 UI 缺陷）；所以就绪 = 不在载入中，且工作区
+   * 载入的正是路由上的这个项目。
+   */
+  const isProjectReady = !loading && Boolean(projectId) && workspaceProjectId === projectId
+
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
@@ -399,6 +409,11 @@ function CanvasWorkspace() {
         </Link>
       </div>
     )
+  }
+
+  // 数据就绪前用骨架屏占场：空态文案、提问面板与「0 个节点」都不该在载入期间露面
+  if (!isProjectReady) {
+    return <CanvasSkeleton />
   }
 
   // 复习工作区模式

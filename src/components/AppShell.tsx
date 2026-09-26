@@ -1,10 +1,13 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FolderKanban, Settings, UserRound } from 'lucide-react'
+import { motion } from 'motion/react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { BootstrapError } from '@/components/BootstrapError'
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip'
 import { FirstLoginDialog } from '@/features/me/FirstLoginDialog'
+import { ProjectsPageSkeleton } from '@/features/projects/ProjectsPageSkeleton'
+import { EASE_OUT_EXPO } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { useBootstrap } from '@/stores/bootstrap'
 import { useSyncRuntime } from '@/stores/sync-runtime'
@@ -59,6 +62,24 @@ export function AppShell() {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const closeTimerRef = useRef<number | null>(null)
+  // 胶囊当前是否展开（钉住 / 悬停 / 键盘聚焦 任一成立）
+  const revealed = pinned || hovered || focused
+
+  // 进出工作区的「航班交接」：页头右上角与顶部中央胶囊里的三枚导航图标共享
+  // layoutId，路由切换的同一帧里旧图标卸载、新图标从旧位置起飞（motion 共享
+  // 布局动画），而不是右边凭空消失、中间凭空出现。进入方向上胶囊先短暂现形
+  // 「接机」，图标落位后再淡出成待唤醒的呼吸圆点；离开方向上图标直接从中央
+  // 飞回右上角常驻位，页头同时淡入。
+  const [navHandoff, setNavHandoff] = useState(false)
+  const prevCanvasRouteRef = useRef(isCanvasRoute)
+  useLayoutEffect(() => {
+    // 首次挂载不交接：硬刷新直达工作区没有「上一个位置」，胶囊保持待唤醒
+    if (prevCanvasRouteRef.current === isCanvasRoute) return
+    prevCanvasRouteRef.current = isCanvasRoute
+    setNavHandoff(true)
+    const timer = window.setTimeout(() => setNavHandoff(false), 600)
+    return () => window.clearTimeout(timer)
+  }, [isCanvasRoute])
 
   const cancelClose = useCallback(() => {
     if (closeTimerRef.current) {
@@ -102,7 +123,13 @@ export function AppShell() {
       <div className="relative flex h-screen flex-col overflow-hidden bg-canvas">
         {/* 非工作区页面（/ 、/me 与 /settings）保留顶部通透全宽 Header */}
         {!isCanvasRoute ? (
-          <header className="z-30 flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-6">
+          /* 从工作区返回时页头淡入接住飞回的图标；进场淡入不挡图标飞行。 */
+          <motion.header
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
+            className="z-30 flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-6"
+          >
             <NavLink to="/" className="flex items-center gap-2 text-ink transition-opacity hover:opacity-85">
               <span className="text-muted">
                 <TreeMark />
@@ -132,12 +159,18 @@ export function AppShell() {
                           {isActive ? (
                             <span className="absolute inset-0 rounded-md bg-elevated" />
                           ) : null}
-                          <Icon
-                            className={cn(
-                              'relative z-10 h-4 w-4 transition-colors duration-150',
-                              isActive ? 'text-accent' : 'text-muted group-hover:text-ink',
-                            )}
-                          />
+                          <motion.span
+                            layoutId={`global-nav-icon-${item.to}`}
+                            transition={{ duration: 0.45, ease: EASE_OUT_EXPO }}
+                            className="relative z-10 flex"
+                          >
+                            <Icon
+                              className={cn(
+                                'h-4 w-4 transition-colors duration-150',
+                                isActive ? 'text-accent' : 'text-muted group-hover:text-ink',
+                              )}
+                            />
+                          </motion.span>
                         </>
                       )}
                     </NavLink>
@@ -145,7 +178,7 @@ export function AppShell() {
                 )
               })}
             </nav>
-          </header>
+          </motion.header>
         ) : (
           /* 方案 B：工作区页面中绝对禁止全宽条带遮挡！
              整层 pointer-events-none，无任何全宽透明层拦截事件，两端完全透传给下层按钮。
@@ -162,11 +195,30 @@ export function AppShell() {
             <button
               type="button"
               aria-label="显示导航"
-              aria-expanded={pinned || hovered || focused}
+              aria-expanded={revealed}
               aria-controls="global-nav"
               onClick={() => setPinned((v) => !v)}
-              className="pointer-events-auto h-7 w-7 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-            />
+              onMouseEnter={() => {
+                cancelClose()
+                setHovered(true)
+              }}
+              onMouseLeave={scheduleClose}
+              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+            >
+              {/* 常驻的克制动效提示：三枚小圆点缓缓呼吸，示意「这里可以唤出点什么」。
+                  胶囊展开后淡出让位；reduced-motion 下静置不呼吸。 */}
+              <span
+                aria-hidden
+                className={cn(
+                  'flex items-center gap-[3px] transition-opacity duration-200',
+                  revealed || navHandoff ? 'opacity-0' : 'opacity-100',
+                )}
+              >
+                <span className="h-1 w-1 animate-nav-hint rounded-full bg-faint [animation-delay:0ms] motion-reduce:animate-none" />
+                <span className="h-1 w-1 animate-nav-hint rounded-full bg-faint [animation-delay:400ms] motion-reduce:animate-none" />
+                <span className="h-1 w-1 animate-nav-hint rounded-full bg-faint [animation-delay:800ms] motion-reduce:animate-none" />
+              </span>
+            </button>
             <nav
               id="global-nav"
               onMouseEnter={() => {
@@ -176,9 +228,11 @@ export function AppShell() {
               onMouseLeave={scheduleClose}
               className={cn(
                 'absolute top-10 flex items-center gap-1 rounded-full border border-line/60 bg-surface/90 p-1 shadow-panel backdrop-blur-md transition-all duration-300 ease-out-expo',
-                pinned || hovered || focused
+                revealed
                   ? 'pointer-events-auto translate-y-0 scale-100 opacity-100 animate-nav-glint'
-                  : 'pointer-events-none -translate-y-2 scale-95 opacity-0',
+                  : navHandoff
+                    ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+                    : 'pointer-events-none -translate-y-2 scale-95 opacity-0',
               )}
             >
               {NAV_ITEMS.map((item) => {
@@ -197,12 +251,18 @@ export function AppShell() {
                           {isActive ? (
                             <span className="absolute inset-0 rounded-full bg-elevated" />
                           ) : null}
-                          <Icon
-                            className={cn(
-                              'relative z-10 h-3.5 w-3.5 transition-colors duration-150',
-                              isActive ? 'text-accent' : 'text-muted group-hover:text-ink',
-                            )}
-                          />
+                          <motion.span
+                            layoutId={`global-nav-icon-${item.to}`}
+                            transition={{ duration: 0.45, ease: EASE_OUT_EXPO }}
+                            className="relative z-10 flex"
+                          >
+                            <Icon
+                              className={cn(
+                                'h-3.5 w-3.5 transition-colors duration-150',
+                                isActive ? 'text-accent' : 'text-muted group-hover:text-ink',
+                              )}
+                            />
+                          </motion.span>
                         </>
                       )}
                     </NavLink>
@@ -220,6 +280,10 @@ export function AppShell() {
             </Suspense>
           ) : phase === 'error' ? (
             <BootstrapError message={bootstrap.message} onRetry={bootstrap.retry} />
+          ) : // 启动期首页用页面形状的骨架屏占位：那行孤零零的「正在载入…」
+          // 换成项目列表的骨架，就绪瞬间也没有布局跳动；其余路由保持原样。
+          location.pathname === '/' ? (
+            <ProjectsPageSkeleton />
           ) : (
             <SplashScreen />
           )}
