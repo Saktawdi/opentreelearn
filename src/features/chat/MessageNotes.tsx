@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import type { Id, Note, NoteLabel } from '@/domain/models'
-import { collectUsedLabels, formatNoteLabels, noteLabelName } from '@/domain/notes'
+import { collectUsedLabels, formatNoteLabels } from '@/domain/notes'
 import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -99,7 +99,7 @@ export const MessageNotes = memo(function MessageNotes({
               </span>
               {note.labels.map((label) => (
                 <Badge key={label} tone="accent" className="shrink-0">
-                  {noteLabelName(label)}
+                  {t(`common:noteLabel.${label}`)}
                 </Badge>
               ))}
               <span className="max-w-[240px] truncate">{quotePreview(note.quote)}</span>

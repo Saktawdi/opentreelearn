@@ -128,7 +128,7 @@ export function NoteDialog({
                     key={candidate.id}
                     type="button"
                     aria-pressed={active}
-                    title={candidate.hint}
+                    title={t(`common:noteHint.${candidate.id}`)}
                     disabled={!active && atCap}
                     onClick={() => toggle(candidate.id)}
                     className={cn(
@@ -138,7 +138,7 @@ export function NoteDialog({
                         : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
                     )}
                   >
-                    {candidate.name}
+                    {t(`common:noteLabel.${candidate.id}`)}
                   </button>
                 )
               })}
@@ -149,7 +149,7 @@ export function NoteDialog({
             <div className="mt-2 flex flex-wrap gap-1.5">
               {picked.map((label) => (
                 <Badge key={label} tone="accent" className="gap-1">
-                  {candidates.find((item) => item.id === label)?.name ?? label}
+                  {t(`common:noteLabel.${label}`)}
                   <button
                     type="button"
                     aria-label={t('note.removeLabel', { label })}

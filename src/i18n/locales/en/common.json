@@ -30,5 +30,17 @@
     "diverge": "Create a sibling node here, inheriting this conversation's context",
     "child": "Create a blank node below, injecting only your personal background",
     "branch": "Create a child node below, inheriting this conversation's context"
+  },
+  "noteLabel": {
+    "mistake": "Mistake",
+    "confusing": "Confusing",
+    "key": "Key point",
+    "example": "Example"
+  },
+  "noteHint": {
+    "mistake": "The learner confirms they got this wrong",
+    "confusing": "The learner explicitly says they didn't understand",
+    "key": "Key conclusion or core definition, worth revisiting",
+    "example": "Typical example or a transferable solution"
   }
 }

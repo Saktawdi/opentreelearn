@@ -21,10 +21,16 @@ export const NOTE_LABEL_MAX = 16
 
 export interface NoteLabelDef {
   id: NoteLabel
-  /** 展示名（界面与 AI 上下文里都用它） */
+  /** 展示名（界面与 AI 上下文里都用它）。内置标签恒为中文 —— AI 口径与导出数据不变。 */
   name: string
   /** 一句释义 —— 没有它，模型只能猜这个标签是什么意思 */
   hint: string
+  /**
+   * UI 本地化键（common 命名空间）。界面显示优先用当前语言解析这个键，
+   * 缺失时退回 name。name/hint 保持不变：AI 上下文与 .tree 导出读的是它们。
+   */
+  labelKey?: string
+  hintKey?: string
 }
 
 /**
@@ -35,10 +41,34 @@ export interface NoteLabelDef {
  * 是**选择性暴露**的开关：带标签的标注才进 AI 上下文，纯高亮是用户自己的书签。
  */
 export const NOTE_LABELS: readonly NoteLabelDef[] = [
-  { id: 'mistake', name: '错题', hint: '学习者确认自己做错或答错的内容' },
-  { id: 'confusing', name: '没懂', hint: '学习者明确表示没有理解的地方' },
-  { id: 'key', name: '关键', hint: '关键结论或核心定义，值得反复回看' },
-  { id: 'example', name: '例题', hint: '典型例题或可迁移的解法' },
+  {
+    id: 'mistake',
+    name: '错题',
+    hint: '学习者确认自己做错或答错的内容',
+    labelKey: 'noteLabel.mistake',
+    hintKey: 'noteHint.mistake',
+  },
+  {
+    id: 'confusing',
+    name: '没懂',
+    hint: '学习者明确表示没有理解的地方',
+    labelKey: 'noteLabel.confusing',
+    hintKey: 'noteHint.confusing',
+  },
+  {
+    id: 'key',
+    name: '关键',
+    hint: '关键结论或核心定义，值得反复回看',
+    labelKey: 'noteLabel.key',
+    hintKey: 'noteHint.key',
+  },
+  {
+    id: 'example',
+    name: '例题',
+    hint: '典型例题或可迁移的解法',
+    labelKey: 'noteLabel.example',
+    hintKey: 'noteHint.example',
+  },
 ]
 
 export function isBuiltinNoteLabel(value: unknown): boolean {
