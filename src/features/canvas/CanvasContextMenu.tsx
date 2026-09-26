@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { NODE_ACTION_HINT, type NodeActionKind } from '@/domain/node-ops/actions'
 import { EXIT_FAST } from '@/lib/motion'
 
@@ -83,6 +84,7 @@ export function CanvasContextMenu({
   onFitView,
   onResetView,
 }: CanvasContextMenuProps) {
+  const { t } = useTranslation('canvas')
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -135,7 +137,7 @@ export function CanvasContextMenu({
         <>
           <MenuItem
             icon={<Plus className="h-3.5 w-3.5" />}
-            label="新建空白子节点"
+            label={t('menu.newChild')}
             hint={NODE_ACTION_HINT.child}
             onClick={() => {
               onNodeAction('child', menu.nodeId)
@@ -144,7 +146,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<GitBranch className="h-3.5 w-3.5" />}
-            label="从最新消息分支"
+            label={t('menu.branch')}
             hint={NODE_ACTION_HINT.branch}
             onClick={() => {
               onNodeAction('branch', menu.nodeId)
@@ -153,7 +155,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<Waypoints className="h-3.5 w-3.5" />}
-            label="从最新消息发散"
+            label={t('menu.diverge')}
             hint={NODE_ACTION_HINT.diverge}
             onClick={() => {
               onNodeAction('diverge', menu.nodeId)
@@ -163,7 +165,7 @@ export function CanvasContextMenu({
           <MenuSeparator />
           <MenuItem
             icon={<Archive className="h-3.5 w-3.5" />}
-            label="归档（含子树）"
+            label={t('menu.archiveSubtree')}
             onClick={() => {
               onArchiveNode(menu.nodeId)
               onClose()
@@ -171,7 +173,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<Trash2 className="h-3.5 w-3.5" />}
-            label="删除（含子树）"
+            label={t('menu.deleteSubtree')}
             danger
             onClick={() => {
               onDeleteNode(menu.nodeId)
@@ -183,7 +185,7 @@ export function CanvasContextMenu({
         <>
           <MenuItem
             icon={<Plus className="h-3.5 w-3.5" />}
-            label="在此新建根节点"
+            label={t('menu.newRootHere')}
             onClick={() => {
               onCreateRootAt(menu.flowPosition)
               onClose()
@@ -192,7 +194,7 @@ export function CanvasContextMenu({
           <MenuSeparator />
           <MenuItem
             icon={<LayoutGrid className="h-3.5 w-3.5" />}
-            label="重新布局"
+            label={t('actions.relayout')}
             onClick={() => {
               onRelayout()
               onClose()
@@ -200,7 +202,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<Maximize2 className="h-3.5 w-3.5" />}
-            label="居中"
+            label={t('actions.center')}
             onClick={() => {
               onFitView()
               onClose()
@@ -208,7 +210,7 @@ export function CanvasContextMenu({
           />
           <MenuItem
             icon={<RotateCcw className="h-3.5 w-3.5" />}
-            label="重置视图"
+            label={t('actions.resetView')}
             onClick={() => {
               onResetView()
               onClose()

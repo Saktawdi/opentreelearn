@@ -1,1 +1,92 @@
-{}
+{
+  "actions": {
+    "openCanvas": "展开画布",
+    "expandMap": "展开地图",
+    "recenter": "重新居中",
+    "relayout": "重新布局",
+    "center": "居中",
+    "resetView": "重置视图",
+    "cancel": "取消"
+  },
+  "counts": {
+    "nodes_other": "{{count}} 个节点"
+  },
+  "error": {
+    "backToProjects": "返回项目列表"
+  },
+  "emptyState": {
+    "noSelection": "未选中节点",
+    "emptyHint": "还没有节点：在右边地图里问出第一个问题，或右键空白处新建根节点。",
+    "hint": "在右侧地图里点一个节点，或右键空白处新建根节点。"
+  },
+  "map": {
+    "reviewTooltip": "进入复习工作区",
+    "review": "复习",
+    "showHeatMap": "开启记忆热力图",
+    "hideHeatMap": "关闭记忆热力图",
+    "toggleHeatMap": "切换记忆热力图"
+  },
+  "createRoot": {
+    "title": "新建根节点",
+    "placeholder": "例如：不定积分的分部积分法怎么推导？",
+    "create": "创建"
+  },
+  "deleteNode": {
+    "title": "删除节点",
+    "description": "会连同它的全部子节点与对话一起删除，无法恢复。",
+    "confirm": "删除"
+  },
+  "starter": {
+    "fallbackName": "新项目",
+    "intro": "第一个问题会成为这棵树的根节点。",
+    "placeholder": "例如：什么是特征值？它为什么重要？",
+    "keyHint": "Enter 发送 · Shift+Enter 换行",
+    "start": "开始",
+    "createFailed": "创建根节点失败：{{message}}"
+  },
+  "canvasBar": {
+    "label": "画布",
+    "emptyCount": "还没有节点",
+    "emptyHint": "输入第一个问题开始",
+    "doubleClickHint": "双击节点进入对话",
+    "reviewWorkspace": "复习工作区",
+    "aiWriteOn": "AI 可改树",
+    "aiWriteOff": "AI 只读",
+    "aiWriteOnHint": "AI 可以在你要求时建节点、改标题、打标签（每次改动都能撤销）",
+    "aiWriteOffHint": "AI 只能读这棵树。打开后它才能在你要求时改动",
+    "backToChat": "返回对话"
+  },
+  "streaming": {
+    "generating": "「{{title}}」正在生成",
+    "stop": "停止生成"
+  },
+  "menu": {
+    "newChild": "新建空白子节点",
+    "branch": "从最新消息分支",
+    "diverge": "从最新消息发散",
+    "archiveSubtree": "归档（含子树）",
+    "deleteSubtree": "删除（含子树）",
+    "newRootHere": "在此新建根节点"
+  },
+  "node": {
+    "heatBadgeTooltip": "保持率约 {{percent}}%，该复习了",
+    "fading": "快忘了",
+    "dueReview": "该复习",
+    "masteryLabel": "掌握",
+    "assessedLabel": "评估",
+    "masteryNoneTooltip": "子树里还没有节点生成过掌握度评估（0/{{total}}）",
+    "masteryTooltip": "掌握度 {{score}} · 子树 {{learned}}/{{total}} 个节点已评估 · 档位 {{band}}（{{grade}}）",
+    "masteryStaleTooltip": "摘要生成后又继续学习过，这个分数可能已经过期",
+    "reviewCenterBadge": "复习中心",
+    "noConversation": "还没有对话",
+    "forked": "继承",
+    "forkedTooltip": "上下文继承自《{{title}}》",
+    "summarizing": "正在生成摘要",
+    "untitled": "未命名节点"
+  },
+  "archive": {
+    "archivedNodes_other": "已归档 {{count}} 个节点",
+    "description": "子树已一并归档，画布与复习队列不再显示。",
+    "undo": "撤销"
+  }
+}

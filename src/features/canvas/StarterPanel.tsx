@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { motion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { EASE_OUT_EXPO, EXIT_FAST } from '@/lib/motion'
@@ -17,6 +18,7 @@ export function StarterPanel({
   projectName: string
   onSubmit: (question: string) => Promise<unknown>
 }) {
+  const { t } = useTranslation('canvas')
   const [question, setQuestion] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -27,7 +29,7 @@ export function StarterPanel({
     try {
       await onSubmit(trimmed)
     } catch (error) {
-      toast.error(`创建根节点失败：${errorMessage(error)}`)
+      toast.error(t('starter.createFailed', { message: errorMessage(error) }))
     } finally {
       setBusy(false)
     }
@@ -49,7 +51,7 @@ export function StarterPanel({
       >
         <h2 className="text-base font-medium text-ink">{projectName}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-muted">
-          第一个问题会成为这棵树的根节点。
+          {t('starter.intro')}
         </p>
 
         <textarea
@@ -64,14 +66,14 @@ export function StarterPanel({
               void submit()
             }
           }}
-          placeholder="例如：什么是特征值？它为什么重要？"
+          placeholder={t('starter.placeholder')}
           className="mt-4 w-full resize-none rounded-md border border-line bg-canvas/60 px-3 py-2.5 text-sm leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
         />
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-faint">Enter 发送 · Shift+Enter 换行</span>
+          <span className="text-xs text-faint">{t('starter.keyHint')}</span>
           <Button variant="primary" onClick={() => void submit()} disabled={!question.trim() || busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            开始
+            {t('starter.start')}
           </Button>
         </div>
       </motion.div>

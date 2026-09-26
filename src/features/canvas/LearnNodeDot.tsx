@@ -1,20 +1,22 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Tooltip } from '@/components/ui/tooltip'
 import { cardHeat } from '@/domain/review/schedule'
 import { cn } from '@/lib/utils'
 import type { LearnFlowNode } from './graph'
 
 export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<LearnFlowNode>) {
+  const { t } = useTranslation('canvas')
   const isSelected = data.selected
   const isReviewCenter = data.reviewCenter
   // 微缩地图也吃热力图：只有在开启热力图视图时变色，其余时刻保持整洁的选中态区分
   const heat = data.reviewCard && data.showHeatMap ? cardHeat(data.reviewCard, data.now) : 'none'
   const tooltipText = isReviewCenter
-    ? `${data.title || '复习中心'} · 复习中心`
+    ? `${data.title || t('node.reviewCenterBadge')} · ${t('node.reviewCenterBadge')}`
     : heat === 'none'
-      ? data.title || '未命名节点'
-      : `${data.title || '未命名节点'} · ${heat === 'hot' ? '快忘了' : '该复习'}`
+      ? data.title || t('node.untitled')
+      : `${data.title || t('node.untitled')} · ${heat === 'hot' ? t('node.fading') : t('node.dueReview')}`
 
   return (
     <Tooltip label={tooltipText} side="left">

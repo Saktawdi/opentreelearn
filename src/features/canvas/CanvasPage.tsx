@@ -18,6 +18,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -82,6 +83,7 @@ export function CanvasPage() {
 }
 
 function CanvasWorkspace() {
+  const { t } = useTranslation('canvas')
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -405,7 +407,7 @@ function CanvasWorkspace() {
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
         <p className="text-sm text-ink">{error}</p>
         <Link to="/" className="text-sm text-accent underline underline-offset-4">
-          返回项目列表
+          {t('error.backToProjects')}
         </Link>
       </div>
     )
@@ -447,22 +449,20 @@ function CanvasWorkspace() {
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm text-ink-soft">未选中节点</p>
+            <p className="text-sm text-ink-soft">{t('emptyState.noSelection')}</p>
             <p className="max-w-xs text-xs leading-relaxed text-muted">
-              {isEmpty
-                ? '还没有节点：在右边地图里问出第一个问题，或右键空白处新建根节点。'
-                : '在右侧地图里点一个节点，或右键空白处新建根节点。'}
+              {isEmpty ? t('emptyState.emptyHint') : t('emptyState.hint')}
             </p>
             <div className="flex items-center gap-2">
               {isEmpty ? (
                 <Button variant="secondary" size="sm" onClick={openDetailCanvas}>
                   <Network className="h-3.5 w-3.5" />
-                  展开画布
+                  {t('actions.openCanvas')}
                 </Button>
               ) : null}
               {isMapCollapsed ? (
                 <Button variant="secondary" size="sm" onClick={() => setIsMapCollapsed(false)}>
-                  展开地图
+                  {t('actions.expandMap')}
                 </Button>
               ) : null}
             </div>
@@ -527,14 +527,14 @@ function CanvasWorkspace() {
         <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
           <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
             {/* 常驻文字复习入口，带到期数 */}
-            <Tooltip label="进入复习工作区">
+            <Tooltip label={t('map.reviewTooltip')}>
               <button
                 type="button"
                 onClick={openReview}
                 className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:text-accent font-medium"
               >
                 <Brain className="h-3 w-3 text-accent" />
-                <span>复习</span>
+                <span>{t('map.review')}</span>
                 {dueSummary.due > 0 ? (
                   <span className="rounded bg-accent-soft px-1 text-accent tabular-nums">
                     {dueSummary.due}
@@ -546,10 +546,10 @@ function CanvasWorkspace() {
             <span className="h-3 w-px bg-line/60 mx-0.5" />
 
             {/* 按需开启的保持率热力图 */}
-            <Tooltip label={showHeatMap ? '关闭记忆热力图' : '开启记忆热力图'}>
+            <Tooltip label={showHeatMap ? t('map.hideHeatMap') : t('map.showHeatMap')}>
               <button
                 type="button"
-                aria-label="切换记忆热力图"
+                aria-label={t('map.toggleHeatMap')}
                 onClick={() => setShowHeatMap((v) => !v)}
                 className={cn(
                   'rounded-sm p-0.5 transition-colors',
@@ -560,21 +560,21 @@ function CanvasWorkspace() {
               </button>
             </Tooltip>
 
-            <span className="text-2xs text-muted">{activeCount} 个节点</span>
-            <Tooltip label="重新居中">
+            <span className="text-2xs text-muted">{t('counts.nodes', { count: activeCount })}</span>
+            <Tooltip label={t('actions.recenter')}>
               <button
                 type="button"
-                aria-label="重新居中"
+                aria-label={t('actions.recenter')}
                 onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
                 className="ml-1 rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
                 <LayoutGrid className="h-3 w-3" />
               </button>
             </Tooltip>
-            <Tooltip label="展开画布">
+            <Tooltip label={t('actions.openCanvas')}>
               <button
                 type="button"
-                aria-label="展开画布"
+                aria-label={t('actions.openCanvas')}
                 onClick={openDetailCanvas}
                 className="rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
               >
@@ -623,7 +623,7 @@ function CanvasWorkspace() {
         >
           <DialogContent className="w-[min(480px,100%)]">
             <DialogHeader>
-              <DialogTitle>新建根节点</DialogTitle>
+              <DialogTitle>{t('createRoot.title')}</DialogTitle>
             </DialogHeader>
             <div className="py-1">
               <Textarea
@@ -639,7 +639,7 @@ function CanvasWorkspace() {
                     void handleCreateRoot()
                   }
                 }}
-                placeholder="例如：不定积分的分部积分法怎么推导？"
+                placeholder={t('createRoot.placeholder')}
               />
             </div>
             <DialogFooter>
@@ -649,14 +649,14 @@ function CanvasWorkspace() {
                   setCreateRootDialog({ open: false, flowPosition: null, question: '' })
                 }
               >
-                取消
+                {t('actions.cancel')}
               </Button>
               <Button
                 variant="primary"
                 disabled={!createRootDialog.question.trim()}
                 onClick={() => void handleCreateRoot()}
               >
-                创建
+                {t('createRoot.create')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -666,14 +666,14 @@ function CanvasWorkspace() {
         <Dialog open={Boolean(nodeToDelete)} onOpenChange={(open) => !open && setNodeToDelete(null)}>
           <DialogContent className="w-[min(400px,100%)]">
             <DialogHeader>
-              <DialogTitle>删除节点</DialogTitle>
+              <DialogTitle>{t('deleteNode.title')}</DialogTitle>
               <DialogDescription>
-                会连同它的全部子节点与对话一起删除，无法恢复。
+                {t('deleteNode.description')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setNodeToDelete(null)}>
-                取消
+                {t('actions.cancel')}
               </Button>
               <Button
                 variant="danger"
@@ -684,7 +684,7 @@ function CanvasWorkspace() {
                   }
                 }}
               >
-                删除
+                {t('deleteNode.confirm')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -704,7 +704,7 @@ function CanvasWorkspace() {
             className="absolute inset-0 z-20 bg-canvas"
           >
             <StarterPanel
-              projectName={project?.name ?? '新项目'}
+              projectName={project?.name ?? t('starter.fallbackName')}
               onSubmit={(question) => startRootNode(question)}
             />
           </motion.div>
@@ -733,12 +733,12 @@ function CanvasWorkspace() {
                 onClick={() => selectNode(streamingNode.id)}
                 className="max-w-[240px] truncate text-xs text-ink-soft transition-colors hover:text-ink"
               >
-                「{streamingNode.title}」正在生成
+                {t('streaming.generating', { title: streamingNode.title })}
               </button>
               <Button
                 variant="subtle"
                 size="icon-sm"
-                aria-label="停止生成"
+                aria-label={t('streaming.stop')}
                 onClick={stopStreaming}
                 className="rounded-full"
               >
@@ -796,7 +796,7 @@ function CanvasWorkspace() {
             {isEmpty && !loading ? (
               <StarterPanel
                 key="starter-in-canvas"
-                projectName={project?.name ?? '新项目'}
+                projectName={project?.name ?? t('starter.fallbackName')}
                 onSubmit={(question) => startRootNode(question)}
               />
             ) : null}
@@ -805,13 +805,13 @@ function CanvasWorkspace() {
           {/* 顶部浮动条：状态与返回主舞台按钮 */}
           <div className="pointer-events-none absolute left-6 right-6 top-4 z-10 flex items-center justify-between">
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-line bg-surface/90 px-3 py-1.5 backdrop-blur">
-              <span className="text-sm text-ink-soft">画布</span>
+              <span className="text-sm text-ink-soft">{t('canvasBar.label')}</span>
               <span className="text-xs text-muted">
-                {isEmpty ? '还没有节点' : `${activeCount} 个节点`}
+                {isEmpty ? t('canvasBar.emptyCount') : t('counts.nodes', { count: activeCount })}
               </span>
               <span className="h-3.5 w-px bg-line/60" />
               <span className="text-xs text-faint">
-                {isEmpty ? '输入第一个问题开始' : '双击节点进入对话'}
+                {isEmpty ? t('canvasBar.emptyHint') : t('canvasBar.doubleClickHint')}
               </span>
             </div>
 
@@ -829,7 +829,7 @@ function CanvasWorkspace() {
                     className="gap-1.5 bg-surface/90 backdrop-blur"
                   >
                     <Brain className="h-3.5 w-3.5 text-accent" />
-                    复习工作区
+                    {t('canvasBar.reviewWorkspace')}
                     {dueSummary.due > 0 ? (
                       <span className="rounded bg-accent-soft px-1 text-accent text-2xs tabular-nums">
                         {dueSummary.due}
@@ -843,13 +843,13 @@ function CanvasWorkspace() {
                     className="gap-1.5 bg-surface/90 backdrop-blur"
                   >
                     <LayoutGrid className="h-3.5 w-3.5 text-muted" />
-                    重新布局
+                    {t('actions.relayout')}
                   </Button>
                   <Tooltip
                     label={
                       writeEnabled
-                        ? 'AI 可以在你要求时建节点、改标题、打标签（每次改动都能撤销）'
-                        : 'AI 只能读这棵树。打开后它才能在你要求时改动'
+                        ? t('canvasBar.aiWriteOnHint')
+                        : t('canvasBar.aiWriteOffHint')
                     }
                     side="top"
                   >
@@ -866,7 +866,7 @@ function CanvasWorkspace() {
                       )}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      {writeEnabled ? 'AI 可改树' : 'AI 只读'}
+                      {writeEnabled ? t('canvasBar.aiWriteOn') : t('canvasBar.aiWriteOff')}
                     </Button>
                   </Tooltip>
                   <Button
@@ -878,7 +878,7 @@ function CanvasWorkspace() {
                     className="gap-1.5 bg-surface/90 backdrop-blur"
                   >
                     <Maximize2 className="h-3.5 w-3.5 text-muted" />
-                    居中
+                    {t('actions.center')}
                   </Button>
                 </>
               )}
@@ -889,7 +889,7 @@ function CanvasWorkspace() {
                 className="gap-1.5 bg-surface/90 backdrop-blur"
               >
                 <X className="h-3.5 w-3.5" />
-                返回对话
+                {t('canvasBar.backToChat')}
                 <kbd className="rounded border border-line/70 px-1 font-mono text-2xs leading-4 text-muted">
                   Esc
                 </kbd>

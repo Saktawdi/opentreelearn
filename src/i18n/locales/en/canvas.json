@@ -1,1 +1,94 @@
-{}
+{
+  "actions": {
+    "openCanvas": "Expand canvas",
+    "expandMap": "Expand map",
+    "recenter": "Recenter",
+    "relayout": "Relayout",
+    "center": "Center",
+    "resetView": "Reset view",
+    "cancel": "Cancel"
+  },
+  "counts": {
+    "nodes_one": "{{count}} node",
+    "nodes_other": "{{count}} nodes"
+  },
+  "error": {
+    "backToProjects": "Back to projects"
+  },
+  "emptyState": {
+    "noSelection": "No node selected",
+    "emptyHint": "No nodes yet: ask your first question in the map on the right, or right-click empty space to create a root node.",
+    "hint": "Click a node in the map on the right, or right-click empty space to create a root node."
+  },
+  "map": {
+    "reviewTooltip": "Open review workspace",
+    "review": "Review",
+    "showHeatMap": "Show memory heatmap",
+    "hideHeatMap": "Hide memory heatmap",
+    "toggleHeatMap": "Toggle memory heatmap"
+  },
+  "createRoot": {
+    "title": "New root node",
+    "placeholder": "e.g. How is integration by parts derived for indefinite integrals?",
+    "create": "Create"
+  },
+  "deleteNode": {
+    "title": "Delete node",
+    "description": "Its whole subtree and conversations will be deleted too. This cannot be undone.",
+    "confirm": "Delete"
+  },
+  "starter": {
+    "fallbackName": "New project",
+    "intro": "Your first question becomes the root of this tree.",
+    "placeholder": "e.g. What are eigenvalues? Why do they matter?",
+    "keyHint": "Enter to send · Shift+Enter for a new line",
+    "start": "Start",
+    "createFailed": "Failed to create root node: {{message}}"
+  },
+  "canvasBar": {
+    "label": "Canvas",
+    "emptyCount": "No nodes yet",
+    "emptyHint": "Type your first question to begin",
+    "doubleClickHint": "Double-click a node to open its conversation",
+    "reviewWorkspace": "Review workspace",
+    "aiWriteOn": "AI can edit",
+    "aiWriteOff": "AI read-only",
+    "aiWriteOnHint": "AI can create nodes, rename titles and edit tags when you ask (every change can be undone)",
+    "aiWriteOffHint": "AI can only read this tree. Turn it on to let AI make changes when you ask",
+    "backToChat": "Back to chat"
+  },
+  "streaming": {
+    "generating": "Generating \"{{title}}\"",
+    "stop": "Stop generating"
+  },
+  "menu": {
+    "newChild": "New blank child node",
+    "branch": "Branch from latest message",
+    "diverge": "Diverge from latest message",
+    "archiveSubtree": "Archive (with subtree)",
+    "deleteSubtree": "Delete (with subtree)",
+    "newRootHere": "New root node here"
+  },
+  "node": {
+    "heatBadgeTooltip": "Retention around {{percent}}% — time to review",
+    "fading": "Fading",
+    "dueReview": "Due",
+    "masteryLabel": "Mastery",
+    "assessedLabel": "Assessed",
+    "masteryNoneTooltip": "No mastery assessment has been generated in this subtree yet (0/{{total}})",
+    "masteryTooltip": "Mastery {{score}} · {{learned}}/{{total}} nodes in the subtree assessed · band {{band}} ({{grade}})",
+    "masteryStaleTooltip": "You kept studying after this summary was generated, so the score may be out of date",
+    "reviewCenterBadge": "Review center",
+    "noConversation": "No conversation yet",
+    "forked": "Inherited",
+    "forkedTooltip": "Context inherited from \"{{title}}\"",
+    "summarizing": "Generating summary",
+    "untitled": "Untitled node"
+  },
+  "archive": {
+    "archivedNodes_one": "Archived {{count}} node",
+    "archivedNodes_other": "Archived {{count}} nodes",
+    "description": "The subtree was archived along with it and no longer shows on the canvas or in the review queue.",
+    "undo": "Undo"
+  }
+}

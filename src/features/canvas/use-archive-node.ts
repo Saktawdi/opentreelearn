@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import type { Id } from '@/domain/models'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 
@@ -10,17 +11,18 @@ import { useWorkspaceStore } from '@/stores/workspace-store'
  * 与 Agent 改动的撤销条是同一个心智模型——后悔药，不是操作历史。
  */
 export function useArchiveNodeWithUndo() {
+  const { t } = useTranslation('canvas')
   const archiveNode = useWorkspaceStore((state) => state.archiveNode)
   const restoreArchivedNodes = useWorkspaceStore((state) => state.restoreArchivedNodes)
 
   return async (nodeId: Id) => {
     const previous = await archiveNode(nodeId)
     if (!previous || previous.length === 0) return
-    toast.success(`已归档 ${previous.length} 个节点`, {
-      description: '子树已一并归档，画布与复习队列不再显示。',
+    toast.success(t('archive.archivedNodes', { count: previous.length }), {
+      description: t('archive.description'),
       duration: 10000,
       action: {
-        label: '撤销',
+        label: t('archive.undo'),
         onClick: () => void restoreArchivedNodes(previous),
       },
     })
