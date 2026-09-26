@@ -139,5 +139,12 @@
     "testOkTools": "连接成功：{{model}} 已响应，支持工具调用",
     "testOkNoTools": "连接成功：{{model}} 已响应，但未探测到工具调用能力（对话将按无工具模式进行）",
     "testFailed": "连接失败：{{error}}"
+  },
+  "language": {
+    "label": "界面语言",
+    "hint": "切换立即生效，选择保存在本机",
+    "zh": "中文",
+    "en": "English",
+    "groupLabel": "选择界面语言"
   }
 }

@@ -166,6 +166,8 @@ export function SettingsPage() {
 
         <Section title={t('section.preferences')}>
           <div className="space-y-2">
+            <LanguageSwitcher />
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5">
               <div className="min-w-0 max-w-lg">
                 <p className="text-sm text-ink-soft">{t('prefs.dialogToggleTitle')}</p>
@@ -386,6 +388,45 @@ export function SettingsPage() {
         onOpenChange={setDialogOpen}
         provider={editing}
       />
+    </div>
+  )
+}
+
+/** 界面语言切换：i18n.changeLanguage 后 detector 会把选择持久化到 localStorage（ootl.lang）。 */
+function LanguageSwitcher() {
+  const { t, i18n } = useTranslation('settings')
+  const current = i18n.language ?? ''
+  const options = [
+    { code: 'zh-CN', zh: true, label: t('language.zh') },
+    { code: 'en', zh: false, label: t('language.en') },
+  ] as const
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-3 py-2.5">
+      <div className="min-w-0 max-w-lg">
+        <p className="text-sm text-ink-soft">{t('language.label')}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted">{t('language.hint')}</p>
+      </div>
+      <div role="group" aria-label={t('language.groupLabel')} className="flex gap-1.5">
+        {options.map((option) => {
+          const active = option.zh ? current.startsWith('zh') : current.startsWith('en')
+          return (
+            <button
+              key={option.code}
+              type="button"
+              aria-pressed={active}
+              onClick={() => void i18n.changeLanguage(option.code)}
+              className={cn(
+                'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                active
+                  ? 'border-accent/50 bg-accent-soft text-accent'
+                  : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
+              )}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

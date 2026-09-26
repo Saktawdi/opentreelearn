@@ -145,5 +145,12 @@
     "testOkTools": "Connected: {{model}} responded, tool calling supported",
     "testOkNoTools": "Connected: {{model}} responded, but no tool-calling capability was detected (chat will proceed without tools)",
     "testFailed": "Connection failed: {{error}}"
+  },
+  "language": {
+    "label": "Interface language",
+    "hint": "Applies immediately; your choice is saved on this device",
+    "zh": "中文",
+    "en": "English",
+    "groupLabel": "Choose interface language"
   }
 }
