@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 export type AuthMode = 'login' | 'register'
 
 export interface AuthForm {
@@ -27,17 +29,17 @@ export const EMAIL_CODE_LENGTH = 6
  */
 export function validateAuthForm(mode: AuthMode, form: AuthForm): string | null {
   const loginName = form.loginName.trim()
-  if (loginName.length < 2 || loginName.length > 20) return '登录账号需为 2–20 个字符'
+  if (loginName.length < 2 || loginName.length > 20) return i18n.t('me:validation.loginNameLength')
 
   if (mode === 'login') {
-    if (!form.password) return '请填写密码'
+    if (!form.password) return i18n.t('me:validation.passwordRequired')
     return null
   }
 
-  if (form.password.length < 5 || form.password.length > 20) return '密码需为 5–20 个字符'
-  if (!EMAIL_PATTERN.test(form.email.trim())) return '请填写有效邮箱'
+  if (form.password.length < 5 || form.password.length > 20) return i18n.t('me:validation.passwordLength')
+  if (!EMAIL_PATTERN.test(form.email.trim())) return i18n.t('me:validation.emailInvalid')
   if (!new RegExp(`^\\d{${EMAIL_CODE_LENGTH}}$`).test(form.emailCode.trim())) {
-    return `邮箱验证码为 ${EMAIL_CODE_LENGTH} 位数字`
+    return i18n.t('me:validation.emailCodeLength', { length: EMAIL_CODE_LENGTH })
   }
   return null
 }

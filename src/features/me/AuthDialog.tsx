@@ -1,5 +1,6 @@
 import { Loader2, Mail } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,10 +27,11 @@ import {
 /** 验证码重发冷却，避免用户连点把上游邮件接口打满。 */
 const CODE_COOLDOWN_SECONDS = 60
 
-const MODE_TABS: { value: AuthMode; label: string }[] = [
-  { value: 'login', label: '登录' },
-  { value: 'register', label: '注册' },
-]
+// labelKey 是 i18n 键：文案在渲染处用 t() 解析，模块级常量只存键
+const MODE_TABS = [
+  { value: 'login', labelKey: 'auth.mode.login' },
+  { value: 'register', labelKey: 'auth.mode.register' },
+] as const
 
 export function AuthDialog({
   open,
@@ -42,6 +44,7 @@ export function AuthDialog({
 }) {
   const login = useAccountStore((state) => state.login)
   const register = useAccountStore((state) => state.register)
+  const { t } = useTranslation('me')
 
   const [mode, setMode] = useState<AuthMode>(initialMode)
   const [form, setForm] = useState(EMPTY_AUTH_FORM)
@@ -64,7 +67,7 @@ export function AuthDialog({
   const sendCode = async () => {
     const email = form.email.trim().toLowerCase()
     if (!EMAIL_PATTERN.test(email)) {
-      toast.error('请先填写有效邮箱')
+      toast.error(t('auth.sendCode.invalidEmail'))
       return
     }
 
@@ -72,7 +75,7 @@ export function AuthDialog({
     try {
       await sendRegisterCode(email)
       setCooldown(CODE_COOLDOWN_SECONDS)
-      toast.success('验证码已发送，请查收邮箱')
+      toast.success(t('auth.sendCode.sent'))
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
@@ -94,7 +97,7 @@ export function AuthDialog({
     try {
       if (mode === 'login') {
         await login({ username: form.loginName.trim(), password: form.password })
-        toast.success('登录成功')
+        toast.success(t('auth.toast.loginSuccess'))
       } else {
         await register(
           {
@@ -105,7 +108,7 @@ export function AuthDialog({
           },
           form.emailCode.trim(),
         )
-        toast.success('注册成功，已自动登录')
+        toast.success(t('auth.toast.registerSuccess'))
       }
       onOpenChange(false)
     } catch (error) {
@@ -119,11 +122,11 @@ export function AuthDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{mode === 'login' ? '登录' : '注册'}</DialogTitle>
+          <DialogTitle>{mode === 'login' ? t('auth.mode.login') : t('auth.mode.register')}</DialogTitle>
           <DialogDescription>
             {mode === 'login'
-              ? '使用账号系统的登录账号与密码。'
-              : '注册需要邮箱与 6 位邮箱验证码，注册成功后自动登录。'}
+              ? t('auth.subtitle.login')
+              : t('auth.subtitle.register')}
           </DialogDescription>
         </DialogHeader>
 
@@ -138,42 +141,42 @@ export function AuthDialog({
                 mode === tab.value ? 'bg-elevated text-ink' : 'text-muted hover:text-ink',
               )}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>
 
         <form onSubmit={(event) => void submit(event)} className="space-y-4">
-          <DialogField label="登录账号">
+          <DialogField label={t('auth.field.loginName')}>
             <Input
               value={form.loginName}
               onChange={(event) => setField('loginName', event.target.value)}
-              placeholder="2–20 个字符"
+              placeholder={t('auth.field.loginNamePlaceholder')}
               autoComplete="username"
               autoFocus
             />
           </DialogField>
 
-          <DialogField label="密码">
+          <DialogField label={t('auth.field.password')}>
             <Input
               type="password"
               value={form.password}
               onChange={(event) => setField('password', event.target.value)}
-              placeholder={mode === 'register' ? '5–20 个字符' : ''}
+              placeholder={mode === 'register' ? t('auth.field.passwordPlaceholder') : ''}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
             />
           </DialogField>
 
           {mode === 'register' ? (
             <>
-              <DialogField label="昵称" hint="可选，留空则用登录账号。">
+              <DialogField label={t('auth.field.nickname')} hint={t('auth.field.nicknameHint')}>
                 <Input
                   value={form.userName}
                   onChange={(event) => setField('userName', event.target.value)}
                 />
               </DialogField>
 
-              <DialogField label="邮箱">
+              <DialogField label={t('auth.field.email')}>
                 <Input
                   type="email"
                   value={form.email}
@@ -183,13 +186,13 @@ export function AuthDialog({
                 />
               </DialogField>
 
-              <DialogField label="邮箱验证码">
+              <DialogField label={t('auth.field.emailCode')}>
                 <div className="flex items-center gap-2">
                   <Input
                     value={form.emailCode}
                     inputMode="numeric"
                     onChange={(event) => setField('emailCode', event.target.value)}
-                    placeholder="6 位数字"
+                    placeholder={t('auth.field.emailCodePlaceholder')}
                     className="flex-1"
                   />
                   <Button
@@ -203,7 +206,9 @@ export function AuthDialog({
                     ) : (
                       <Mail className="h-3.5 w-3.5" />
                     )}
-                    {cooldown > 0 ? `${cooldown} 秒` : '发送验证码'}
+                    {cooldown > 0
+                      ? t('auth.sendCode.cooldown', { seconds: cooldown })
+                      : t('auth.sendCode.button')}
                   </Button>
                 </div>
               </DialogField>
@@ -212,11 +217,11 @@ export function AuthDialog({
 
           <DialogFooter>
             <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>
-              取消
+              {t('auth.action.cancel')}
             </Button>
             <Button variant="primary" type="submit" disabled={pending}>
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              {mode === 'login' ? '登录' : '注册'}
+              {mode === 'login' ? t('auth.mode.login') : t('auth.mode.register')}
             </Button>
           </DialogFooter>
         </form>

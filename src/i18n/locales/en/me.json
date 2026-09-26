@@ -1,1 +1,117 @@
-{}
+{
+  "auth": {
+    "mode": {
+      "login": "Log in",
+      "register": "Sign up"
+    },
+    "subtitle": {
+      "login": "Use the account name and password of your account.",
+      "register": "Signing up needs an email address and a 6-digit verification code; you'll be signed in automatically afterwards."
+    },
+    "sendCode": {
+      "invalidEmail": "Enter a valid email first",
+      "sent": "Verification code sent — check your inbox",
+      "button": "Send code",
+      "cooldown": "{{seconds}}s"
+    },
+    "field": {
+      "loginName": "Account name",
+      "loginNamePlaceholder": "2–20 characters",
+      "password": "Password",
+      "passwordPlaceholder": "5–20 characters",
+      "nickname": "Nickname",
+      "nicknameHint": "Optional; defaults to your account name if left empty.",
+      "email": "Email",
+      "emailCode": "Email verification code",
+      "emailCodePlaceholder": "6 digits"
+    },
+    "action": {
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "loginSuccess": "Logged in",
+      "registerSuccess": "Account created and signed in"
+    }
+  },
+  "validation": {
+    "loginNameLength": "Account name must be 2–20 characters",
+    "passwordRequired": "Enter your password",
+    "passwordLength": "Password must be 5–20 characters",
+    "emailInvalid": "Enter a valid email",
+    "emailCodeLength": "The verification code is {{length}} digits"
+  },
+  "firstLogin": {
+    "title": "This device already has data — how should it merge with the cloud?",
+    "desc": {
+      "cloudRecords_one": "The cloud already has {{count}} record.",
+      "cloudRecords_other": "The cloud already has {{count}} records.",
+      "noCloud": "This account has no data in the cloud yet.",
+      "askOnce": " You'll only be asked this once, at first sign-in."
+    },
+    "option": {
+      "merge": {
+        "title": "Upload local data (merge)",
+        "description": "Local records are uploaded; where the same record was updated in the cloud, the cloud version still wins. Recommended."
+      },
+      "cloud": {
+        "title": "Use the cloud version",
+        "description": "Clears local projects and chats, then rebuilds from the cloud. Unsynced local changes will be lost."
+      },
+      "localOnly": {
+        "title": "Skip syncing for now",
+        "description": "Skips the cloud this time and keeps data on this device; you can trigger a sync manually in \"Sync\" later."
+      }
+    },
+    "footer": "You'll be asked again when you sign in on a new device; on the same device it's asked only once."
+  },
+  "page": {
+    "title": "Me",
+    "subtitle": "Account info and personal background.",
+    "account": {
+      "title": "Account",
+      "description": "Sign in to use the same account everywhere; data is stored locally per account.",
+      "unnamed": "Unnamed",
+      "signOut": "Sign out",
+      "notSignedIn": "Not signed in",
+      "credentialsHint": "Your sign-in credentials are stored only in this browser.",
+      "login": "Log in",
+      "register": "Sign up",
+      "retry": "Retry"
+    },
+    "profile": {
+      "title": "Personal background",
+      "description": "When a new blank node is created, this text is injected into the system prompt as context.",
+      "placeholder": "e.g. Third-year CS student preparing for the graduate entrance exam in math; please give full derivations and counterexamples, and don't skip intermediate steps.",
+      "save": "Save"
+    },
+    "sync": {
+      "title": "Sync"
+    },
+    "footer": {
+      "authenticated": "Settings, projects, nodes and chats sync with your account; image assets and review sessions stay on this device and don't carry over to other devices.",
+      "guest": "Projects, nodes, chats and images are stored in the browser's IndexedDB and are lost if you clear browser data; sign in to sync them to your account."
+    },
+    "toast": {
+      "saved": "Saved",
+      "signedOut": "Signed out"
+    }
+  },
+  "sync": {
+    "status": {
+      "syncing": "Syncing…",
+      "error": "Sync failed",
+      "pending_one": "{{count}} item pending",
+      "pending_other": "{{count}} items pending",
+      "synced": "Synced"
+    },
+    "lastSynced": "Last synced {{time}}",
+    "description": "Settings and learning projects sync to your account; BYOK API keys and local review sessions (the unfinished batch) stay on this device.",
+    "action": {
+      "now": "Sync now"
+    },
+    "toast": {
+      "synced": "Synced: {{pushed}} uploaded, {{pulled}} downloaded",
+      "upToDate": "Already up to date"
+    }
+  }
+}

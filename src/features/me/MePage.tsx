@@ -1,5 +1,6 @@
 import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Section } from '@/components/ui/section'
@@ -53,6 +54,7 @@ export function MePage() {
 
   const settings = useSettingsStore((state) => state.settings)
   const patch = useSettingsStore((state) => state.patch)
+  const { t } = useTranslation('me')
 
   const [profile, setProfile] = useState(() => settings.backgroundProfile)
   const [authOpen, setAuthOpen] = useState(false)
@@ -65,7 +67,7 @@ export function MePage() {
 
   const saveProfile = async () => {
     await patch({ backgroundProfile: profile })
-    toast.success('已保存')
+    toast.success(t('page.toast.saved'))
   }
 
   const openAuth = (mode: AuthMode) => {
@@ -77,7 +79,7 @@ export function MePage() {
     setSigningOut(true)
     try {
       await logout()
-      toast.success('已退出登录')
+      toast.success(t('page.toast.signedOut'))
     } finally {
       setSigningOut(false)
     }
@@ -87,17 +89,17 @@ export function MePage() {
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-7">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">我的</h1>
-          <p className="mt-1 text-xs text-muted">账号信息与个人背景。</p>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
+          <p className="mt-1 text-xs text-muted">{t('page.subtitle')}</p>
         </div>
 
-        <Section title="账号" description="登录后使用同一账号；数据按账号分别保存在本机。">
+        <Section title={t('page.account.title')} description={t('page.account.description')}>
           {status === 'authenticated' && user ? (
             <div className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2.5">
               <AccountAvatar user={user} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-ink">
-                  {user.userName || user.loginName || '未命名'}
+                  {user.userName || user.loginName || t('page.account.unnamed')}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-muted">
                   {[user.loginName ? `@${user.loginName}` : '', user.email ?? '']
@@ -116,25 +118,25 @@ export function MePage() {
                 ) : (
                   <LogOut className="h-3.5 w-3.5" />
                 )}
-                退出登录
+                {t('page.account.signOut')}
               </Button>
             </div>
           ) : status === 'restoring' || status === 'uninitialized' ? (
             <AccountSkeleton />
           ) : (
             <div className="rounded-md border border-dashed border-line px-4 py-5 text-center">
-              <p className="text-sm text-ink-soft">尚未登录</p>
+              <p className="text-sm text-ink-soft">{t('page.account.notSignedIn')}</p>
               <p className="mt-1 text-xs leading-relaxed text-muted">
-                登录凭据只保存在本机浏览器。
+                {t('page.account.credentialsHint')}
               </p>
               <div className="mt-3 flex items-center justify-center gap-2">
                 <Button variant="primary" size="sm" onClick={() => openAuth('login')}>
                   <LogIn className="h-3.5 w-3.5" />
-                  登录
+                  {t('page.account.login')}
                 </Button>
                 <Button variant="secondary" size="sm" onClick={() => openAuth('register')}>
                   <UserPlus className="h-3.5 w-3.5" />
-                  注册
+                  {t('page.account.register')}
                 </Button>
               </div>
             </div>
@@ -144,21 +146,21 @@ export function MePage() {
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-danger/35 bg-danger-soft px-3 py-2">
               <p className="text-xs leading-relaxed text-danger">{restoreError}</p>
               <Button variant="ghost" size="sm" onClick={() => void restore()}>
-                重试
+                {t('page.account.retry')}
               </Button>
             </div>
           ) : null}
         </Section>
 
         <Section
-          title="个人背景"
-          description="新建空白节点时，这段内容会作为上下文注入到系统提示里。"
+          title={t('page.profile.title')}
+          description={t('page.profile.description')}
         >
           <Textarea
             value={profile}
             rows={5}
             onChange={(event) => setProfile(event.target.value)}
-            placeholder="例如：计算机专业大三学生，正在准备考研数学；希望解释尽量给推导和反例，不要跳过中间步骤。"
+            placeholder={t('page.profile.placeholder')}
           />
           <div className="mt-3 flex justify-end">
             <Button
@@ -167,21 +169,21 @@ export function MePage() {
               disabled={!profileDirty}
               onClick={() => void saveProfile()}
             >
-              保存
+              {t('page.profile.save')}
             </Button>
           </div>
         </Section>
 
         {status === 'authenticated' ? (
-          <Section title="同步">
+          <Section title={t('page.sync.title')}>
             <SyncPanel />
           </Section>
         ) : null}
 
         <p className="border-t border-line pt-5 text-xs leading-relaxed text-muted">
           {status === 'authenticated'
-            ? '设置、项目、节点与对话随账号同步；图片资产与复习会话只留在本机，不在其他设备接续。'
-            : '项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失；登录后可同步到账号。'}
+            ? t('page.footer.authenticated')
+            : t('page.footer.guest')}
         </p>
       </div>
 

@@ -1,1 +1,115 @@
-{}
+{
+  "auth": {
+    "mode": {
+      "login": "登录",
+      "register": "注册"
+    },
+    "subtitle": {
+      "login": "使用账号系统的登录账号与密码。",
+      "register": "注册需要邮箱与 6 位邮箱验证码，注册成功后自动登录。"
+    },
+    "sendCode": {
+      "invalidEmail": "请先填写有效邮箱",
+      "sent": "验证码已发送，请查收邮箱",
+      "button": "发送验证码",
+      "cooldown": "{{seconds}} 秒"
+    },
+    "field": {
+      "loginName": "登录账号",
+      "loginNamePlaceholder": "2–20 个字符",
+      "password": "密码",
+      "passwordPlaceholder": "5–20 个字符",
+      "nickname": "昵称",
+      "nicknameHint": "可选，留空则用登录账号。",
+      "email": "邮箱",
+      "emailCode": "邮箱验证码",
+      "emailCodePlaceholder": "6 位数字"
+    },
+    "action": {
+      "cancel": "取消"
+    },
+    "toast": {
+      "loginSuccess": "登录成功",
+      "registerSuccess": "注册成功，已自动登录"
+    }
+  },
+  "validation": {
+    "loginNameLength": "登录账号需为 2–20 个字符",
+    "passwordRequired": "请填写密码",
+    "passwordLength": "密码需为 5–20 个字符",
+    "emailInvalid": "请填写有效邮箱",
+    "emailCodeLength": "邮箱验证码为 {{length}} 位数字"
+  },
+  "firstLogin": {
+    "title": "本机已有数据，怎么和云端合并？",
+    "desc": {
+      "cloudRecords_other": "云端已有 {{count}} 条记录。",
+      "noCloud": "云端还没有这个账号的数据。",
+      "askOnce": "选择只在首次登录时问一次。"
+    },
+    "option": {
+      "merge": {
+        "title": "上传本机数据（合并）",
+        "description": "本机记录会上传；同一条记录云端更新时仍以云端为准。推荐。"
+      },
+      "cloud": {
+        "title": "以云端为准",
+        "description": "清空本机的项目与对话，用云端的版本重建。本机未同步的改动会丢失。"
+      },
+      "localOnly": {
+        "title": "暂不同步",
+        "description": "这次不连云端，数据只留在本机；之后可在「同步」里手动触发。"
+      }
+    },
+    "footer": "换设备登录时会再问一次；同一台设备只问一次。"
+  },
+  "page": {
+    "title": "我的",
+    "subtitle": "账号信息与个人背景。",
+    "account": {
+      "title": "账号",
+      "description": "登录后使用同一账号；数据按账号分别保存在本机。",
+      "unnamed": "未命名",
+      "signOut": "退出登录",
+      "notSignedIn": "尚未登录",
+      "credentialsHint": "登录凭据只保存在本机浏览器。",
+      "login": "登录",
+      "register": "注册",
+      "retry": "重试"
+    },
+    "profile": {
+      "title": "个人背景",
+      "description": "新建空白节点时，这段内容会作为上下文注入到系统提示里。",
+      "placeholder": "例如：计算机专业大三学生，正在准备考研数学；希望解释尽量给推导和反例，不要跳过中间步骤。",
+      "save": "保存"
+    },
+    "sync": {
+      "title": "同步"
+    },
+    "footer": {
+      "authenticated": "设置、项目、节点与对话随账号同步；图片资产与复习会话只留在本机，不在其他设备接续。",
+      "guest": "项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失；登录后可同步到账号。"
+    },
+    "toast": {
+      "saved": "已保存",
+      "signedOut": "已退出登录"
+    }
+  },
+  "sync": {
+    "status": {
+      "syncing": "正在同步…",
+      "error": "同步失败",
+      "pending_other": "{{count}} 项待同步",
+      "synced": "已同步"
+    },
+    "lastSynced": "上次同步 {{time}}",
+    "description": "设置与学习项目同步到账号；BYOK 的 API Key 与本机复习会话（未做完的那一批） 只留在这台设备。",
+    "action": {
+      "now": "立即同步"
+    },
+    "toast": {
+      "synced": "已同步：上传 {{pushed}} 项、下载 {{pulled}} 项",
+      "upToDate": "已是最新"
+    }
+  }
+}

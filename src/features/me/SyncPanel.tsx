@@ -1,5 +1,6 @@
 import { CloudOff, CloudUpload, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { formatRelativeTime } from '@/lib/time'
@@ -13,6 +14,7 @@ import { useSyncStore } from '@/stores/sync-store'
  * 与手动入口 —— 需要立刻推上去时不用等节流窗口。
  */
 export function SyncPanel() {
+  const { t } = useTranslation('me')
   const phase = useSyncStore((state) => state.phase)
   const error = useSyncStore((state) => state.error)
   const pending = useSyncStore((state) => state.pending)
@@ -29,8 +31,8 @@ export function SyncPanel() {
       if (result.ok) {
         toast.success(
           result.pushed + result.pulled > 0
-            ? `已同步：上传 ${result.pushed} 项、下载 ${result.pulled} 项`
-            : '已是最新',
+            ? t('sync.toast.synced', { pushed: result.pushed, pulled: result.pulled })
+            : t('sync.toast.upToDate'),
         )
       } else if (result.error) {
         toast.error(result.error)
@@ -46,15 +48,22 @@ export function SyncPanel() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-ink-soft">
-              {busy ? '正在同步…' : error ? '同步失败' : pending > 0 ? `${pending} 项待同步` : '已同步'}
+              {busy
+                ? t('sync.status.syncing')
+                : error
+                  ? t('sync.status.error')
+                  : pending > 0
+                    ? t('sync.status.pending', { count: pending })
+                    : t('sync.status.synced')}
             </span>
             {lastSyncedAt && !busy ? (
-              <span className="text-xs text-muted">上次同步 {formatRelativeTime(lastSyncedAt)}</span>
+              <span className="text-xs text-muted">
+                {t('sync.lastSynced', { time: formatRelativeTime(lastSyncedAt) })}
+              </span>
             ) : null}
           </div>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">
-            设置与学习项目同步到账号；BYOK 的 API Key 与本机复习会话（未做完的那一批）
-            只留在这台设备。
+            {t('sync.description')}
           </p>
         </div>
 
@@ -64,7 +73,7 @@ export function SyncPanel() {
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-          立即同步
+          {t('sync.action.now')}
         </Button>
       </div>
 

@@ -1,5 +1,6 @@
 import { CloudDownload, CloudUpload, HardDrive } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Dialog,
   DialogContent,
@@ -11,33 +12,30 @@ import type { FirstLoginPolicy } from '@/domain/sync'
 import { cn, errorMessage } from '@/lib/utils'
 import { useSyncStore } from '@/stores/sync-store'
 
-const OPTIONS: {
-  policy: FirstLoginPolicy
-  icon: typeof CloudUpload
-  title: string
-  description: string
-  danger?: boolean
-}[] = [
+// titleKey/descriptionKey 是 i18n 键：文案在渲染处用 t() 解析，模块级常量只存键
+const OPTIONS = [
   {
     policy: 'merge',
     icon: CloudUpload,
-    title: '上传本机数据（合并）',
-    description: '本机记录会上传；同一条记录云端更新时仍以云端为准。推荐。',
+    titleKey: 'firstLogin.option.merge.title',
+    descriptionKey: 'firstLogin.option.merge.description',
+    danger: false,
   },
   {
     policy: 'cloud',
     icon: CloudDownload,
-    title: '以云端为准',
-    description: '清空本机的项目与对话，用云端的版本重建。本机未同步的改动会丢失。',
+    titleKey: 'firstLogin.option.cloud.title',
+    descriptionKey: 'firstLogin.option.cloud.description',
     danger: true,
   },
   {
     policy: 'localOnly',
     icon: HardDrive,
-    title: '暂不同步',
-    description: '这次不连云端，数据只留在本机；之后可在「同步」里手动触发。',
+    titleKey: 'firstLogin.option.localOnly.title',
+    descriptionKey: 'firstLogin.option.localOnly.description',
+    danger: false,
   },
-]
+] as const
 
 /**
  * 首次在某台设备登录时的选择：本机已有数据怎么办。
@@ -46,6 +44,7 @@ const OPTIONS: {
  * 因此换设备会再问一次，同一台设备不会反复问。
  */
 export function FirstLoginDialog() {
+  const { t } = useTranslation('me')
   const open = useSyncStore((state) => state.needsPolicy)
   const remote = useSyncStore((state) => state.remote)
   const apply = useSyncStore((state) => state.applyFirstLoginPolicy)
@@ -69,12 +68,12 @@ export function FirstLoginDialog() {
     <Dialog open={open}>
       <DialogContent showClose={false} aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>本机已有数据，怎么和云端合并？</DialogTitle>
+          <DialogTitle>{t('firstLogin.title')}</DialogTitle>
           <DialogDescription>
             {cloudRecords > 0
-              ? `云端已有 ${cloudRecords} 条记录。`
-              : '云端还没有这个账号的数据。'}
-            选择只在首次登录时问一次。
+              ? t('firstLogin.desc.cloudRecords', { count: cloudRecords })
+              : t('firstLogin.desc.noCloud')}
+            {t('firstLogin.desc.askOnce')}
           </DialogDescription>
         </DialogHeader>
 
@@ -101,9 +100,9 @@ export function FirstLoginDialog() {
                   )}
                 />
                 <span className="min-w-0">
-                  <span className="block text-sm text-ink">{option.title}</span>
+                  <span className="block text-sm text-ink">{t(option.titleKey)}</span>
                   <span className="mt-0.5 block text-xs leading-relaxed text-muted">
-                    {option.description}
+                    {t(option.descriptionKey)}
                   </span>
                 </span>
               </button>
@@ -112,7 +111,7 @@ export function FirstLoginDialog() {
         </div>
 
         <p className="mt-4 text-xs leading-relaxed text-muted">
-          换设备登录时会再问一次；同一台设备只问一次。
+          {t('firstLogin.footer')}
         </p>
       </DialogContent>
     </Dialog>
