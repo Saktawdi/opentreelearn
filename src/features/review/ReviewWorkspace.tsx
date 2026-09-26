@@ -212,7 +212,6 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 <span className="rounded-full bg-elevated px-2 py-0.5 text-2xs font-medium text-muted border border-line/60">
                   {t('workspace.topicsProgress', {
                     current: session.cursor + 1,
-                    total: session.items.length,
                     count: session.items.length,
                   })}
                 </span>

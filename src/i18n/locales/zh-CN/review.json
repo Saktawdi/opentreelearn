@@ -5,7 +5,7 @@
     "learningMaterials": "学习资料",
     "noteHistory": "笔记历史",
     "endSession": "结束本次",
-    "topicsProgress_other": "{{current}} / {{total}} 个主题",
+    "topicsProgress_other": "{{current}} / {{count}} 个主题",
     "headerTitle": "{{name}} · 复习",
     "untitledProject": "项目",
     "toastNoteOffScreen": "这条标记所在的内容当前不在屏幕上（可能属于其他主题或更早的轮次）",
@@ -13,7 +13,7 @@
   },
   "overview": {
     "bannerTitle": "当前有尚未完成的复习",
-    "bannerProgress_other": "本批已完成 {{done}} / {{total}} 个主题，可随时恢复同一题继续作答。",
+    "bannerProgress_other": "本批已完成 {{done}} / {{count}} 个主题，可随时恢复同一题继续作答。",
     "endSession": "结束本次",
     "resume": "继续复习",
     "headingDue_other": "今天有 {{count}} 个主题适合巩固",

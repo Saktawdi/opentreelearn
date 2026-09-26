@@ -118,7 +118,6 @@ export function ReviewOverview({
               <p className="mt-1 text-xs text-muted">
                 {t('overview.bannerProgress', {
                   done: activeProgress.done,
-                  total: activeProgress.total,
                   count: activeProgress.total,
                 })}
               </p>

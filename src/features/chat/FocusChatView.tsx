@@ -110,6 +110,7 @@ export function FocusChatView({
         : null
     // 源消息文本常常就是源节点标题，此时再展示一次只会读成重复
     return { title, preview: preview && preview !== title ? preview : null, note }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 useTranslation，语言切换由订阅机制触发重渲染
   }, [node, nodes, messagesByNode])
 
   if (!node || !projectId) return null

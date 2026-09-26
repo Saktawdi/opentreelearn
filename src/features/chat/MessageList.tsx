@@ -124,8 +124,8 @@ const MessageAction = memo(function MessageAction({
 })
 
 const MessageImages = memo(function MessageImages({ urls }: { urls: string[] }) {
-  if (urls.length === 0) return null
   const { t } = useTranslation('chat')
+  if (urls.length === 0) return null
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {urls.map((url) => (
