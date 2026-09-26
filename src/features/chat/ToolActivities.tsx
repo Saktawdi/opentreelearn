@@ -1,5 +1,7 @@
 import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { motion } from 'motion/react'
 import { ENTER_FAST } from '@/lib/motion'
 /**
@@ -16,22 +18,22 @@ export interface ToolActivityItem {
 }
 
 /** 工具名的中文标签：没见过的工具名原样显示（不猜、不美化）。 */
-function toolLabel(name: string, input: unknown): string {
+function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>
   const query = typeof args.query === 'string' ? args.query : ''
   switch (name) {
     case 'search_nodes':
-      return query ? `查询节点「${query}」` : '查询节点'
+      return query ? t('tool.searchNodes', { query }) : t('tool.searchNodesPlain')
     case 'get_node':
-      return '查看节点详情'
+      return t('tool.getNode')
     case 'get_tree_outline':
-      return '查看树大纲'
+      return t('tool.getOutline')
     case 'list_note_labels':
-      return '统计标注标签'
+      return t('tool.listLabels')
     case 'search_notes': {
       const labels = Array.isArray(args.labels) ? args.labels.join('、') : ''
-      if (labels) return `检索标注（${labels}）`
-      return query ? `检索标注「${query}」` : '检索标注'
+      if (labels) return t('tool.searchNotesLabels', { labels })
+      return query ? t('tool.searchNotes', { query }) : t('tool.searchNotesPlain')
     }
     default:
       return name
@@ -63,6 +65,7 @@ export function ToolActivities({
   /** 流式期间逐张浮现；落库后随消息整体入场，不再单独动。 */
   animateIn?: boolean
 }) {
+  const { t } = useTranslation('chat')
   const [expanded, setExpanded] = useState<string | null>(null)
   if (tools.length === 0) return null
 
@@ -83,13 +86,15 @@ export function ToolActivities({
             >
               {statusIcon(tool.status)}
               <span className="min-w-0 flex-1 truncate">
-                {toolLabel(tool.name, tool.input)}
+                {toolLabel(t, tool.name, tool.input)}
                 {tool.status === 'running' ? '…' : ''}
               </span>
               {tool.error ? (
-                <span className="shrink-0 text-danger">失败</span>
+                <span className="shrink-0 text-danger">{t('tool.failed')}</span>
               ) : tool.status === 'done' ? (
-                <span className="shrink-0 text-faint">{open ? '收起' : '已返回'}</span>
+                <span className="shrink-0 text-faint">
+                  {open ? t('tool.collapse') : t('tool.returned')}
+                </span>
               ) : null}
             </button>
             {open && detail ? (

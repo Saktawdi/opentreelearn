@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -88,8 +89,9 @@ export function NoteDialog({
     }
   }
 
+  const { t } = useTranslation('chat')
   const isEditing = Boolean(onDelete)
-  const title = isEditing ? '编辑标注' : '添加标注'
+  const title = isEditing ? t('note.editTitle') : t('note.addTitle')
   const isPlainHighlight = picked.length === 0
 
   return (
@@ -103,9 +105,7 @@ export function NoteDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {isPlainHighlight
-              ? '不选标签保存为高亮书签；选择标签可将其作为语义重点同步给 AI 辅助复习。'
-              : '已选标签将作为你亲口确认的重点或薄弱点，同步给 AI 在复习与出题时优先照顾。'}
+            {isPlainHighlight ? t('note.highlightDesc') : t('note.labeledDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -116,7 +116,10 @@ export function NoteDialog({
         </blockquote>
 
         <div className="mt-3">
-          <DialogField label="标签（可选）" hint={`可多选，最多 ${MAX_NOTE_LABELS} 个。不选即为纯高亮。`}>
+          <DialogField
+            label={t('note.labelsField')}
+            hint={t('note.labelsHint', { max: MAX_NOTE_LABELS })}
+          >
             <div className="flex flex-wrap gap-1.5">
               {candidates.map((candidate) => {
                 const active = picked.includes(candidate.id)
@@ -149,7 +152,7 @@ export function NoteDialog({
                   {candidates.find((item) => item.id === label)?.name ?? label}
                   <button
                     type="button"
-                    aria-label={`移除标签 ${label}`}
+                    aria-label={t('note.removeLabel', { label })}
                     onClick={() => toggle(label)}
                     className="text-accent/70 transition-colors hover:text-accent"
                   >
@@ -164,7 +167,7 @@ export function NoteDialog({
             <Input
               value={custom}
               maxLength={NOTE_LABEL_MAX}
-              placeholder="自定义标签（项目里可复用）"
+              placeholder={t('note.customLabelPlaceholder')}
               onChange={(event) => setCustom(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -179,15 +182,15 @@ export function NoteDialog({
               disabled={!normalizeNoteLabel(custom) || atCap}
               onClick={addCustom}
             >
-              添加
+              {t('note.addLabel')}
             </Button>
           </div>
         </div>
 
         <div className="mt-3">
           <DialogField
-            label="备注（可选）"
-            hint="Ctrl+Enter 保存，Esc 取消。"
+            label={t('note.commentField')}
+            hint={t('note.commentHint')}
           >
             <Textarea
               rows={3}
@@ -200,7 +203,7 @@ export function NoteDialog({
                 }
                 if (event.key === 'Escape') onCancel()
               }}
-              placeholder="为什么标这句？或记录疑问与思考（可留空）"
+              placeholder={t('note.commentPlaceholder')}
             />
           </DialogField>
         </div>
@@ -217,16 +220,16 @@ export function NoteDialog({
                   onDelete()
                 }}
               >
-                删除
+                {t('action.delete')}
               </Button>
             ) : null}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-              取消
+              {t('action.cancel')}
             </Button>
             <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy}>
-              {isPlainHighlight ? '保存高亮' : '保存标注'}
+              {isPlainHighlight ? t('note.saveHighlight') : t('note.saveNote')}
             </Button>
           </div>
         </DialogFooter>

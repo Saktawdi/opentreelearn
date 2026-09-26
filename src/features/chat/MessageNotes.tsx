@@ -1,5 +1,6 @@
 import { Pencil } from 'lucide-react'
 import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import type { Id, Note, NoteLabel } from '@/domain/models'
@@ -30,6 +31,7 @@ export const MessageNotes = memo(function MessageNotes({
   /** 外部间距钩子：卡片里挂在正文下方时用（列表为空时整条不渲染，不留空隙） */
   className?: string
 }) {
+  const { t } = useTranslation('chat')
   const updateNote = useWorkspaceStore((state) => state.updateNote)
   const removeNote = useWorkspaceStore((state) => state.removeNote)
   const [editingId, setEditingId] = useState<Id | null>(null)
@@ -47,7 +49,7 @@ export const MessageNotes = memo(function MessageNotes({
       })
       setEditingId(null)
     } catch (error) {
-      toast.error(`保存标注失败：${errorMessage(error)}`)
+      toast.error(t('note.toastSaveFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -55,9 +57,13 @@ export const MessageNotes = memo(function MessageNotes({
     try {
       await removeNote(note.id)
       setEditingId(null)
-      toast.success(note.labels.length > 0 ? `已删除标注 ${formatNoteLabels(note.labels)}` : '已删除高亮')
+      toast.success(
+        note.labels.length > 0
+          ? t('note.toastDeleted', { labels: formatNoteLabels(note.labels) })
+          : t('note.toastDeletedHighlight'),
+      )
     } catch (error) {
-      toast.error(`删除标注失败：${errorMessage(error)}`)
+      toast.error(t('note.toastDeleteFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -78,7 +84,7 @@ export const MessageNotes = memo(function MessageNotes({
             <button
               type="button"
               onClick={() => revealNote(note)}
-              title="定位到正文里的这段文字"
+              title={t('note.locate')}
               className="inline-flex min-w-0 items-center gap-1.5 text-ink-soft transition-colors hover:text-accent"
             >
               <span
@@ -107,8 +113,8 @@ export const MessageNotes = memo(function MessageNotes({
               type="button"
               aria-label={
                 note.labels.length > 0
-                  ? `编辑标注 ${formatNoteLabels(note.labels)}`
-                  : '编辑高亮'
+                  ? t('note.editAria', { labels: formatNoteLabels(note.labels) })
+                  : t('note.editHighlightAria')
               }
               onClick={() => setEditingId(note.id)}
               className="shrink-0 rounded-full p-0.5 text-faint opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover/note:opacity-100"

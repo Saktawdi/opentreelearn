@@ -8,6 +8,7 @@ import {
   MessageSquareQuote,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { Id, NoteLabel, NoteOrigin } from '@/domain/models'
@@ -263,6 +264,7 @@ export function SelectionMenu({
   /** 新建标注的创建面；缺省 = 学习对话 */
   noteOrigin?: NoteOrigin
 }) {
+  const { t } = useTranslation('chat')
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const sendMessage = useWorkspaceStore((state) => state.sendMessage)
   const addNote = useWorkspaceStore((state) => state.addNote)
@@ -372,18 +374,18 @@ export function SelectionMenu({
         await useSettingsStore.getState().patch({
           branchPrompt: { showDialog: false, rememberedPrompt: prompt },
         })
-        toast.success('已记住该指令：下次新建子节点将不再弹窗（可在 设置 → 偏好 修改）')
+        toast.success(t('selection.remembered'))
       }
       // 分支节点：落在当前节点下方，并从选中文字所在的那条消息处继承上下文
       const node = await applyAction('branch', nodeId, target.messageId)
-      if (!node) throw new Error('未能创建节点')
+      if (!node) throw new Error(t('selection.createNodeFailed'))
       setBranching(null)
       await sendMessage(node.id, [
         { type: 'quote', text: target.quote },
         { type: 'text', text: prompt },
       ])
     } catch (error) {
-      toast.error(`新建分支失败：${errorMessage(error)}`)
+      toast.error(t('selection.branchFailed', { error: errorMessage(error) }))
     } finally {
       setBusy(false)
     }
@@ -447,11 +449,11 @@ export function SelectionMenu({
           ...(input.body !== undefined ? { body: input.body } : {}),
           ...(noteOrigin !== 'chat' ? { origin: noteOrigin } : {}),
         })
-        if (!created) throw new Error('未能写入标注')
+        if (!created) throw new Error(t('selection.noteWriteFailed'))
       }
       setAnnotating(null)
     } catch (error) {
-      toast.error(`保存标注失败：${errorMessage(error)}`)
+      toast.error(t('note.toastSaveFailed', { error: errorMessage(error) }))
     }
   }
 
@@ -459,7 +461,7 @@ export function SelectionMenu({
     try {
       await removeNote(id)
     } catch (error) {
-      toast.error(`删除标注失败：${errorMessage(error)}`)
+      toast.error(t('note.toastDeleteFailed', { error: errorMessage(error) }))
     } finally {
       setAnnotating(null)
     }
@@ -489,7 +491,7 @@ export function SelectionMenu({
       if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
       copiedTimer.current = window.setTimeout(() => setCopied(false), 1400)
     } catch {
-      toast.error('复制失败，请手动复制')
+      toast.error(t('selection.copyFailed'))
     }
   }
 
@@ -507,7 +509,7 @@ export function SelectionMenu({
             index={index}
             slots={slots.length}
             icon={<Highlighter className="h-4 w-4" />}
-            label="标注 / 高亮"
+            label={t('selection.annotate')}
             busy={busy}
             onSelect={openAnnotate}
           />
@@ -519,7 +521,7 @@ export function SelectionMenu({
             index={index}
             slots={slots.length}
             icon={<MessageSquareQuote className="h-4 w-4" />}
-            label="引用到对话"
+            label={t('selection.quote')}
             onSelect={quoteToComposer}
           />
         )
@@ -530,7 +532,7 @@ export function SelectionMenu({
             index={index}
             slots={slots.length}
             icon={<MessageCircleQuestion className="h-4 w-4" />}
-            label="就这段追问"
+            label={t('selection.ask')}
             onSelect={askAboutSelection}
           />
         )
@@ -547,7 +549,7 @@ export function SelectionMenu({
                 <GitBranch className="h-4 w-4" />
               )
             }
-            label="新建子分支节点"
+            label={t('selection.branchNode')}
             busy={busy}
             onSelect={openBranch}
           />
@@ -559,7 +561,7 @@ export function SelectionMenu({
             index={index}
             slots={slots.length}
             icon={copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-            label={copied ? '已复制' : '复制'}
+            label={copied ? t('selection.copied') : t('selection.copy')}
             onSelect={() => void copy()}
           />
         )
