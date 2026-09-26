@@ -1,5 +1,6 @@
 import { Download, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -32,10 +33,11 @@ import { useImportProject } from './useImportProject'
 const ALL_TAGS = '__all__'
 
 export function ProjectsPage() {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const projects = useProjectsStore((state) => state.projects)
   const removeProject = useProjectsStore((state) => state.remove)
-  const { handleFile, importing } = useImportProject()
+  const { handleFile, importing } = useImportProject(t)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
@@ -52,11 +54,11 @@ export function ProjectsPage() {
     try {
       await exportProjectAsTreeFile(project)
       // 说明清楚导出的是学习树：本机复习会话（未做完的那一批）不参与导出，也不是完整备份
-      toast.success(`已导出「${project.name}」`, {
-        description: '学习树与对话；本机复习记录不包含在内',
+      toast.success(t('export.success', { name: project.name }), {
+        description: t('export.successDescription'),
       })
     } catch (error) {
-      toast.error(`导出失败：${errorMessage(error)}`)
+      toast.error(t('export.failed', { message: errorMessage(error) }))
     } finally {
       setExportingId(null)
     }
@@ -101,16 +103,16 @@ export function ProjectsPage() {
         <div className="pointer-events-none absolute inset-4 z-40 flex items-center justify-center rounded-lg border border-dashed border-accent bg-canvas/90 p-8 text-center">
           <div>
             <Upload className="mx-auto h-5 w-5 text-accent" />
-            <p className="mt-2 text-sm font-medium text-ink">松开即可导入</p>
+            <p className="mt-2 text-sm font-medium text-ink">{t('dropzone.release')}</p>
           </div>
         </div>
       ) : null}
 
       <div className="mx-auto w-full max-w-5xl px-6 py-7">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">学习项目</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
           {projects.length > 0 ? (
-            <p className="mt-1 text-xs text-muted">{projects.length} 个项目</p>
+            <p className="mt-1 text-xs text-muted">{t('page.projectCount', { count: projects.length })}</p>
           ) : null}
         </div>
 
@@ -125,7 +127,7 @@ export function ProjectsPage() {
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="搜索项目"
+                    placeholder={t('search.placeholder')}
                     className="w-56 pl-8"
                   />
                 </div>
@@ -133,7 +135,7 @@ export function ProjectsPage() {
                 {tags.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <TagChip active={activeTag === ALL_TAGS} onClick={() => setActiveTag(ALL_TAGS)}>
-                      全部
+                      {t('tags.all')}
                     </TagChip>
                     {tags.map((tag) => (
                       <TagChip
@@ -157,7 +159,7 @@ export function ProjectsPage() {
               onClick={() => fileInputRef.current?.click()}
             >
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              导入 .tree
+              {t('actions.import')}
             </Button>
             <input
               ref={fileInputRef}
@@ -172,7 +174,7 @@ export function ProjectsPage() {
             />
             <Button variant="primary" onClick={openCreate}>
               <Plus className="h-4 w-4" />
-              新建项目
+              {t('actions.create')}
             </Button>
           </div>
         </div>
@@ -182,7 +184,7 @@ export function ProjectsPage() {
         ) : (
           <>
             {visible.length === 0 ? (
-              <p className="py-20 text-center text-sm text-muted">没有匹配的项目</p>
+              <p className="py-20 text-center text-sm text-muted">{t('page.noMatches')}</p>
             ) : (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {visible.map((project) => (
@@ -212,7 +214,7 @@ export function ProjectsPage() {
                             }}
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            编辑
+                            {t('actions.edit')}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={exportingId === project.id}
@@ -223,7 +225,7 @@ export function ProjectsPage() {
                             ) : (
                               <Download className="h-3.5 w-3.5" />
                             )}
-                            导出为 .tree
+                            {t('actions.export')}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -231,7 +233,7 @@ export function ProjectsPage() {
                             onSelect={() => setDeleting(project)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            删除
+                            {t('actions.delete')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -252,7 +254,7 @@ export function ProjectsPage() {
                     </div>
 
                     <p className="mt-3 border-t border-line pt-2.5 text-xs text-faint flex items-center justify-between">
-                      <span>更新于 {formatRelativeTime(project.updatedAt)}</span>
+                      <span>{t('card.updatedAt', { time: formatRelativeTime(project.updatedAt) })}</span>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -261,7 +263,7 @@ export function ProjectsPage() {
                         }}
                         className="text-2xs text-muted hover:text-accent transition-colors"
                       >
-                        进入复习
+                        {t('card.enterReview')}
                       </button>
                     </p>
                   </div>
@@ -283,14 +285,14 @@ export function ProjectsPage() {
       <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
         <DialogContent className="w-[min(420px,100%)]">
           <DialogHeader>
-            <DialogTitle>删除项目</DialogTitle>
+            <DialogTitle>{t('delete.title')}</DialogTitle>
             <DialogDescription>
-              会连同「{deleting?.name}」的全部节点与对话一起删除，无法恢复。
+              {t('delete.description', { name: deleting?.name ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleting(null)}>
-              取消
+              {t('actions.cancel')}
             </Button>
             <Button
               variant="danger"
@@ -299,7 +301,7 @@ export function ProjectsPage() {
                 setDeleting(null)
               }}
             >
-              删除
+              {t('actions.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -335,12 +337,11 @@ function TagChip({
 
 /** 空态：一句话说明这是什么，动作交给页头的「新建项目」。 */
 function EmptyState() {
+  const { t } = useTranslation('projects')
   return (
     <div className="mt-14 rounded-lg border border-line/70 px-6 py-10">
-      <h2 className="text-base font-medium text-ink">还没有项目</h2>
-      <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">
-        一个项目就是一张画布：在节点里向模型提问，再从任意一条回答分出新的支线。
-      </p>
+      <h2 className="text-base font-medium text-ink">{t('empty.title')}</h2>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">{t('empty.description')}</p>
     </div>
   )
 }

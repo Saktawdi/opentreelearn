@@ -1,5 +1,6 @@
 import { Brain, ChevronRight } from 'lucide-react'
 import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { Project } from '@/domain/models'
 import { useReviewStore } from '@/stores/review-store'
@@ -11,6 +12,7 @@ import { useReviewStore } from '@/stores/review-store'
  * 每天最多提示一次** —— 反复弹的提醒等于训练用户忽略提醒。
  */
 export function TodayReviewPanel({ projects }: { projects: Project[] }) {
+  const { t } = useTranslation('projects')
   const navigate = useNavigate()
   const summaries = useReviewStore((state) => state.summaries)
   const total = useReviewStore((state) => state.total)
@@ -25,20 +27,20 @@ export function TodayReviewPanel({ projects }: { projects: Project[] }) {
   if (!loaded || total.due === 0) return null
 
   const nameOf = (projectId: string) =>
-    projects.find((project) => project.id === projectId)?.name ?? '已删除的项目'
+    projects.find((project) => project.id === projectId)?.name ?? t('today.deletedProject')
   const rows = Object.entries(summaries).filter(([, stats]) => stats.due > 0)
 
   return (
     <div className="mt-5 rounded-lg border border-accent/25 bg-accent-soft/20 px-4 py-3.5">
       <div className="flex items-center gap-2">
         <Brain className="h-4 w-4 text-accent" />
-        <h2 className="text-sm font-medium text-ink">今日复习</h2>
+        <h2 className="text-sm font-medium text-ink">{t('today.title')}</h2>
         <span className="text-xs text-muted">
-          到期 <span className="tabular-nums text-ink-soft">{total.due}</span>
+          {t('today.due')} <span className="tabular-nums text-ink-soft">{total.due}</span>
           {total.overdue > 0 ? (
             <>
               {' '}
-              · 其中逾期 <span className="tabular-nums text-danger">{total.overdue}</span>
+              {t('today.overdueHeading')} <span className="tabular-nums text-danger">{total.overdue}</span>
             </>
           ) : null}
         </span>
@@ -54,11 +56,11 @@ export function TodayReviewPanel({ projects }: { projects: Project[] }) {
             >
               <span className="min-w-0 flex-1 truncate">{nameOf(projectId)}</span>
               <span className="shrink-0 text-2xs">
-                到期 <span className="tabular-nums">{stats.due}</span>
+                {t('today.due')} <span className="tabular-nums">{stats.due}</span>
                 {stats.overdue > 0 ? (
                   <>
                     {' '}
-                    · 逾期 <span className="tabular-nums text-danger">{stats.overdue}</span>
+                    {t('today.overdueRow')} <span className="tabular-nums text-danger">{stats.overdue}</span>
                   </>
                 ) : null}
               </span>

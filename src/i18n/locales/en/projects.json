@@ -1,1 +1,75 @@
-{}
+{
+  "page": {
+    "title": "Projects",
+    "projectCount_one": "{{count}} project",
+    "projectCount_other": "{{count}} projects",
+    "noMatches": "No matching projects"
+  },
+  "dropzone": {
+    "release": "Release to import"
+  },
+  "search": {
+    "placeholder": "Search projects"
+  },
+  "tags": {
+    "all": "All"
+  },
+  "actions": {
+    "import": "Import .tree",
+    "create": "New project",
+    "edit": "Edit",
+    "export": "Export as .tree",
+    "delete": "Delete",
+    "cancel": "Cancel"
+  },
+  "card": {
+    "updatedAt": "Updated {{time}}",
+    "enterReview": "Start review"
+  },
+  "empty": {
+    "title": "No projects yet",
+    "description": "A project is a canvas: ask the model in a node, then branch off any reply into a new thread."
+  },
+  "delete": {
+    "title": "Delete project",
+    "description": "\"{{name}}\" and all of its nodes and conversations will be deleted. This cannot be undone."
+  },
+  "export": {
+    "success": "Exported \"{{name}}\"",
+    "successDescription": "The learning tree and conversations; local review records are not included.",
+    "failed": "Export failed: {{message}}"
+  },
+  "import": {
+    "success": "Imported \"{{name}}\": {{cards}}, {{messages}}",
+    "nodes_one": "{{count}} node",
+    "nodes_other": "{{count}} nodes",
+    "messages_one": "{{count}} conversation",
+    "messages_other": "{{count}} conversations",
+    "notes_one": "{{count}} note",
+    "notes_other": "{{count}} notes",
+    "imagesSkipped_one": "{{count}} image not included",
+    "imagesSkipped_other": "{{count}} images not included",
+    "failed": "Import failed: {{message}}"
+  },
+  "today": {
+    "title": "Today's review",
+    "deletedProject": "Deleted project",
+    "due": "Due",
+    "overdueHeading": "· overdue",
+    "overdueRow": "· overdue"
+  },
+  "dialog": {
+    "createTitle": "New project",
+    "editTitle": "Edit project",
+    "name": "Name",
+    "namePlaceholder": "e.g. Linear Algebra · From Matrices to Eigenvalues",
+    "description": "Description",
+    "optional": "Optional.",
+    "descriptionPlaceholder": "What problem are you solving, and what do you want to learn?",
+    "tags": "Tags",
+    "tagsHint": "Separate with Enter or comma.",
+    "tagsPlaceholder": "math, exams…",
+    "save": "Save",
+    "create": "Create"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -27,6 +28,7 @@ export function ProjectDialog({
 }) {
   const createProject = useProjectsStore((state) => state.create)
   const updateProject = useProjectsStore((state) => state.update)
+  const { t } = useTranslation('projects')
 
   const [name, setName] = useState(() => project?.name ?? '')
   const [description, setDescription] = useState(() => project?.description ?? '')
@@ -64,15 +66,15 @@ export function ProjectDialog({
       {/* 没有描述文本时显式置空 describedby，避免 radix 在控制台告警 */}
       <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{project ? '编辑项目' : '新建项目'}</DialogTitle>
+          <DialogTitle>{project ? t('dialog.editTitle') : t('dialog.createTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <DialogField label="名称">
+          <DialogField label={t('dialog.name')}>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="例如：线性代数 · 从矩阵到特征值"
+              placeholder={t('dialog.namePlaceholder')}
               autoFocus
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) void submit()
@@ -80,26 +82,26 @@ export function ProjectDialog({
             />
           </DialogField>
 
-          <DialogField label="描述" hint="可选。">
+          <DialogField label={t('dialog.description')} hint={t('dialog.optional')}>
             <Textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={2}
-              placeholder="想解决什么问题、学到什么程度"
+              placeholder={t('dialog.descriptionPlaceholder')}
             />
           </DialogField>
 
-          <DialogField label="标签" hint="回车或逗号分隔。">
-            <TagInput value={tags} onChange={setTags} placeholder="数学、考研…" />
+          <DialogField label={t('dialog.tags')} hint={t('dialog.tagsHint')}>
+            <TagInput value={tags} onChange={setTags} placeholder={t('dialog.tagsPlaceholder')} />
           </DialogField>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            取消
+            {t('actions.cancel')}
           </Button>
           <Button variant="primary" onClick={() => void submit()} disabled={!name.trim() || saving}>
-            {project ? '保存' : '创建'}
+            {project ? t('dialog.save') : t('dialog.create')}
           </Button>
         </DialogFooter>
       </DialogContent>

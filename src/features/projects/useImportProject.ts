@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -5,7 +6,7 @@ import { errorMessage } from '@/lib/utils'
 import { importTreeFile } from '@/services/import'
 import { useProjectsStore } from '@/stores/projects-store'
 
-export function useImportProject() {
+export function useImportProject(t: TFunction<'projects'>) {
   const navigate = useNavigate()
   const loadProjects = useProjectsStore((state) => state.load)
   const [importing, setImporting] = useState(false)
@@ -17,17 +18,21 @@ export function useImportProject() {
       const result = await importTreeFile(file)
       await loadProjects()
       const extra: string[] = []
-      if (result.stats.notes > 0) extra.push(`${result.stats.notes} 条笔记`)
-      if (result.stats.images > 0) extra.push(`${result.stats.images} 张图片未包含`)
+      if (result.stats.notes > 0) extra.push(t('import.notes', { count: result.stats.notes }))
+      if (result.stats.images > 0) extra.push(t('import.imagesSkipped', { count: result.stats.images }))
 
       const description = extra.length > 0 ? extra.join(' · ') : undefined
       toast.success(
-        `已导入「${result.project.name}」：${result.stats.cards} 个节点，${result.stats.messages} 条对话`,
+        t('import.success', {
+          name: result.project.name,
+          cards: t('import.nodes', { count: result.stats.cards }),
+          messages: t('import.messages', { count: result.stats.messages }),
+        }),
         description ? { description } : undefined,
       )
       navigate(`/p/${result.project.id}`)
     } catch (error) {
-      toast.error(`导入失败：${errorMessage(error)}`)
+      toast.error(t('import.failed', { message: errorMessage(error) }))
     } finally {
       setImporting(false)
     }
