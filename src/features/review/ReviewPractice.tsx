@@ -748,7 +748,7 @@ function ReviewTranscriptCard({ message }: { message: ReviewSessionMessage }) {
               <img
                 key={id}
                 src={url}
-                alt="作答图片"
+                alt={t('practice.answerImageAlt')}
                 className="max-h-48 rounded-md border border-line/60"
               />
             ) : null
