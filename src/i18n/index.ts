@@ -10,9 +10,9 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    supportedLngs: ['zh-CN', 'en'],
-    // 'en-US' 之类的地区变体折叠到 'en'；'zh' 之类的裸语言码落不中就交给 fallbackLng
-    nonExplicitSupportedLngs: true,
+    // 不设 supportedLngs：靠资源包层级回退即可——'en-US'→en，'zh'/'zh-TW'→zh-CN，
+    // 其余语言全部落 fallbackLng。（实测 v26 里 supportedLngs+nonExplicitSupportedLngs
+    // 组合会让 t() 解析失效，返回裸键。）
     fallbackLng: 'zh-CN',
     detection: {
       // 用户显式选过的语言存 localStorage，优先于浏览器偏好
