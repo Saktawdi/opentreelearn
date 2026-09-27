@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { normalizeDisplayMath } from './math-fences'
+import { REMARK_PLUGINS } from './remark-options'
 
 /**
  * 块级公式围栏的规范化。
@@ -23,7 +22,7 @@ import { normalizeDisplayMath } from './math-fences'
 function renderWithAppPipeline(content: string): string {
   return renderToStaticMarkup(
     ReactMarkdown({
-      remarkPlugins: [remarkGfm, remarkMath],
+      remarkPlugins: REMARK_PLUGINS,
       rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: false, output: 'html' }]],
       children: normalizeDisplayMath(content),
     }),
@@ -34,7 +33,7 @@ function renderWithAppPipeline(content: string): string {
 function renderWithoutNormalization(content: string): string {
   return renderToStaticMarkup(
     ReactMarkdown({
-      remarkPlugins: [remarkGfm, remarkMath],
+      remarkPlugins: REMARK_PLUGINS,
       rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: false, output: 'html' }]],
       children: content,
     }),
@@ -135,6 +134,86 @@ describe('normalizeDisplayMath', () => {
   })
 })
 
+describe('列表项内的块级公式（容器边界）', () => {
+  // 用户真实故障：列表项内 3 空格缩进开栏，`\begin{cases}` 与闭合 `$$` 都顶格。
+  // 顶格行不是列表续行 → 公式块在项内被掐成空块，顶格 `$$` 又开新块吞到文末 → 红色原文。
+  const listCase = [
+    '2. **求一阶偏导并令为零**：',
+    '   $$',
+    '\\begin{cases}',
+    "   L'_x = f'_x + \\lambda \\varphi'_x = 0 \\\\",
+    "   L'_y = f'_y + \\lambda \\varphi'_y = 0 \\\\",
+    "   L'_\\lambda = \\varphi(x, y) = 0",
+    '   \\end{cases}',
+    '$$',
+    '3. **联立解方程组**：求出驻点。',
+    '',
+    '### 三、检验',
+  ].join('\n')
+
+  it('块内缩进不足开栏缩进的行补齐到开栏缩进，撑住列表容器', () => {
+    expect(normalizeDisplayMath(listCase)).toBe(
+      [
+        '2. **求一阶偏导并令为零**：',
+        '   $$',
+        '   \\begin{cases}',
+        "   L'_x = f'_x + \\lambda \\varphi'_x = 0 \\\\",
+        "   L'_y = f'_y + \\lambda \\varphi'_y = 0 \\\\",
+        "   L'_\\lambda = \\varphi(x, y) = 0",
+        '   \\end{cases}',
+        '   $$',
+        '3. **联立解方程组**：求出驻点。',
+        '',
+        '### 三、检验',
+      ].join('\n'),
+    )
+    // 幂等
+    expect(normalizeDisplayMath(normalizeDisplayMath(listCase))).toBe(normalizeDisplayMath(listCase))
+  })
+
+  it('列表内「开栏同行带内容」的公式也走同一修复', () => {
+    const input = ['- 第一步：', '   $$x = \\begin{cases}', '   1, & a \\\\', '   \\end{cases}', '$$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(
+      [
+        '- 第一步：',
+        '   $$',
+        '   x = \\begin{cases}',
+        '   1, & a \\\\',
+        '   \\end{cases}',
+        '   $$',
+      ].join('\n'),
+    )
+  })
+
+  it('顶层（非容器）缩进开栏补齐后解析等价，闭合围栏仍在合法缩进内', () => {
+    const input = ['   $$', 'x = 1', '$$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(['   $$', '   x = 1', '   $$'].join('\n'))
+  })
+
+  it('列表内未闭合的半截公式仍不改写（与不规范化渲染一致）', () => {
+    const unclosed = ['2. 第一步：', '   $$', '\\begin{cases}', "   L'_x = 0 \\\\"].join('\n')
+    expect(normalizeDisplayMath(unclosed)).toBe(unclosed)
+    expect(renderWithAppPipeline(unclosed)).toBe(renderWithoutNormalization(unclosed))
+  })
+
+  it('端到端：cases 渲染成功、列表与后文不再被吞', () => {
+    const html = renderWithAppPipeline(listCase)
+    expect(hasKatexError(html)).toBe(false)
+    expect(html).toContain('mtable')
+    // 列表延续：第 2、3 项在同一个有序列表里，cases 排在第 2 项内
+    expect(html).toContain('<ol start="2">')
+    expect(html).toContain('联立解方程组')
+    // 后文标题照常渲染，没有被吞进公式
+    expect(html).toContain('<h3')
+  })
+
+  it('对照组：不规范化时同一段内容渲染出红色错误块（说明修复确实在起作用）', () => {
+    const broken = renderWithoutNormalization(listCase)
+    expect(hasKatexError(broken)).toBe(true)
+    expect(broken).not.toContain('<h3')
+  })
+})
+
 describe('修复后的端到端渲染', () => {
   it('cases 的两种围栏写法都渲染成功，且不再吞掉后文', () => {
     // 模型的原写法：开栏同行有内容 + 行尾闭合
@@ -177,7 +256,7 @@ describe('修复后的端到端渲染', () => {
 
     const broken = renderToStaticMarkup(
       ReactMarkdown({
-        remarkPlugins: [remarkGfm, remarkMath],
+        remarkPlugins: REMARK_PLUGINS,
         rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: false, output: 'html' }]],
         children: original,
       }),

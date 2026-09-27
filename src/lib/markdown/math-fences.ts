@@ -13,12 +13,22 @@
  * → 公式块一路吞到文末。渲染端配了 `throwOnError: false`，于是整段被吞进来的源码被
  * 原样渲染成一大片红色原始文本。
  *
- * 这里只做一件事：把**已闭合的**块级公式的两个围栏都挪到独占一行。三条边界：
+ * 这里只做两件事，都只针对**已闭合的**块级公式：
+ *
+ * 1. 把两个围栏挪到独占一行；
+ * 2. 开栏带缩进（即公式写在列表项里）时，把块内缩进不足开栏缩进的行补齐到该缩进。
+ *    这是容器边界的坑：列表项要求续行至少缩进到内容列，`$$` 在项内开栏后，块里任何
+ *    一行顶格（模型写 `\begin{cases}` 的最爱）都会把列表项截断 —— 公式块在项内被掐成
+ *    空块，块后的顶格 `$$` 又开一个新公式块一路吞到文末，渲染出大片红色原文。
+ *
+ * 边界：
  *
  * - 单行 `$$…$$` 与行内 `$…$` 一律原样保留 —— 它们走行内解析，本来就不触发上面两条规则；
  * - 代码围栏（``` / ~~~）内部不动，避免改坏代码示例；
  * - **没找到闭合围栏的块不做任何改写**：流式生成中途的半截公式本来就会被解析器按
- *   文末自动闭合处理，替它补围栏只会把「显示原文」变成「红色报错」，白白更差。
+ *   文末自动闭合处理，替它补围栏只会把「显示原文」变成「红色报错」，白白更差；
+ * - 只认 ≤ 3 空格缩进的开栏（与围栏解析一致），更深的嵌套列表（两位编号 `10.` 的
+ *   内容列、二级列表）不在此列，避免误伤顶层 4 空格缩进的代码块。
  */
 
 interface DollarRun {
@@ -58,6 +68,13 @@ function isClosingFenceLine(line: string): boolean {
   const run = findDollarRun(line, 0)
   if (!run) return false
   return line.slice(0, run.start).trim() === '' && line.slice(run.start + run.length).trim() === ''
+}
+
+/** 前导空格不足 `width` 的行补齐到 `width`；tab 开头的行补齐后顶到下一制表位，不影响续行判定。 */
+function padToIndent(line: string, width: number): string {
+  if (width === 0) return line
+  const spaces = /^ */.exec(line)?.[0].length ?? 0
+  return spaces >= width ? line : `${' '.repeat(width - spaces)}${line}`
 }
 
 /** `\end{cases}$$` 这种「内容 + 行尾 `$$`」：按行内意图应在 `$$` 前断行。 */
@@ -170,18 +187,21 @@ export function normalizeDisplayMath(content: string): string {
     }
 
     const closingLine = lines[closeIndex]
+    // 开栏带缩进说明公式写在列表项里：块内所有行补齐到开栏缩进，才能撑住容器的续行
+    // 要求（顶层场景 padToIndent 是空操作，补掉的空格也会被围栏按开栏缩进剥掉）
+    const padWidth = opening.indent.length
     if (opening.rest.trim() === '') {
       output.push(line)
     } else {
       output.push(`${opening.indent}$$`)
-      output.push(opening.rest.trimStart())
+      output.push(padToIndent(opening.rest.trimStart(), padWidth))
     }
-    output.push(...lines.slice(index + 1, closeIndex))
+    output.push(...lines.slice(index + 1, closeIndex).map((l) => padToIndent(l, padWidth)))
     if (closing.kind === 'trailing') {
-      output.push(closingLine.slice(0, closing.at.start))
-      output.push(closingLine.slice(closing.at.start))
+      output.push(padToIndent(closingLine.slice(0, closing.at.start), padWidth))
+      output.push(padToIndent(closingLine.slice(closing.at.start), padWidth))
     } else {
-      output.push(closingLine)
+      output.push(padToIndent(closingLine, padWidth))
     }
     index = closeIndex + 1
   }

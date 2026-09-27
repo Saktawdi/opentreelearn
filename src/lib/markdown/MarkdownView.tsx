@@ -3,12 +3,11 @@ import { isValidElement, memo, useEffect, useMemo, useState, type ReactNode } fr
 import ReactMarkdown, { type Options } from 'react-markdown'
 import { useTranslation } from 'react-i18next'
 import rehypeKatex from 'rehype-katex'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { highlightCode } from './highlighter'
 import { normalizeDisplayMath } from './math-fences'
 import { normalizeMathCommands } from './math-commands'
+import { REMARK_PLUGINS } from './remark-options'
 import { rehypeSourceMap } from './source-map'
 
 /** rehype 插件表的类型：从 react-markdown 的 Options 里取，避免直接依赖 unified 的类型。 */
@@ -116,7 +115,7 @@ export const MarkdownView = memo(function MarkdownView({
   return (
     <div className={cn('md-body', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={rehypePlugins}
         components={{
           pre({ children, node, ...props }) {
