@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import type { Node, NodeReview, ReviewCard, ReviewGrade } from '@/domain/models'
 import { createReviewCard, reviewRetrievability, scheduleReview } from './fsrs'
 
@@ -26,7 +27,7 @@ export const RELEARN_MAX_SCORE = 35
  * 打磨过的四档措辞：`again` 说「没想起来」而不是「忘了」—— 前者描述这次回忆的
  * 事实，后者像在评价人；`easy` 说「很熟悉」而不是「太简单」，避免暗示「该加难度」。
  */
-export const GRADE_ACTION_LABEL_KEY: Record<ReviewGrade, string> = {
+export const GRADE_ACTION_LABEL_KEY: Record<ReviewGrade, ParseKeys<'common'>> = {
   again: 'grade.again',
   hard: 'grade.hard',
   good: 'grade.good',
@@ -34,7 +35,7 @@ export const GRADE_ACTION_LABEL_KEY: Record<ReviewGrade, string> = {
 }
 
 /** 每个档位的一句辅助说明键，帮助用户判断该选哪一档。 */
-export const GRADE_HINT_LABEL_KEY: Record<ReviewGrade, string> = {
+export const GRADE_HINT_LABEL_KEY: Record<ReviewGrade, ParseKeys<'common'>> = {
   again: 'gradeHint.again',
   hard: 'gradeHint.hard',
   good: 'gradeHint.good',
@@ -42,7 +43,7 @@ export const GRADE_HINT_LABEL_KEY: Record<ReviewGrade, string> = {
 }
 
 /** 节点的学习状态措辞键（比评分按钮更书面一点，用于节点头部与详情）。 */
-export const GRADE_BAND_LABEL_KEY: Record<ReviewGrade, string> = {
+export const GRADE_BAND_LABEL_KEY: Record<ReviewGrade, ParseKeys<'common'>> = {
   again: 'band.again',
   hard: 'band.hard',
   good: 'band.good',

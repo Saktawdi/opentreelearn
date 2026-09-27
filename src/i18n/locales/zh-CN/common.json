@@ -158,5 +158,12 @@
   "providerKind": {
     "openaiCompatible": "OpenAI 兼容"
   },
-  "copyCode": "复制代码"
+  "copyCode": "复制代码",
+  "branchChoice": {
+    "consult": { "label": "咨询", "hint": "就这段内容提问、答疑" },
+    "interpret": { "label": "解读", "hint": "逐句解释含义" },
+    "extend": { "label": "扩展", "hint": "延伸相关知识与例子" },
+    "quiz": { "label": "出题", "hint": "根据这段内容练习" },
+    "summarize": { "label": "总结", "hint": "提炼便于记忆的要点" }
+  }
 }

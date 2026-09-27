@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import i18n from '@/i18n'
 import type { ForkRef, Id, Node } from '@/domain/models'
 import { newId } from '@/lib/id'
@@ -8,7 +9,7 @@ export type NodeActionKind = 'diverge' | 'child' | 'branch'
  * 节点操作提示语的 i18n 键（渲染处用 t() 解析为当前语言）。
  * 消费方：FocusChatView 的菜单（chat 命名空间）、CanvasContextMenu（canvas 命名空间）。
  */
-export const NODE_ACTION_HINT_KEY: Record<NodeActionKind, string> = {
+export const NODE_ACTION_HINT_KEY: Record<NodeActionKind, ParseKeys<'common'>> = {
   diverge: 'hint.diverge',
   child: 'hint.child',
   branch: 'hint.branch',

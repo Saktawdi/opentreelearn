@@ -59,7 +59,8 @@ function formatBudget(value: number): string {
 }
 
 export function SettingsPage() {
-  const { t } = useTranslation('settings')
+  // 快捷指令芯片的 label/hint 是跨 feature 词表（common）：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['settings', 'common'])
   const settings = useSettingsStore((state) => state.settings)
   const patch = useSettingsStore((state) => state.patch)
   const setModelRef = useSettingsStore((state) => state.setModelRef)
@@ -205,7 +206,7 @@ export function SettingsPage() {
                     <button
                       key={choice.id}
                       type="button"
-                      title={choice.hint}
+                      title={t(`common:${choice.hintKey}`)}
                       onClick={() => setBranchPrompt({ rememberedPrompt: choice.prompt })}
                       className={cn(
                         'rounded-full border px-2.5 py-1 text-xs transition-colors',
@@ -214,7 +215,7 @@ export function SettingsPage() {
                           : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
                       )}
                     >
-                      {choice.label}
+                      {t(`common:${choice.labelKey}`)}
                     </button>
                   )
                 })}

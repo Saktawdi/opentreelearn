@@ -15,7 +15,7 @@ import {
   MAX_BATCH_SIZE,
   type ReviewQueueItem,
 } from '@/domain/review/queue'
-import { reviewReasonOf, retentionLabel } from '@/domain/review/enrollment'
+import { reviewReasonOf, retentionPercent } from '@/domain/review/enrollment'
 import { useDecayClock } from '@/features/chat/useDecayClock'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -173,7 +173,7 @@ export function ReviewOverview({
             if (!node) return null
             const isSelected = selectedIds.has(item.nodeId)
             const reason = reviewReasonOf(node, now)
-            const retention = retentionLabel(node, now)
+            const retention = retentionPercent(node, now)
 
             return (
               <div
@@ -205,11 +205,13 @@ export function ReviewOverview({
                             : 'bg-elevated text-muted border border-line/60',
                         )}
                       >
-                        {reason.label}
+                        {t(reason.labelKey)}
                       </span>
                     </div>
                     <div className="mt-0.5 text-2xs text-faint truncate">
-                      {retention}
+                      {retention === null
+                        ? t('overview.retentionNone')
+                        : t('overview.retentionPercent', { percent: retention })}
                       {node.summary ? ` · ${node.summary}` : ''}
                     </div>
                   </div>

@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import i18n from '@/i18n'
 import type { Note, NoteLabel, NoteOrigin } from './models'
 
@@ -30,8 +31,8 @@ export interface NoteLabelDef {
    * UI 本地化键（common 命名空间）。界面显示优先用当前语言解析这个键，
    * 缺失时退回 name。name/hint 保持不变：AI 上下文与 .tree 导出读的是它们。
    */
-  labelKey?: string
-  hintKey?: string
+  labelKey?: ParseKeys<'common'>
+  hintKey?: ParseKeys<'common'>
 }
 
 /**

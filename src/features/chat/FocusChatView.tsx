@@ -49,7 +49,8 @@ export function FocusChatView({
   isMapCollapsed?: boolean
   onToggleMap: () => void
 }) {
-  const { t } = useTranslation('chat')
+  // 词表键（hint.* / band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['chat', 'common'])
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
@@ -397,7 +398,8 @@ function MasteryIndicator({
   summarizing: boolean
   onClick: () => void
 }) {
-  const { t } = useTranslation('chat')
+  // 词表键（hint.* / band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['chat', 'common'])
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const mastery = node?.mastery
   const lastStudiedAt = node?.lastStudiedAt

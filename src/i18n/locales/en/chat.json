@@ -25,7 +25,9 @@
     "diverge": "Diverge",
     "divergeFromQuestion": "Create a sibling node, inheriting context from this question",
     "divergeFromAnswer": "Create a sibling node, inheriting context from this answer",
-    "jumpToBottom": "Back to bottom"
+    "jumpToBottom": "Back to bottom",
+    "undo": "Undo",
+    "delete": "Delete"
   },
   "message": {
     "aborted": "Generation interrupted: {{message}}",
@@ -152,5 +154,12 @@
     "failed": "Failed",
     "collapse": "Collapse",
     "returned": "Returned"
+  },
+  "branch": {
+    "title": "New child node",
+    "description": "The selected text goes into a quote chip and is sent to the new node together with the instruction you pick below.",
+    "quickLabel": "Quick instructions",
+    "customPlaceholder": "Or write your own instruction, e.g. \"explain this passage with the Feynman technique\"…",
+    "rememberChoice": "Remember this choice and skip this dialog next time"
   }
 }

@@ -39,7 +39,8 @@ export function BranchDialog({
 }) {
   const [draft, setDraft] = useState('')
   const [remember, setRemember] = useState(false)
-  const { t } = useTranslation('chat')
+  // 快捷指令芯片的 label/hint 是跨 feature 词表（common）：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['chat', 'common'])
 
   const confirmDraft = () => {
     const prompt = draft.trim()
@@ -74,7 +75,7 @@ export function BranchDialog({
               <button
                 key={choice.id}
                 type="button"
-                title={choice.hint}
+                title={t(`common:${choice.hintKey}`)}
                 disabled={busy}
                 onClick={() => onConfirm(choice.prompt, remember)}
                 className={cn(
@@ -84,7 +85,7 @@ export function BranchDialog({
                     : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
                 )}
               >
-                {choice.label}
+                {t(`common:${choice.labelKey}`)}
               </button>
             ))}
           </div>

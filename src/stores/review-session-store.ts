@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import { create } from 'zustand'
 import i18n from '@/i18n'
 import { getRepositories } from '@/data'
@@ -800,7 +801,7 @@ const REVIEW_DELIVERY_TOOL_NAMES = new Set([
  *
  * 存键不存译文 —— 模块加载时还没有语言可用，取值时（onToolCall）才解析。
  */
-const TOOL_ACTIVITY_LABEL_KEY: Record<string, string> = {
+const TOOL_ACTIVITY_LABEL_KEY: Record<string, `common:${ParseKeys<'common'>}`> = {
   search_notes: 'common:session.activity.searchNotes',
   search_nodes: 'common:session.activity.searchNodes',
   get_node: 'common:session.activity.getNode',

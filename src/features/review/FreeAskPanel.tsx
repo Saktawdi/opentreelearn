@@ -19,7 +19,12 @@ interface FreeAskPanelProps {
 }
 
 /** 空态的三句起手式：都是「快速回忆今天 / 安排下一步」的问题，而不是知识问答。 */
-const STARTER_KEYS = ['freeAsk.starterToday', 'freeAsk.starterFading', 'freeAsk.starterNext']
+// `as const` 是必需的：丢了字面量类型就退化成 string[]，t() 的严格键校验会报错
+const STARTER_KEYS = [
+  'freeAsk.starterToday',
+  'freeAsk.starterFading',
+  'freeAsk.starterNext',
+] as const
 
 /**
  * 复习工作区的「自由问答」面板。

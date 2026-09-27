@@ -10,9 +10,9 @@ import { useTranslation } from 'react-i18next'
 import type { Node } from '@/domain/models'
 import {
   enrollmentOf,
-  masterySourceLabel,
+  masterySourceOf,
   reviewReasonOf,
-  retentionLabel,
+  retentionPercent,
   assessmentStaleness,
 } from '@/domain/review/enrollment'
 import { GRADE_BAND_LABEL_KEY, gradeOfScore } from '@/domain/review/schedule'
@@ -58,16 +58,17 @@ export function LearningStatusDialog({
   onUnenrollFromReview,
   onStartSingleReview,
 }: LearningStatusDialogProps) {
-  const { t, i18n } = useTranslation('review')
+  // 词表键（band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t, i18n } = useTranslation(['review', 'common'])
   const [busy, setBusy] = useState(false)
   const now = useDecayClock()
 
   const mastery = node.mastery
   const enrolled = enrollmentOf(node) === 'enabled'
-  const sourceLabel = masterySourceLabel(node)
+  const sourceKind = masterySourceOf(node)
   const staleness = assessmentStaleness(node.assessmentMeta, node)
   const reason = reviewReasonOf(node, now)
-  const retention = retentionLabel(node, now)
+  const retention = retentionPercent(node, now)
 
   const handleEnroll = async () => {
     setBusy(true)
@@ -147,7 +148,7 @@ export function LearningStatusDialog({
             <div className="flex items-center justify-between">
               <span className="text-2xs font-medium text-ink">{t('learning.masteryLabel')}</span>
               <span className="rounded bg-elevated px-1.5 py-0.5 text-2xs text-muted border border-line/40">
-                {t('learning.sourcePrefix', { source: sourceLabel })}
+                {t('learning.sourcePrefix', { source: t(`learning.source.${sourceKind}`) })}
               </span>
             </div>
             {mastery ? (
@@ -201,12 +202,16 @@ export function LearningStatusDialog({
                 <div>
                   <span className="text-faint">{t('learning.nextDue')}</span>
                   <span className="text-ink font-medium">
-                    {formatDue(node.review?.card.due)} ({reason.label})
+                    {formatDue(node.review?.card.due)} ({t(reason.labelKey)})
                   </span>
                 </div>
                 <div>
                   <span className="text-faint">{t('learning.retention')}</span>
-                  <span className="text-ink font-medium">{retention}</span>
+                  <span className="text-ink font-medium">
+                    {retention === null
+                      ? t('learning.retentionNone')
+                      : t('learning.retentionPercent', { percent: retention })}
+                  </span>
                 </div>
               </div>
             ) : (

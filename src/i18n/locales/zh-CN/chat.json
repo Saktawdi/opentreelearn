@@ -25,7 +25,9 @@
     "diverge": "发散",
     "divergeFromQuestion": "以这条提问为起点，横向新建继承上下文的节点",
     "divergeFromAnswer": "以这条回答为起点，横向新建继承上下文的节点",
-    "jumpToBottom": "回到底部"
+    "jumpToBottom": "回到底部",
+    "undo": "撤销",
+    "delete": "删除"
   },
   "message": {
     "aborted": "生成中断：{{message}}",
@@ -152,5 +154,12 @@
     "failed": "失败",
     "collapse": "收起",
     "returned": "已返回"
+  },
+  "branch": {
+    "title": "新建子节点",
+    "description": "选中的内容将收进引用胶囊，和下面选定的指令一起发送给新节点。",
+    "quickLabel": "快捷指令",
+    "customPlaceholder": "或自己写指令，例如「用费曼技巧讲解这段内容」…",
+    "rememberChoice": "记住选择，下次不再弹出窗口"
   }
 }

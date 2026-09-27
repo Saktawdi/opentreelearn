@@ -10,6 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "i18n:audit": "node scripts/audit-i18n.mjs",
+    "i18n:scan-cjk": "node scripts/scan-hardcoded-cjk.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

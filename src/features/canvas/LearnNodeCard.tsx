@@ -27,7 +27,8 @@ const HEAT_STYLES: Record<HeatLevel, { border: string; badge: string }> = {
  * 保持率热力角标：只在有卡片、开启热力视图且确实该提醒时出现（默认保持整洁）。
  */
 function HeatBadge({ data }: { data: LearnFlowNode['data'] }) {
-  const { t } = useTranslation('canvas')
+  // 词表键（band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['canvas', 'common'])
   if (!data.reviewCard || !data.showHeatMap) return null
   const heat = cardHeat(data.reviewCard, data.now)
   if (heat === 'none') return null
@@ -50,7 +51,8 @@ function HeatBadge({ data }: { data: LearnFlowNode['data'] }) {
 
 /** 卡片底部的掌握度：子树均值 + 覆盖率；过期时弱化并说明原因。 */
 function MasteryLine({ data }: { data: LearnFlowNode['data'] }) {
-  const { t } = useTranslation('canvas')
+  // 词表键（band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['canvas', 'common'])
   const mastery = data.mastery
   if (!mastery || mastery.total === 0) return null
 
@@ -101,7 +103,8 @@ function MasteryLine({ data }: { data: LearnFlowNode['data'] }) {
 }
 
 export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
-  const { t } = useTranslation('canvas')
+  // 词表键（band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['canvas', 'common'])
   const hasExcerpt = Boolean(data.excerpt)
   const heat = data.reviewCard && data.showHeatMap ? HEAT_STYLES[cardHeat(data.reviewCard, data.now)].border : ''
 

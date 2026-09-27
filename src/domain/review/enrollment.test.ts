@@ -10,7 +10,7 @@ import {
   isEarlyReview,
   isEnrolledForReview,
   isFirstReview,
-  masterySourceLabel,
+  masterySourceOf,
   reviewReasonOf,
 } from './enrollment'
 
@@ -70,7 +70,8 @@ describe('review enrollment domain', () => {
     expect(isFirstReview(firstReviewNode)).toBe(true)
     expect(isDueForReview(firstReviewNode, NOW)).toBe(true)
     expect(reviewReasonOf(firstReviewNode, NOW).kind).toBe('first')
-    expect(reviewReasonOf(firstReviewNode, NOW).label).toBe('首次复习')
+    // 断言数据口径（kind / 键），不断言译文 —— 译文随语言变，不是这个函数的契约
+    expect(reviewReasonOf(firstReviewNode, NOW).labelKey).toBe('reason.first')
   })
 
   it('computes accurate dueCounts without counting overdue twice', () => {
@@ -121,7 +122,7 @@ describe('review enrollment domain', () => {
       },
     })
     expect(assessmentStaleness(freshNode.assessmentMeta, freshNode)).toBe('fresh')
-    expect(masterySourceLabel(freshNode)).toBe('AI 评估')
+    expect(masterySourceOf(freshNode)).toBe('ai')
 
     const newStudyNode = sampleNode({
       mastery: { score: 80, updatedAt: NOW },
@@ -146,6 +147,6 @@ describe('review enrollment domain', () => {
     expect(
       assessmentStaleness(otherVersionNode.assessmentMeta, otherVersionNode, 'path-version-new'),
     ).toBe('otherVersion')
-    expect(masterySourceLabel(otherVersionNode)).toBe('复习反馈')
+    expect(masterySourceOf(otherVersionNode)).toBe('review')
   })
 })

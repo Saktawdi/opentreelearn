@@ -161,5 +161,12 @@
   },
   "providerKind": {
     "openaiCompatible": "OpenAI-compatible"
+  },
+  "branchChoice": {
+    "consult": { "label": "Consult", "hint": "Ask about this passage and get an answer" },
+    "interpret": { "label": "Interpret", "hint": "Explain it sentence by sentence" },
+    "extend": { "label": "Extend", "hint": "Add related knowledge and examples" },
+    "quiz": { "label": "Quiz", "hint": "Practice with questions from this passage" },
+    "summarize": { "label": "Summarize", "hint": "Distill the points worth remembering" }
   }
 }

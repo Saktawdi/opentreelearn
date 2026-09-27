@@ -84,7 +84,8 @@ export function CanvasContextMenu({
   onFitView,
   onResetView,
 }: CanvasContextMenuProps) {
-  const { t } = useTranslation('canvas')
+  // 词表键（hint.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t } = useTranslation(['canvas', 'common'])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

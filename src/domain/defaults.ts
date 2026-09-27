@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import type { BranchPromptPreference, GlobalSettings } from '@/domain/models'
 
 export const DEFAULT_CONTEXT_BUDGET = 24_000
@@ -37,11 +38,17 @@ export function clampAgentMaxSteps(value: number): number {
   return Math.min(Math.max(Math.trunc(value), 0), MAX_AGENT_MAX_STEPS)
 }
 
-/** 「新建子节点」小窗里的快捷指令：一点即发，被框选的原文作为引用胶囊附在消息里。 */
+/**
+ * 「新建子节点」小窗里的快捷指令：一点即发，被框选的原文作为引用胶囊附在消息里。
+ *
+ * 芯片上的 label/hint 是**纯界面文案**，所以只存键：消费方分属 chat 与 settings
+ * 两个命名空间，按 docs/dev/i18n.md 的跨命名空间词表约定键落 common，
+ * 渲染处写 t(`common:${key}`)；prompt 是发给模型的正文，恒为中文——两者不要混。
+ */
 export interface BranchQuickChoice {
   id: string
-  label: string
-  hint: string
+  labelKey: ParseKeys<'common'>
+  hintKey: ParseKeys<'common'>
   /** 点击芯片后直接作为新节点首条提问正文发送的指令全文 */
   prompt: string
 }
@@ -54,32 +61,32 @@ export interface BranchQuickChoice {
 export const BRANCH_QUICK_CHOICES: BranchQuickChoice[] = [
   {
     id: 'consult',
-    label: '咨询',
-    hint: '就这段内容提问、答疑',
+    labelKey: 'branchChoice.consult.label',
+    hintKey: 'branchChoice.consult.hint',
     prompt: '我想就这段内容向你咨询，请帮我解答其中的疑问。',
   },
   {
     id: 'interpret',
-    label: '解读',
-    hint: '逐句解释含义',
+    labelKey: 'branchChoice.interpret.label',
+    hintKey: 'branchChoice.interpret.hint',
     prompt: '请逐句解读这段内容，把含义讲清楚。',
   },
   {
     id: 'extend',
-    label: '扩展',
-    hint: '延伸相关知识与例子',
+    labelKey: 'branchChoice.extend.label',
+    hintKey: 'branchChoice.extend.hint',
     prompt: '请以这段内容为起点做扩展，补充相关的知识点、例子与常见误区。',
   },
   {
     id: 'quiz',
-    label: '出题',
-    hint: '根据这段内容练习',
+    labelKey: 'branchChoice.quiz.label',
+    hintKey: 'branchChoice.quiz.hint',
     prompt: '请根据这段内容出几道练习题，并附上答案与解析。',
   },
   {
     id: 'summarize',
-    label: '总结',
-    hint: '提炼便于记忆的要点',
+    labelKey: 'branchChoice.summarize.label',
+    hintKey: 'branchChoice.summarize.hint',
     prompt: '请把这段内容总结成便于记忆的要点。',
   },
 ]

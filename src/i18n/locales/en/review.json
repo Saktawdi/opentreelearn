@@ -5,13 +5,23 @@
     "learningMaterials": "Source material",
     "noteHistory": "Note history",
     "endSession": "End session",
+    "topicsProgress_one": "{{current}} / {{count}} topic",
     "topicsProgress_other": "{{current}} / {{count}} topics",
     "headerTitle": "{{name}} · Review",
     "untitledProject": "Project",
     "toastNoteOffScreen": "The content this note is attached to isn't on screen right now (it may belong to another topic or an earlier round).",
     "toastNoteNotRendered": "The content for this note hasn't rendered yet. Please try clicking it again in a moment."
   },
+  "reason": {
+    "relearn": "Relearn first",
+    "first": "First review",
+    "due": "Due review",
+    "overdue": "Due review",
+    "early": "Early review"
+  },
   "overview": {
+    "retentionNone": "Not reviewed yet",
+    "retentionPercent": "Retention ~{{percent}}%",
     "bannerTitle": "You have an unfinished review session",
     "bannerProgress_one": "Completed {{done}} of {{count}} topic in this batch. Resume anytime to continue from the same question.",
     "bannerProgress_other": "Completed {{done}} of {{count}} topics in this batch. Resume anytime to continue from the same question.",
@@ -207,6 +217,14 @@
     "notEnrolled": "Not in the plan",
     "nextDue": "Next due: ",
     "retention": "Retention: ",
+    "retentionNone": "Not reviewed yet",
+    "retentionPercent": "about {{percent}}%",
+    "source": {
+      "none": "Not assessed",
+      "ai": "AI assessment",
+      "review": "Review feedback",
+      "history": "Legacy record"
+    },
     "notEnrolledHint": "Topics not in the review plan don't produce due reminders.",
     "noDue": "None",
     "assessing": "Assessing…",

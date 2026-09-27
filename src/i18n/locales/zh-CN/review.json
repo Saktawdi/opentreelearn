@@ -11,7 +11,16 @@
     "toastNoteOffScreen": "这条标记所在的内容当前不在屏幕上（可能属于其他主题或更早的轮次）",
     "toastNoteNotRendered": "标注所在的内容还没渲染出来，请稍后再点一次"
   },
+  "reason": {
+    "relearn": "先补学",
+    "first": "首次复习",
+    "due": "到期复习",
+    "overdue": "到期复习",
+    "early": "提前复习"
+  },
   "overview": {
+    "retentionNone": "还没复习过",
+    "retentionPercent": "保持率约 {{percent}}%",
     "bannerTitle": "当前有尚未完成的复习",
     "bannerProgress_other": "本批已完成 {{done}} / {{count}} 个主题，可随时恢复同一题继续作答。",
     "endSession": "结束本次",
@@ -201,6 +210,14 @@
     "notEnrolled": "未加入计划",
     "nextDue": "下次安排：",
     "retention": "记忆保持率：",
+    "retentionNone": "还没复习过",
+    "retentionPercent": "约 {{percent}}%",
+    "source": {
+      "none": "未评估",
+      "ai": "AI 评估",
+      "review": "复习反馈",
+      "history": "历史记录"
+    },
     "notEnrolledHint": "未加入复习计划的主题不会产生到期提醒。",
     "noDue": "无",
     "assessing": "正在评估…",

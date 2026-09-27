@@ -1,3 +1,4 @@
+import type { ParseKeys } from 'i18next'
 import type { AssessmentMeta, Node, ReviewEnrollment } from '@/domain/models'
 import { MASTERY_STALE_MS } from '@/domain/mastery/aggregate'
 import { dueAt, isRelearning, isReviewable, retentionOf, startOfDay } from './schedule'
@@ -97,26 +98,30 @@ export type ReviewReasonKind = 'overdue' | 'due' | 'first' | 'early' | 'relearn'
 
 export interface ReviewReason {
   kind: ReviewReasonKind
-  label: string
+  /** 界面文案的键（review 命名空间）：词义与 kind 一一对应，渲染处用 t() 解析 */
+  labelKey: ParseKeys<'review'>
 }
 
 export function reviewReasonOf(node: Node, now: number): ReviewReason {
-  if (isRelearning(node)) return { kind: 'relearn', label: '先补学' }
-  if (isFirstReview(node)) return { kind: 'first', label: '首次复习' }
+  if (isRelearning(node)) return { kind: 'relearn', labelKey: 'reason.relearn' }
+  if (isFirstReview(node)) return { kind: 'first', labelKey: 'reason.first' }
   const at = dueAt(node)
-  if (at === null) return { kind: 'due', label: '到期复习' }
+  if (at === null) return { kind: 'due', labelKey: 'reason.due' }
   if (at <= now) {
     return at < startOfDay(now)
-      ? { kind: 'overdue', label: '到期复习' }
-      : { kind: 'due', label: '到期复习' }
+      ? { kind: 'overdue', labelKey: 'reason.overdue' }
+      : { kind: 'due', labelKey: 'reason.due' }
   }
-  return { kind: 'early', label: '提前复习' }
+  return { kind: 'early', labelKey: 'reason.early' }
 }
 
-/** 保持率文案；没排过卡时说明「还没复习过」而不是 0%。 */
-export function retentionLabel(node: Node, now: number): string {
+/**
+ * 记忆保持率的读数；没排过卡时返回 null —— 界面按「还没复习过」显示，
+ * 而不是编一个 0% 出来（语义是「不知道」，不是「快忘了」）。
+ */
+export function retentionPercent(node: Node, now: number): number | null {
   const retention = retentionOf(node, now)
-  return retention === null ? '还没复习过' : `保持率约 ${Math.round(retention * 100)}%`
+  return retention === null ? null : Math.round(retention * 100)
 }
 
 /**
@@ -144,13 +149,19 @@ export function assessmentStaleness(
   return studied - meta.assessedAt > (thresholdMs ?? MASTERY_STALE_MS) ? 'newStudy' : 'fresh'
 }
 
-/** 掌握状态该显示成什么：没评估过 / AI 评估 / 复习评出来的 / 来源不明的历史数据。 */
-export type MasterySourceLabel = '未评估' | 'AI 评估' | '复习反馈' | '历史记录'
+/**
+ * 掌握来源：没评估过 / AI 评估 / 复习评出来的 / 来源不明的历史数据。
+ *
+ * 这里只给**数据口径**（枚举），文案由界面拼 `t(\`learning.source.${kind}\`)` ——
+ * 之前的字面量联合类型（'未评估' | 'AI 评估' …）把中文当成了数据标识，
+ * 英文界面下会直接显示中文。
+ */
+export type MasterySource = 'none' | 'ai' | 'review' | 'history'
 
-export function masterySourceLabel(node: Node): MasterySourceLabel {
-  if (!node.mastery) return '未评估'
+export function masterySourceOf(node: Node): MasterySource {
+  if (!node.mastery) return 'none'
   const source = node.assessmentMeta?.source
-  if (source === 'ai') return 'AI 评估'
-  if (source === 'review') return '复习反馈'
-  return '历史记录'
+  if (source === 'ai') return 'ai'
+  if (source === 'review') return 'review'
+  return 'history'
 }

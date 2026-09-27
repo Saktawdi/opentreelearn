@@ -38,7 +38,8 @@ export function ReviewFeedback({
   onSelectGrade,
   disabled = false,
 }: ReviewFeedbackProps) {
-  const { t, i18n } = useTranslation('review')
+  // 词表键（grade.* / gradeHint.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
+  const { t, i18n } = useTranslation(['review', 'common'])
   const now = useDecayClock()
 
   // 尝试从助手反馈消息中解析 AI 判定标记
