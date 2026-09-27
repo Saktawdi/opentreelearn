@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { Note, NoteLabel, NoteOrigin } from './models'
 
 /** 标注在正文纯文本里的字符区间 `[start, end)`。 */
@@ -82,6 +83,22 @@ export function noteLabelName(label: NoteLabel): string {
 
 export function noteLabelHint(label: NoteLabel): string | undefined {
   return NOTE_LABELS.find((entry) => entry.id === label)?.hint
+}
+
+/**
+ * 标签在界面上的显示文案：内置标签按当前语言解析本地化键；
+ * 项目级自定义标签原样返回——它们是用户自己写的语义，资源里没有键，不该进 t()。
+ * （AI 上下文与导出仍走 name 的中文口径，见 labelKey 的双轨注释。）
+ */
+export function noteLabelDisplay(label: NoteLabel): string {
+  const def = NOTE_LABELS.find((entry) => entry.id === label)
+  return def?.labelKey ? i18n.t(`common:${def.labelKey}`) : label
+}
+
+/** 标签候选按钮的 title 释义：内置按当前语言解析，自定义标签没有释义。 */
+export function noteHintDisplay(label: NoteLabel): string | undefined {
+  const def = NOTE_LABELS.find((entry) => entry.id === label)
+  return def?.hintKey ? i18n.t(`common:${def.hintKey}`) : def?.hint
 }
 
 /** 单个标签：去空白、限长；空串与超长噪声一律丢掉。 */

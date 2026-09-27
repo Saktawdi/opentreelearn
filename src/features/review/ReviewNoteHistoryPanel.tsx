@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { Id, Note, Node } from '@/domain/models'
-import { formatNoteLabels, noteOrigin } from '@/domain/notes'
+import { formatNoteLabels, noteLabelDisplay, noteOrigin } from '@/domain/notes'
 import type { ReviewSessionRecord } from '@/domain/review/session'
 import { cn, errorMessage } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/time'
@@ -241,7 +241,7 @@ function NoteGroup({
                     {note.labels.length > 0 ? (
                       note.labels.map((label) => (
                         <Badge key={label} tone="accent" className="shrink-0">
-                          {t(`common:noteLabel.${label}`)}
+                          {noteLabelDisplay(label)}
                         </Badge>
                       ))
                     ) : (

@@ -21,6 +21,8 @@ import {
   NOTE_LABELS,
   normalizeNoteLabel,
   normalizeNoteLabels,
+  noteHintDisplay,
+  noteLabelDisplay,
 } from '@/domain/notes'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { cn } from '@/lib/utils'
@@ -128,7 +130,7 @@ export function NoteDialog({
                     key={candidate.id}
                     type="button"
                     aria-pressed={active}
-                    title={t(`common:noteHint.${candidate.id}`)}
+                    title={noteHintDisplay(candidate.id)}
                     disabled={!active && atCap}
                     onClick={() => toggle(candidate.id)}
                     className={cn(
@@ -138,7 +140,7 @@ export function NoteDialog({
                         : 'border-line/70 bg-elevated/50 text-ink-soft hover:border-accent/40 hover:text-accent',
                     )}
                   >
-                    {t(`common:noteLabel.${candidate.id}`)}
+                    {noteLabelDisplay(candidate.id)}
                   </button>
                 )
               })}
@@ -149,7 +151,7 @@ export function NoteDialog({
             <div className="mt-2 flex flex-wrap gap-1.5">
               {picked.map((label) => (
                 <Badge key={label} tone="accent" className="gap-1">
-                  {t(`common:noteLabel.${label}`)}
+                  {noteLabelDisplay(label)}
                   <button
                     type="button"
                     aria-label={t('note.removeLabel', { label })}
