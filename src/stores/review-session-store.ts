@@ -2,6 +2,7 @@ import type { ParseKeys } from 'i18next'
 import { create } from 'zustand'
 import i18n from '@/i18n'
 import { getRepositories } from '@/data'
+import type { ReviewRefusal } from '@/data/repository'
 import type { Id, Node, Note, ReviewGrade } from '@/domain/models'
 import {
   advanceAfter,
@@ -474,20 +475,22 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       if (outcome.status === 'unavailable') {
         set({
           session: outcome.session,
-          error: outcome.message,
+          error: refusalText(outcome.reason),
         })
         void get().ensureCurrentItemContent()
         return false
       }
 
       if ('session' in outcome && outcome.session) {
-        set({ error: outcome.message, session: outcome.session })
+        set({ error: refusalText(outcome.reason), session: outcome.session })
         return false
       }
+      // missing（会话已被清理）：写进 item.error 走练习页的行内重试条，
+      // 不再同时写 state.error —— 那会让同一条拒绝被提示两次
       const rollbackNow = Date.now()
-      patchItem(session, item.itemId, { phase: 'feedback', pendingOperationId: operationId, error: outcome.message }, rollbackNow)
+      patchItem(session, item.itemId, { phase: 'feedback', pendingOperationId: operationId, error: refusalText(outcome.reason) }, rollbackNow)
       await getRepositories().reviewSessions.save(session)
-      set({ error: outcome.message, session: cloneForPublish(session)! })
+      set({ session: cloneForPublish(session)! })
       return false
     },
 
@@ -526,7 +529,7 @@ export const useReviewSessionStore = create<ReviewSessionStoreState>()((set, get
       }
 
       set({
-        error: outcome.message,
+        error: refusalText(outcome.reason),
         session: 'session' in outcome && outcome.session ? (outcome.session as ReviewSessionRecord) : session,
       })
       return false
@@ -808,6 +811,30 @@ const TOOL_ACTIVITY_LABEL_KEY: Record<string, `common:${ParseKeys<'common'>}`> =
   get_tree_outline: 'common:session.activity.getTreeOutline',
   list_note_labels: 'common:session.activity.listNoteLabels',
   get_review_history: 'common:session.activity.getReviewHistory',
+}
+
+/**
+ * 仓储层拒绝原因 → 用户可见文案的键。
+ *
+ * 仓储只给数据口径（枚举），译文在这里取 —— 理由同 `TOOL_ACTIVITY_LABEL_KEY`：
+ * 模块加载时没有语言可用，而且拒绝文案必须跟着界面语言走，不能存进会话记录。
+ */
+const REFUSAL_LABEL_KEY: Record<ReviewRefusal, `review:${ParseKeys<'review'>}`> = {
+  sessionMissing: 'review:session.refusal.sessionMissing',
+  itemMissing: 'review:session.refusal.itemMissing',
+  alreadyGraded: 'review:session.refusal.alreadyGraded',
+  sessionEnded: 'review:session.refusal.sessionEnded',
+  phaseChanged: 'review:session.refusal.phaseChanged',
+  versionStale: 'review:session.refusal.versionStale',
+  nodeUnavailable: 'review:session.refusal.nodeUnavailable',
+  unenrolled: 'review:session.refusal.unenrolled',
+  nothingToUndo: 'review:session.refusal.nothingToUndo',
+  nodeDeleted: 'review:session.refusal.nodeDeleted',
+  recordChanged: 'review:session.refusal.recordChanged',
+}
+
+function refusalText(reason: ReviewRefusal): string {
+  return i18n.t(REFUSAL_LABEL_KEY[reason])
 }
 
 /**

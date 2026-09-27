@@ -19,6 +19,21 @@
     "overdue": "Due review",
     "early": "Early review"
   },
+  "session": {
+    "refusal": {
+      "sessionMissing": "This review session no longer exists or was cleared",
+      "itemMissing": "This topic is no longer part of the session",
+      "alreadyGraded": "This topic was already graded — refresh to continue",
+      "sessionEnded": "This review has ended, so it can't be graded any further",
+      "phaseChanged": "This topic's state has changed — refresh and try again",
+      "versionStale": "Updated somewhere else — refresh and try again",
+      "nodeUnavailable": "This topic is no longer available",
+      "unenrolled": "This topic was removed from the review plan",
+      "nothingToUndo": "There's no grading to undo for this topic",
+      "nodeDeleted": "This topic was deleted, so its grading can't be undone",
+      "recordChanged": "The study record has changed, so this grading can't be undone"
+    }
+  },
   "overview": {
     "retentionNone": "Not reviewed yet",
     "retentionPercent": "Retention ~{{percent}}%",

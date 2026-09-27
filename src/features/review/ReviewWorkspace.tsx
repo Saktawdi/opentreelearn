@@ -58,6 +58,8 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   const noteHistoryOpen = useReviewSessionStore((state) => state.noteHistoryOpen)
   const streaming = useReviewSessionStore((state) => state.streaming)
   const lastUndoneNotice = useReviewSessionStore((state) => state.lastUndoneNotice)
+  const sessionError = useReviewSessionStore((state) => state.error)
+  const clearError = useReviewSessionStore((state) => state.clearError)
 
   const loadForProject = useReviewSessionStore((state) => state.loadForProject)
   const startBatch = useReviewSessionStore((state) => state.startBatch)
@@ -93,6 +95,15 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
   useEffect(() => {
     void loadForProject(projectId, sessionIdFromUrl)
   }, [projectId, sessionIdFromUrl, loadForProject])
+
+  // 会话级拒绝（别处抢先评分、版本过期、撤销被拒）此前只写进 store 的 error 字段，
+  // 而没有任何组件订阅它 —— 用户点确认后界面毫无反馈。提示一次即消费掉，
+  // 好让同一条拒绝下次再发生时还能重新弹出。
+  useEffect(() => {
+    if (!sessionError) return
+    toast.error(sessionError)
+    clearError()
+  }, [sessionError, clearError])
 
   // 当会话创建或切出 sessionId 时同步到 URL，刷新后不丢会话
   useEffect(() => {

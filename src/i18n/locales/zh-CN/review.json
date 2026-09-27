@@ -18,6 +18,21 @@
     "overdue": "到期复习",
     "early": "提前复习"
   },
+  "session": {
+    "refusal": {
+      "sessionMissing": "会话不存在或已被清理",
+      "itemMissing": "这一项已不在本次会话中",
+      "alreadyGraded": "这一项已经评分过了，请刷新当前项",
+      "sessionEnded": "本次复习已结束，无法继续评分",
+      "phaseChanged": "当前项状态已变化，请刷新后重试",
+      "versionStale": "状态已在别处更新，请刷新后重试",
+      "nodeUnavailable": "这个主题已不可用",
+      "unenrolled": "这个主题已移出复习计划",
+      "nothingToUndo": "这一项没有可撤销的评分",
+      "nodeDeleted": "这个主题已被删除，无法撤销这次评分",
+      "recordChanged": "学习记录已更新，无法撤销这次评分"
+    }
+  },
   "overview": {
     "retentionNone": "还没复习过",
     "retentionPercent": "保持率约 {{percent}}%",

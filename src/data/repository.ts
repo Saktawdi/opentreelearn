@@ -91,17 +91,48 @@ export interface GradeReviewInput {
   now: number
 }
 
+/**
+ * 仓储层拒绝一次评分/撤销的原因。
+ *
+ * 这里只给**数据口径**，界面用 `t(\`session.refusal.${reason}\`)` 解析成当前语言。
+ * 之前这一层直接返回中文 message —— 文案被写死在持久化层，英文界面下会显示中文，
+ * 而且它落进会话记录跟着一起同步，等于把界面语言焊进了数据。
+ */
+export type ReviewRefusal =
+  /** 会话记录已不存在（项目删除 / 账号切换 / 手动清理） */
+  | 'sessionMissing'
+  /** 这一项已不在本次会话中 */
+  | 'itemMissing'
+  /** 同一项已评分过：重试同一操作，或另一标签页先评了 */
+  | 'alreadyGraded'
+  /** 会话已结束 / 暂停，不再接受评分 */
+  | 'sessionEnded'
+  /** 当前项阶段对不上（保存被中断，或状态机走了别的分支） */
+  | 'phaseChanged'
+  /** 库里的版本比调用方预期新：另一个标签页刚写过 */
+  | 'versionStale'
+  /** 节点已删除 / 归档 */
+  | 'nodeUnavailable'
+  /** 节点已移出复习计划 */
+  | 'unenrolled'
+  /** 这一项没有可撤销的评分 */
+  | 'nothingToUndo'
+  /** 撤销时节点已被删除 */
+  | 'nodeDeleted'
+  /** 撤销时掌握度 / 排期已被别处改动，不能拿旧快照覆盖 */
+  | 'recordChanged'
+
 export type GradeReviewOutcome =
   /** 本次写入生效 */
   | { status: 'applied'; node: Node; session: ReviewSessionRecord; result: ReviewItemResult }
   /** 同一个操作（或同一项）已经落过库；**不重复写**，返回既有结果 */
   | { status: 'duplicate'; node: Node; session: ReviewSessionRecord; result: ReviewItemResult }
   /** 状态已变化（别处已评分 / 版本过期），需要刷新后重新确认 */
-  | { status: 'conflict'; message: string; session: ReviewSessionRecord }
+  | { status: 'conflict'; reason: ReviewRefusal; session: ReviewSessionRecord }
   /** 会话记录已不存在（被项目删除、账号切换或手动清理） */
-  | { status: 'missing'; message: string }
+  | { status: 'missing'; reason: ReviewRefusal }
   /** 节点已删除 / 归档 / 移出计划：当前项转 unavailable，不评分 */
-  | { status: 'unavailable'; message: string; session: ReviewSessionRecord }
+  | { status: 'unavailable'; reason: ReviewRefusal; session: ReviewSessionRecord }
 
 export interface UndoReviewInput {
   sessionId: Id
@@ -113,8 +144,8 @@ export interface UndoReviewInput {
 
 export type UndoReviewOutcome =
   | { status: 'applied'; node: Node; session: ReviewSessionRecord }
-  | { status: 'conflict'; message: string; session: ReviewSessionRecord }
-  | { status: 'missing'; message: string; session?: ReviewSessionRecord }
+  | { status: 'conflict'; reason: ReviewRefusal; session: ReviewSessionRecord }
+  | { status: 'missing'; reason: ReviewRefusal; session?: ReviewSessionRecord }
 
 /**
  * 复习会话仓储。

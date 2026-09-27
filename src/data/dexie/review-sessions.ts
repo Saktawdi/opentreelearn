@@ -11,6 +11,7 @@ import {
 } from '@/domain/review/session'
 import type {
   GradeReviewOutcome,
+  ReviewRefusal,
   ReviewSessionRepository,
   UndoReviewOutcome,
 } from '@/data/repository'
@@ -68,11 +69,18 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
     return raw ? normalizeNode(raw) : null
   }
 
-  /** 当前项不可用（节点已删除 / 归档 / 移出计划）：不评分，推进到下一项。 */
+  /**
+   * 当前项不可用（节点已删除 / 归档 / 移出计划）：不评分，推进到下一项。
+   *
+   * `skipReason` 是中文且**必须**是中文 —— 它经 `reviewHistoryForNode` 进入
+   * `get_review_history` 工具的输出，是给模型读的上下文，按 i18n 迁移的边界不迁。
+   * 给用户看的那一份由 `reason`（枚举）交给界面按当前语言取译，两者各司其职。
+   */
   async function markUnavailable(
     session: ReviewSessionRecord,
     itemId: Id,
-    message: string,
+    reason: ReviewRefusal,
+    skipReason: string,
     now: number,
   ): Promise<GradeReviewOutcome> {
     patchItem(
@@ -80,7 +88,7 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
       itemId,
       {
         phase: 'unavailable',
-        skipReason: message,
+        skipReason,
         pendingRequestId: undefined,
         pendingPurpose: undefined,
         pendingOperationId: undefined,
@@ -88,9 +96,8 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
       now,
     )
     advanceAfter(session, itemId, now)
-    session.notice = message
     await db.reviewSessions.put(toRow(session))
-    return { status: 'unavailable', message, session }
+    return { status: 'unavailable', reason, session }
   }
 
   return {
@@ -142,11 +149,11 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
           const row = await db.reviewSessions.get(input.sessionId)
           const session = row ? toRecord(row) : null
           if (!session) {
-            return { status: 'missing', message: '会话不存在或已被清理' }
+            return { status: 'missing', reason: 'sessionMissing' }
           }
           const item = session.items.find((entry) => entry.itemId === input.itemId)
           if (!item) {
-            return { status: 'conflict', message: '这一项已不在本次会话中', session }
+            return { status: 'conflict', reason: 'itemMissing', session }
           }
 
           // 已经评过：同一操作 ID（重试）或同一档位（另一个标签页）都算同一次
@@ -158,28 +165,28 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
               const node = await readNode(input.nodeId)
               if (node) return { status: 'duplicate', node, session, result: item.result }
             }
-            return { status: 'conflict', message: '这一项已经评分过了，请刷新当前项', session }
+            return { status: 'conflict', reason: 'alreadyGraded', session }
           }
 
           if (session.status !== 'active') {
-            return { status: 'conflict', message: '本次复习已结束，无法继续评分', session }
+            return { status: 'conflict', reason: 'sessionEnded', session }
           }
           const isSavingRetry =
             item.phase === 'saving' && item.pendingOperationId === input.operationId
           if (item.phase !== 'feedback' && !isSavingRetry) {
-            return { status: 'conflict', message: '当前项状态已变化，请刷新后重试', session }
+            return { status: 'conflict', reason: 'phaseChanged', session }
           }
           const allowedVersion = input.expectedVersion + (isSavingRetry ? 1 : 0)
           if (session.version > allowedVersion) {
-            return { status: 'conflict', message: '状态已在别处更新，请刷新后重试', session }
+            return { status: 'conflict', reason: 'versionStale', session }
           }
 
           const node = await readNode(input.nodeId)
           if (!node || node.status !== 'active' || node.projectId !== input.projectId) {
-            return markUnavailable(session, input.itemId, '这个主题已不可用', input.now)
+            return markUnavailable(session, input.itemId, 'nodeUnavailable', '这个主题已不可用', input.now)
           }
           if (enrollmentOf(node) !== 'enabled') {
-            return markUnavailable(session, input.itemId, '这个主题已移出复习计划', input.now)
+            return markUnavailable(session, input.itemId, 'unenrolled', '这个主题已移出复习计划', input.now)
           }
 
           const write = gradeNode(node, input.grade, input.operationId, input.now)
@@ -216,23 +223,23 @@ export function createReviewSessionRepository(db: AppDatabase): ReviewSessionRep
         async (): Promise<UndoReviewOutcome> => {
           const row = await db.reviewSessions.get(input.sessionId)
           const session = row ? toRecord(row) : null
-          if (!session) return { status: 'missing', message: '会话不存在或已被清理' }
+          if (!session) return { status: 'missing', reason: 'sessionMissing' }
 
           const item = session.items.find((entry) => entry.itemId === input.itemId)
           if (!item?.result) {
-            return { status: 'missing', message: '这一项没有可撤销的评分', session }
+            return { status: 'missing', reason: 'nothingToUndo', session }
           }
 
           const node = await readNode(input.nodeId)
           if (!node) {
-            return { status: 'conflict', message: '这个主题已被删除，无法撤销这次评分', session }
+            return { status: 'conflict', reason: 'nodeDeleted', session }
           }
 
           const write = undoGrade(node, item.result, input.now)
           if (!write) {
             // 掌握度 / 排期已经不是这次评分写下的值：外部（同步、另一个标签页、
             // 本地学习）改过它，用旧快照覆盖会把新记录抹掉
-            return { status: 'conflict', message: '学习记录已更新，无法撤销这次评分', session }
+            return { status: 'conflict', reason: 'recordChanged', session }
           }
 
           await db.nodes.update(node.id, write.patch)

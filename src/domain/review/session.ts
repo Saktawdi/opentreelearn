@@ -178,8 +178,6 @@ export interface ReviewSessionRecord {
   createdAt: number
   updatedAt: number
   finishedAt?: number
-  /** 需要一次性告知用户的说明（撤销被拒、节点失效等） */
-  notice?: string
 }
 
 export interface ReviewSessionSeed {
