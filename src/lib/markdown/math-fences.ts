@@ -101,8 +101,8 @@ function closingAt(
 
 const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})/
 
-/** 代码围栏行；`info` 只允许出现在开栏行，闭合行必须为空。 */
-function codeFenceMarker(line: string): { char: string; size: number; info: string } | null {
+/** 代码围栏行；`info` 只允许出现在开栏行，闭合行必须为空。（math-commands 复用同一判定） */
+export function codeFenceMarker(line: string): { char: string; size: number; info: string } | null {
   const match = CODE_FENCE.exec(line)
   if (!match) return null
   const marker = match[1]

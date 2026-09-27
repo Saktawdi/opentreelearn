@@ -8,6 +8,7 @@ import remarkMath from 'remark-math'
 import { cn } from '@/lib/utils'
 import { highlightCode } from './highlighter'
 import { normalizeDisplayMath } from './math-fences'
+import { normalizeMathCommands } from './math-commands'
 import { rehypeSourceMap } from './source-map'
 
 /** rehype 插件表的类型：从 react-markdown 的 Options 里取，避免直接依赖 unified 的类型。 */
@@ -95,7 +96,11 @@ export const MarkdownView = memo(function MarkdownView({
   className?: string
 }) {
   // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
-  const normalized = useMemo(() => normalizeDisplayMath(content), [content])
+  // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
+  const normalized = useMemo(
+    () => normalizeMathCommands(normalizeDisplayMath(content)),
+    [content],
+  )
 
   // 源文标注必须排在 rehype-katex **之前**：KaTeX 会把公式元素整个换成排版结果，
   // 之后再挂就找不到它了（见 source-map.ts）
