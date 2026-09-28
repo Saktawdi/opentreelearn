@@ -145,6 +145,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), apiProxyPlugin()],
   server: {
     port: 6174,
+    // 关闭 HMR：改文件不再自动刷新/整页 reload，开发途中（尤其是 agent 在同时改代码、
+    // 页面里有正在输入的表单或未保存的状态时）不会被中途打断。改完自己按浏览器刷新即可。
+    // 代码里没有 import.meta.hot / hot.accept（无 HMR 边界需要保留），关掉不影响任何功能。
+    // 要临时恢复热更新，改成 hmr: true 或直接注释掉这一行再重启 dev server。
+    hmr: false,
     proxy: {
       // 同步服务（server/，默认 3901）。走同源代理，开发时不必依赖 CORS。
       // 生产部署同样把 /lern-api 反代到该服务即可（见 docs/design.md 第 13 节）。
