@@ -8,7 +8,7 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Square, Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, Sparkles, X } from 'lucide-react'
+import { Square, Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -116,8 +116,6 @@ function CanvasWorkspace() {
   const streaming = useWorkspaceStore((state) => state.streaming)
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
   const summarizingNodeIds = useWorkspaceStore((state) => state.summarizingNodeIds)
-  const projectSettings = useWorkspaceStore((state) => state.projectSettings)
-  const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
 
   // 保持率热力图：按需开启（默认关闭，保持界面清爽），使用分钟级时钟
   const [showHeatMap, setShowHeatMap] = useState(false)
@@ -239,7 +237,6 @@ function CanvasWorkspace() {
 
   const activeCount = miniGraph.nodes.length
   const isEmpty = activeCount === 0
-  const writeEnabled = projectSettings?.agentWriteEnabled === true
 
   /**
    * 空白项目（一个节点都没有）的落地体验：**进来直接就是展开画布** ——
@@ -845,30 +842,6 @@ function CanvasWorkspace() {
                     <LayoutGrid className="h-3.5 w-3.5 text-muted" />
                     {t('actions.relayout')}
                   </Button>
-                  <Tooltip
-                    label={
-                      writeEnabled
-                        ? t('canvasBar.aiWriteOnHint')
-                        : t('canvasBar.aiWriteOffHint')
-                    }
-                    side="top"
-                  >
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      aria-pressed={writeEnabled}
-                      onClick={() =>
-                        void updateProjectSettings({ agentWriteEnabled: !writeEnabled })
-                      }
-                      className={cn(
-                        'gap-1.5 bg-surface/90 backdrop-blur',
-                        writeEnabled ? 'border-accent/40 text-accent' : '',
-                      )}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {writeEnabled ? t('canvasBar.aiWriteOn') : t('canvasBar.aiWriteOff')}
-                    </Button>
-                  </Tooltip>
                   <Button
                     variant="secondary"
                     size="sm"

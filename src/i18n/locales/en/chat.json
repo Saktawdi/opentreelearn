@@ -153,23 +153,75 @@
     "searchNotesPlain": "Search annotations",
     "updateAssessment": "Update learning assessment",
     "updateAssessmentReason": "Update learning assessment ({{reason}})",
+    "createNode": "Create node “{{title}}”",
+    "createNodePlain": "Create node",
+    "renameNode": "Rename to “{{title}}”",
+    "renameNodePlain": "Rename node",
+    "tagSpan": "Tag a passage {{labels}}",
+    "tagSpanPlain": "Tag a passage",
     "failed": "Failed",
     "collapse": "Collapse",
     "returned": "Returned"
   },
-  "permission": {
-    "requestTitle": "Agent requests updating learning assessment",
-    "requestDesc": "Agent suggests updating the mastery score and assessment for “{{title}}”.",
-    "allowOnce": "Confirm",
+  "approval": {
+    "allow": "Allow",
     "deny": "Decline",
-    "autoHint": "To stop these prompts, switch the composer below to auto-allow",
-    "pickerLabel": "Agent permission",
+    "hint": "To stop these prompts, switch the composer below to auto-allow",
+    "queued": "{{count}} more waiting",
     "ask": "Permission: Ask",
-    "askHint": "Ask each time",
     "autoAllow": "Permission: Auto-allow",
-    "autoAllowHint": "Never ask",
-    "toggleToAuto": "Click to switch to auto-allow (no more prompts)",
-    "toggleToPrompt": "Click to switch to ask mode (confirm each time)"
+    "toggleToAuto": "Click to switch to auto-allow (no more prompts for tools that need it)",
+    "toggleToPrompt": "Click to switch to asking each time",
+    "field": {
+      "tool": "Tool",
+      "target": "Target",
+      "currentTitle": "Current title",
+      "newTitle": "New title",
+      "kind": "Kind",
+      "labels": "Labels",
+      "scope": "Scope"
+    },
+    "scope": {
+      "outsideProject": "Outside the current project"
+    },
+    "value": {
+      "node": "“{{title}}”",
+      "unknownNode": "Unknown node ({{id}})",
+      "nodeTitle": "“{{title}}”",
+      "labels": "{{labels}}",
+      "rawName": "{{name}}"
+    },
+    "nodeKind": {
+      "child": "Child node",
+      "branch": "Branch node",
+      "diverge": "Divergent node"
+    },
+    "toolName": {
+      "search_nodes": "Search nodes",
+      "get_node": "Read node",
+      "get_tree_outline": "View tree outline",
+      "list_note_labels": "Tally annotation labels",
+      "search_notes": "Search annotations",
+      "get_review_history": "Read review history",
+      "create_node": "Create node",
+      "rename_node": "Rename node",
+      "tag_span": "Tag a passage",
+      "update_assessment": "Update learning assessment"
+    },
+    "askTitle": {
+      "get_node": "Agent wants to read a node",
+      "search_notes": "Agent wants to search annotations",
+      "get_review_history": "Agent wants to read review history",
+      "create_node": "Agent wants to create a node",
+      "rename_node": "Agent wants to rename a node",
+      "tag_span": "Agent wants to tag a passage",
+      "update_assessment": "Agent wants to update the learning assessment",
+      "read_outside": "Agent wants to read data outside the current project",
+      "search_nodes": "Agent wants to search nodes",
+      "get_tree_outline": "Agent wants to view the tree outline",
+      "list_note_labels": "Agent wants to tally annotation labels",
+      "unregistered": "Agent wants to call an unregistered tool"
+    }
   },
   "branch": {
     "title": "New child node",

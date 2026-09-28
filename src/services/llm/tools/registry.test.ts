@@ -64,6 +64,8 @@ function tools(overrides: Partial<{ currentNodeId: string }> = {}) {
     messagesByNode: messagesByNode(messages),
     notes,
     currentNodeId: 'n1',
+    approvalPolicy: 'open',
+    permission: 'prompt',
     ...overrides,
   })
 }
@@ -109,6 +111,8 @@ describe('read-only tool registry', () => {
       nodes: many,
       messagesByNode: new Map(),
       notes: [],
+      approvalPolicy: 'open',
+      permission: 'prompt',
     })
 
     const outline = await run(wide.get_tree_outline, {})
@@ -117,16 +121,29 @@ describe('read-only tool registry', () => {
   })
 
   it('reports an empty label list as data rather than an error', async () => {
-    const empty = buildReadOnlyTools({ nodes: [node], messagesByNode: new Map(), notes: [] })
+    const empty = buildReadOnlyTools({
+      nodes: [node],
+      messagesByNode: new Map(),
+      notes: [],
+      approvalPolicy: 'open',
+      permission: 'prompt',
+    })
     const stats = await run(empty.list_note_labels, {})
     expect(stats).toContain('还没有打过标签的标注')
   })
 
   it('provides update_assessment write tool and delegates to handlers', async () => {
     expect(WRITE_TOOLS_SYSTEM).toContain('更新学习评估')
-    let handled: { nodeId: string; reason?: string } | null = null
+    let handled: { nodeId: string } | null = null
     const writeTools = buildWriteTools(
-      { nodes: [node], messagesByNode: new Map(), notes: [], currentNodeId: 'n1' },
+      {
+        nodes: [node],
+        messagesByNode: new Map(),
+        notes: [],
+        currentNodeId: 'n1',
+        approvalPolicy: 'open',
+        permission: 'prompt',
+      },
       {
         createNode: async () => null,
         renameNode: async () => null,
@@ -140,6 +157,7 @@ describe('read-only tool registry', () => {
 
     const res = await run(writeTools.update_assessment, { reason: '已理解公式' })
     expect(res).toContain('已更新评估')
-    expect(handled).toEqual({ nodeId: 'n1', reason: '已理解公式' })
+    // 理由只进授权卡，不进业务回调
+    expect(handled).toEqual({ nodeId: 'n1' })
   })
 })

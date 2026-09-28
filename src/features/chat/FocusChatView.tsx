@@ -32,6 +32,7 @@ import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useToolApprovalStore } from '@/stores/tool-approval-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { LearningStatusDialog } from '@/features/review/LearningStatusDialog'
 import { useArchiveNodeWithUndo } from '@/features/canvas/use-archive-node'
@@ -71,8 +72,9 @@ export function FocusChatView({
   const agentChange = useWorkspaceStore((state) => state.agentChange)
   const undoAgentChange = useWorkspaceStore((state) => state.undoAgentChange)
   const dismissAgentChange = useWorkspaceStore((state) => state.dismissAgentChange)
-  const pendingToolApproval = useWorkspaceStore((state) => state.pendingToolApproval)
-  const respondToolApproval = useWorkspaceStore((state) => state.respondToolApproval)
+  const pendingToolApproval = useToolApprovalStore((state) => state.pending)
+  const queuedApprovals = useToolApprovalStore((state) => state.queued.length)
+  const respondToolApproval = useToolApprovalStore((state) => state.respond)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
   const navigate = useNavigate()
 
@@ -280,13 +282,14 @@ export function FocusChatView({
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
         <MessageList nodeId={node.id} />
 
-        {/* Agent 试图执行需确认的敏感工具（如更新学习评估）：弹出权限拦截卡片。
-            长期偏好（自动允许）在输入框工具栏的 AgentPermissionPicker 上切。 */}
+        {/* Agent 举手要调一个需授权的工具（写工具必然；主动读开放区外的数据也会）：
+            执行层阻塞在这里，弹卡问用户「继续与否」，答完才继续。 */}
         <AnimatePresence initial={false}>
           {pendingToolApproval ? (
             <ToolPermissionCard
               key={pendingToolApproval.id}
               request={pendingToolApproval}
+              queued={queuedApprovals}
               onRespond={respondToolApproval}
             />
           ) : null}

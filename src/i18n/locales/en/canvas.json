@@ -51,10 +51,6 @@
     "emptyHint": "Type your first question to begin",
     "doubleClickHint": "Double-click a node to open its conversation",
     "reviewWorkspace": "Review workspace",
-    "aiWriteOn": "AI can edit",
-    "aiWriteOff": "AI read-only",
-    "aiWriteOnHint": "AI can create nodes, rename titles and edit tags when you ask (every change can be undone)",
-    "aiWriteOffHint": "AI can only read this tree. Turn it on to let AI make changes when you ask",
     "backToChat": "Back to chat"
   },
   "streaming": {

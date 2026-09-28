@@ -50,10 +50,6 @@
     "emptyHint": "输入第一个问题开始",
     "doubleClickHint": "双击节点进入对话",
     "reviewWorkspace": "复习工作区",
-    "aiWriteOn": "AI 可改树",
-    "aiWriteOff": "AI 只读",
-    "aiWriteOnHint": "AI 可以在你要求时建节点、改标题、打标签（每次改动都能撤销）",
-    "aiWriteOffHint": "AI 只能读这棵树。打开后它才能在你要求时改动",
     "backToChat": "返回对话"
   },
   "streaming": {

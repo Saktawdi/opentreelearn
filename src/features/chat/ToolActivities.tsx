@@ -39,6 +39,19 @@ function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
       const reason = typeof args.reason === 'string' ? args.reason : ''
       return reason ? t('tool.updateAssessmentReason', { reason }) : t('tool.updateAssessment')
     }
+    // 写工具：标题、标签这些入参是用户真正要看的（用户批的就是它）
+    case 'create_node': {
+      const title = typeof args.title === 'string' ? args.title : ''
+      return title ? t('tool.createNode', { title }) : t('tool.createNodePlain')
+    }
+    case 'rename_node': {
+      const title = typeof args.title === 'string' ? args.title : ''
+      return title ? t('tool.renameNode', { title }) : t('tool.renameNodePlain')
+    }
+    case 'tag_span': {
+      const labels = Array.isArray(args.labels) ? args.labels.join('、') : ''
+      return labels ? t('tool.tagSpan', { labels }) : t('tool.tagSpanPlain')
+    }
     default:
       return name
   }

@@ -22,19 +22,18 @@ export interface ProjectSettings {
   titleModelRef?: ModelRef
   summaryModelRef?: ModelRef
   /**
-   * 允许 Agent 改动这棵树（建节点、改标题、打标签、更新评估）。
+   * Agent 工具的授权偏好（项目级，对应输入框工具栏那一个胶囊）：
+   * - 'prompt' (缺省): 每个需授权的工具调用都阻塞并弹卡询问；
+   * - 'always_allow': 一律放行，不再打扰。
    *
-   * 缺省（含老数据）= 关闭：只读工具随时可用，写工具必须由用户显式打开 ——
-   * 「默认不让 AI 改我的数据」是这套设计的硬约定（见设计文档 §6.3）。
-   * 打开后也只放可逆操作，破坏性的（归档、删除）不提供。
+   * 写工具**一律注册**给模型，权限只在这一刻生效；没有「关掉写能力」这种状态。
+   * 读工具的开放区是当前项目，区内直接放行（见 domain/agent/permissions）。
+   *
+   * ⚠️ 老数据里可能残留 `agentWriteEnabled` / `agentAssessmentPermission`：
+   * 前者是旧的「只读/读写」总开关，后者是本字段的前身。它们现在无人读取，
+   * 留着无害（Dexie 存整个对象，多余键不影响），不做数据迁移。
    */
-  agentWriteEnabled?: boolean
-  /**
-   * Agent 主动更新评估的权限策略：
-   * - 'prompt' (缺省): 拦截并弹出卡片征询用户确认；
-   * - 'always_allow': 默认放行，不再弹卡片。
-   */
-  agentAssessmentPermission?: 'prompt' | 'always_allow'
+  agentToolPermission?: 'prompt' | 'always_allow'
   /** 最后修改时间；历史数据可能没有，同步时以 outbox 的变更时间为准。 */
   updatedAt?: number
 }

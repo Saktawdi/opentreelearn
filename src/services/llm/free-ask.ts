@@ -115,7 +115,8 @@ export async function runFreeAskRequest(
   let partial = ''
 
   // 只读工具：自由问答是「按需取数」最典型的一条链路 ——
-  // 「我有哪些还没搞懂的」不必靠把全部标注塞进 system，让模型自己查更准也更省
+  // 「我有哪些还没搞懂的」不必靠把全部标注塞进 system，让模型自己查更准也更省。
+  // 开放区是当前项目、且这里只有读工具，所以不接授权闸门（approvalPolicy: 'open'）。
   const provider = findProvider(input.settings.providers, ref)
   const toolsAllowed = provider?.capabilities?.tools !== false
   const tools = toolsAllowed
@@ -123,6 +124,8 @@ export async function runFreeAskRequest(
         nodes: input.nodes,
         messagesByNode: input.messagesByNode ?? new Map(),
         notes: input.notes ?? [],
+        approvalPolicy: 'open',
+        permission: input.projectSettings?.agentToolPermission ?? 'prompt',
       })
     : undefined
 

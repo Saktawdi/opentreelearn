@@ -106,7 +106,13 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
     system: '系统提示',
     messages: [{ role: 'user' as const, content: '问' }],
   }
-  const tools = buildReadOnlyTools({ nodes: [], messagesByNode: new Map(), notes: [] })
+  const tools = buildReadOnlyTools({
+    nodes: [],
+    messagesByNode: new Map(),
+    notes: [],
+    approvalPolicy: 'open',
+    permission: 'prompt',
+  })
 
   it('不带工具时完全不出现 tools / stopWhen（回归底线：请求体与今天逐字节一致）', () => {
     const options = buildStreamOptions(base)

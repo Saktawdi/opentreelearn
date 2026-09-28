@@ -6,6 +6,7 @@ import i18n from '@/i18n'
 import { createDefaultSettings } from '@/domain/defaults'
 import { messageText, messageToolParts } from '@/domain/messages'
 import { useSettingsStore } from './settings-store'
+import { useToolApprovalStore } from './tool-approval-store'
 import { useWorkspaceStore } from './workspace-store'
 
 /**
@@ -177,50 +178,56 @@ describe('工具记录的落库形状', () => {
     expect(withoutTools.system).not.toContain('## 工具使用')
   })
 })
-describe('写工具（默认关闭 + 撤销）', () => {
-  /** 让本轮的工具集里出现写工具：能力位支持 + 项目开关打开。 */
-  async function enableWrite(): Promise<void> {
-    useWorkspaceStore.setState((draft) => {
-      draft.projectSettings = { projectId: 'p1', agentWriteEnabled: true }
-    })
-  }
-
+describe('写工具（无条件注册 + 逐次授权 + 撤销）', () => {
   function toolsOfLastCall(): Record<string, unknown> {
     return ((llm.calls.at(-1) as { tools?: Record<string, unknown> }).tools ?? {})
   }
 
-  it('默认只给只读工具，写工具要等项目开关打开', async () => {
+  /**
+   * 调一个需授权的工具：闸门会挂起等用户，这里替用户点「允许」。
+   *
+   * 之所以要这样包一层：写工具现在**一律注册**、执行前必问，测试里直接
+   * `await execute(...)` 会永远等在授权卡上。
+   */
+  async function allowAndRun(
+    execute: (input: unknown, options: unknown) => Promise<string>,
+    input: unknown,
+  ): Promise<string> {
+    const running = execute(input, {})
+    await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
+    useToolApprovalStore.getState().respond('allow')
+    return running
+  }
+
+  it('registers write tools by default and tells the model they need approval', async () => {
     await seed()
-    const node = await useWorkspaceStore.getState().startRootNode('问题')
+    await useWorkspaceStore.getState().startRootNode('问题')
 
-    const readOnly = toolsOfLastCall()
-    expect(readOnly.search_nodes).toBeDefined()
-    expect(readOnly.create_node).toBeUndefined()
-
-    await enableWrite()
-    await useWorkspaceStore.getState().sendMessage(node!.id, [{ type: 'text', text: '再问' }])
-    const withWrite = toolsOfLastCall()
-    expect(withWrite.create_node).toBeDefined()
-    expect(withWrite.rename_node).toBeDefined()
-    expect(withWrite.tag_span).toBeDefined()
+    const tools = toolsOfLastCall()
+    expect(tools.search_nodes).toBeDefined()
+    expect(tools.create_node).toBeDefined()
+    expect(tools.rename_node).toBeDefined()
+    expect(tools.tag_span).toBeDefined()
     // 破坏性操作不提供
-    expect(withWrite.archive_node).toBeUndefined()
-    expect(withWrite.delete_node).toBeUndefined()
+    expect(tools.archive_node).toBeUndefined()
+    expect(tools.delete_node).toBeUndefined()
 
     const system = (llm.calls.at(-1) as { system?: string }).system ?? ''
     expect(system).toContain('改动这棵树的规则')
+    // 「要先问用户」必须写进提示：不然模型被拒后会换个参数重试
+    expect(system).toContain('先向用户申请授权')
   })
 
   it('creates a node through the real action path and offers an undo that removes it', async () => {
     await seed()
-    await enableWrite()
     const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
 
     const tools = toolsOfLastCall() as { create_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
-    const result = await tools.create_node.execute(
-      { kind: 'child', title: '拆解一', seed: '什么叫守恒？' },
-      {},
-    )
+    const result = await allowAndRun(tools.create_node.execute, {
+      kind: 'child',
+      title: '拆解一',
+      seed: '什么叫守恒？',
+    })
     expect(result).toContain(i18n.t('common:agent.nodeCreated', { title: '拆解一' }))
 
     const state = useWorkspaceStore.getState()
@@ -240,11 +247,10 @@ describe('写工具（默认关闭 + 撤销）', () => {
 
   it('renames a node and restores the previous title on undo', async () => {
     await seed()
-    await enableWrite()
     const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
 
     const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
-    await tools.rename_node.execute({ nodeId: root!.id, title: '动量与冲量' }, {})
+    await allowAndRun(tools.rename_node.execute, { nodeId: root!.id, title: '动量与冲量' })
     expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
       '动量与冲量',
     )
@@ -257,34 +263,135 @@ describe('写工具（默认关闭 + 撤销）', () => {
 
   it('tags a span found in the message text and refuses a quote that is not there', async () => {
     await seed()
-    await enableWrite()
     const root = await useWorkspaceStore.getState().startRootNode('忽略竖直方向会怎样？')
     const messageId = (useWorkspaceStore.getState().messagesByNode[root!.id] ?? [])[0].id
 
     const tools = toolsOfLastCall() as { tag_span: { execute: (i: unknown, o: unknown) => Promise<string> } }
-    const ok = await tools.tag_span.execute(
-      { messageId, quote: '忽略竖直方向', labels: ['mistake'] },
-      {},
-    )
+    const ok = await allowAndRun(tools.tag_span.execute, {
+      messageId,
+      quote: '忽略竖直方向',
+      labels: ['mistake'],
+    })
     expect(ok).toContain(i18n.t('common:agent.taggedDone', { labels: '[错题]' }))
 
     const note = (useWorkspaceStore.getState().notesByMessage[messageId] ?? [])[0]
     expect(note).toMatchObject({ labels: ['mistake'], start: 0, end: 6 })
 
     // 原文对不上就如实拒绝：宁可不标，也不要标到别处
-    const miss = await tools.tag_span.execute(
-      { messageId, quote: '这句话不在正文里', labels: ['mistake'] },
-      {},
-    )
+    const miss = await allowAndRun(tools.tag_span.execute, {
+      messageId,
+      quote: '这句话不在正文里',
+      labels: ['mistake'],
+    })
     expect(miss).toContain('找不到这段原文')
 
     await useWorkspaceStore.getState().undoAgentChange()
     expect(await getRepositories().notes.listByProject('p1')).toEqual([])
   })
 
-  it('handles update_assessment with permission prompt, approval, and undo', async () => {
+  it('denies the write and tells the model to report it, without touching the tree', async () => {
     await seed()
-    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+
+    const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const running = tools.rename_node.execute({ nodeId: root!.id, title: '不该被改' }, {})
+    await vi.waitFor(() =>
+      expect(useToolApprovalStore.getState().pending).toMatchObject({ toolName: 'rename_node' }),
+    )
+    useToolApprovalStore.getState().respond('deny')
+
+    const result = await running
+    expect(result).toContain('用户拒绝了这次授权')
+    // 明确告诉模型别绕道重试，否则它会换个参数再举一次手
+    expect(result).toContain('不要换个参数')
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '动量守恒',
+    )
+    expect(useToolApprovalStore.getState().pending).toBeNull()
+  })
+
+  it('blocks on approval instead of running the write immediately', async () => {
+    await seed()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+
+    const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    let settled = false
+    const running = tools.rename_node.execute({ nodeId: root!.id, title: '先别改' }, {}).then(
+      (value) => {
+        settled = true
+        return value
+      },
+    )
+
+    await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
+    // 关键：还没点就不许动数据
+    expect(settled).toBe(false)
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '动量守恒',
+    )
+
+    useToolApprovalStore.getState().respond('allow')
+    await running
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '先别改',
+    )
+  })
+
+  it('shows the target node and the reason on the approval card', async () => {
+    await seed()
+    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+
+    const tools = toolsOfLastCall() as { update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const running = tools.update_assessment.execute(
+      { nodeId: root!.id, reason: '已掌握牛顿第二定律公式' },
+      {},
+    )
+    await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
+
+    const prompt = useToolApprovalStore.getState().pending!.prompt
+    // 卡片是通用的：内容由域层出 i18n 键 + 插值，组件照着渲染
+    expect(prompt.title.key).toBe('approval.askTitle.update_assessment')
+    expect(prompt.rows.map((row) => row.value.key)).toContain('approval.value.node')
+    expect(prompt.rows.find((row) => row.value.key === 'approval.value.node')?.value.params)
+      .toEqual({ title: '牛顿第二定律' })
+    expect(prompt.reason).toBe('已掌握牛顿第二定律公式')
+
+    useToolApprovalStore.getState().respond('deny')
+    await running
+  })
+
+  it('applies the project-level auto-allow preference to later calls', async () => {
+    await seed()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+    // 偏好是项目级设置，不是运行时内存
+    await useWorkspaceStore.getState().updateProjectSettings({ agentToolPermission: 'always_allow' })
+    expect(useWorkspaceStore.getState().projectSettings?.agentToolPermission).toBe('always_allow')
+
+    await useWorkspaceStore.getState().sendMessage(root!.id, [{ type: 'text', text: '再问' }])
+    const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+
+    // 自动允许：直接跑完，不挂起
+    const res = await tools.rename_node.execute({ nodeId: root!.id, title: '免打扰' }, {})
+    expect(res).toContain('免打扰')
+    expect(useToolApprovalStore.getState().pending).toBeNull()
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '免打扰',
+    )
+  })
+
+  it('treats read tools inside the open zone as needing no approval', async () => {
+    await seed()
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
+
+    const tools = toolsOfLastCall() as { get_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    // 开放区 = 当前项目：区内检索是本产品的主力场景，绝不能弹卡
+    const res = await tools.get_node.execute({ nodeId: root!.id }, {})
+    expect(res).toContain('动量守恒')
+    expect(useToolApprovalStore.getState().pending).toBeNull()
+  })
+
+  it('updates the assessment and offers an undo once approved', async () => {
+    await seed()
     const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
     // 评估要求可见路径里至少一轮问答：补上一条回答
     const assistantMsg = {
@@ -300,145 +407,39 @@ describe('写工具（默认关闭 + 撤销）', () => {
       draft.messagesByNode[root!.id].push(assistantMsg)
     })
 
-    const tools = toolsOfLastCall() as {
-      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
-    }
-
-    // 1. 发起调用：触发权限拦截挂起
-    const callPromise = tools.update_assessment.execute(
+    const tools = toolsOfLastCall() as { update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const running = tools.update_assessment.execute(
       { nodeId: root!.id, reason: '学习者已掌握牛顿第二定律公式' },
       {},
     )
+    await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
+    useToolApprovalStore.getState().respond('allow')
+    await running
 
-    // 状态中应出现待确认请求
-    expect(useWorkspaceStore.getState().pendingToolApproval).toMatchObject({
-      toolName: 'update_assessment',
-      nodeId: root!.id,
-      reason: '学习者已掌握牛顿第二定律公式',
-    })
-
-    // 2. 用户在卡片上点击批准（allow_once）
-    useWorkspaceStore.getState().respondToolApproval('allow_once')
-
-    // 挂起应被 resolve
-    await callPromise
-    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
+    expect(useToolApprovalStore.getState().pending).toBeNull()
     expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.mastery)
       .toMatchObject({ score: 85 })
 
-    // 验证撤销可用
     expect(useWorkspaceStore.getState().agentChange?.label).toContain('牛顿第二定律')
     await useWorkspaceStore.getState().undoAgentChange()
     expect(useWorkspaceStore.getState().agentChange).toBeNull()
   })
 
-  it('rejects update_assessment when user denies permission', async () => {
+  it('cancels a pending approval when the user stops the round', async () => {
     await seed()
-    await enableWrite()
-    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+    const root = await useWorkspaceStore.getState().startRootNode('动量守恒')
 
-    const tools = toolsOfLastCall() as {
-      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
-    }
+    const tools = toolsOfLastCall() as { rename_node: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    const running = tools.rename_node.execute({ nodeId: root!.id, title: '停掉' }, {})
+    await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
 
-    const callPromise = tools.update_assessment.execute(
-      { nodeId: root!.id, reason: '测试拒绝' },
-      {},
+    useWorkspaceStore.getState().stopStreaming()
+
+    // 中止时必须把挂起的那次结算掉：否则 Promise 永远不落地，卡片也撤不掉
+    expect(await running).toContain('用户拒绝了这次授权')
+    expect(useToolApprovalStore.getState().pending).toBeNull()
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.title).toBe(
+      '动量守恒',
     )
-
-    expect(useWorkspaceStore.getState().pendingToolApproval).not.toBeNull()
-
-    // 用户点击拒绝
-    useWorkspaceStore.getState().respondToolApproval('deny')
-
-    const res = await callPromise
-    expect(res).toContain('未能更新学习评估')
-    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
-  })
-
-  it('allows subsequent calls without prompt when user chooses allow_always', async () => {
-    await seed()
-    await enableWrite()
-    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
-    const assistantMsg = {
-      id: 'm2',
-      nodeId: root!.id,
-      projectId: 'p1',
-      role: 'assistant' as const,
-      parts: [{ type: 'text' as const, text: 'F=ma' }],
-      createdAt: Date.now(),
-    }
-    await getRepositories().messages.create(assistantMsg)
-    useWorkspaceStore.setState((draft) => {
-      draft.messagesByNode[root!.id].push(assistantMsg)
-    })
-
-    const tools = toolsOfLastCall() as {
-      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
-    }
-
-    // 第一次调用：用户在卡片里把「自动确认」拨开 —— 本次同时放行
-    const firstCall = tools.update_assessment.execute(
-      { nodeId: root!.id, reason: '初次评估' },
-      {},
-    )
-    expect(useWorkspaceStore.getState().pendingToolApproval).not.toBeNull()
-    useWorkspaceStore.getState().respondToolApproval('allow_always')
-    await firstCall
-
-    // 状态已更新为 always_allow
-    expect(useWorkspaceStore.getState().projectSettings?.agentAssessmentPermission).toBe('always_allow')
-
-    // 第二次调用：直接自动放行，不再挂起弹窗
-    const secondCall = tools.update_assessment.execute(
-      { nodeId: root!.id, reason: '二次评估' },
-      {},
-    )
-    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
-    const res = await secondCall
-    expect(res).toContain('更新了《牛顿第二定律》的学习评估')
-  })
-
-  it('prompts again after the user switches auto-confirm back off', async () => {
-    await seed()
-    await enableWrite()
-    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
-    const assistantMsg = {
-      id: 'm2',
-      nodeId: root!.id,
-      projectId: 'p1',
-      role: 'assistant' as const,
-      parts: [{ type: 'text' as const, text: 'F=ma' }],
-      createdAt: Date.now(),
-    }
-    await getRepositories().messages.create(assistantMsg)
-    useWorkspaceStore.setState((draft) => {
-      draft.messagesByNode[root!.id].push(assistantMsg)
-    })
-
-    const tools = toolsOfLastCall() as {
-      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
-    }
-
-    // 先切到自动确认模式
-    const autoCall = tools.update_assessment.execute({ nodeId: root!.id }, {})
-    useWorkspaceStore.getState().respondToolApproval('allow_always')
-    await autoCall
-    expect(useWorkspaceStore.getState().projectSettings?.agentAssessmentPermission).toBe(
-      'always_allow',
-    )
-
-    // 用户在别处把偏好拨回询问模式（持久化动作由 updateProjectSettings 承担）
-    await useWorkspaceStore.getState().updateProjectSettings({
-      agentAssessmentPermission: 'prompt',
-    })
-
-    // 下一次调用必须重新挂起，不能因为曾经开过自动就一路放行
-    const promptCall = tools.update_assessment.execute({ nodeId: root!.id }, {})
-    expect(useWorkspaceStore.getState().pendingToolApproval).toMatchObject({
-      toolName: 'update_assessment',
-    })
-    useWorkspaceStore.getState().respondToolApproval('deny')
-    expect(await promptCall).toContain('未能更新学习评估')
   })
 })

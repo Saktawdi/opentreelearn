@@ -954,7 +954,8 @@ async function executeModelTurn(
     : createDeliveryHandlers(purpose, item, requestId)
 
   // 只读检索工具（阶段 2）：绑定框选作用域 + 历史复习查询；对话/自由答的调用点
-  // 不传 retrievalScope，行为保持全项目不变。
+  // 不传 retrievalScope，行为保持全项目不变。复习链路自己的交付工具是这一轮
+  // 的产物本身（讲了就该出现在转录里），不接授权闸门。
   const readOnlyTools = delivery
     ? buildReadOnlyTools({
         nodes,
@@ -963,6 +964,8 @@ async function executeModelTurn(
         currentNodeId: item.nodeId,
         retrievalScope: reviewScope(nodes, session),
         reviewHistory: () => getRepositories().reviewSessions.listByProject(projectId),
+        approvalPolicy: 'open',
+        permission: projectSettings?.agentToolPermission ?? 'prompt',
       })
     : undefined
 

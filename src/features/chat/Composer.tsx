@@ -12,6 +12,7 @@ import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
 import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
+import { useToolApprovalStore } from '@/stores/tool-approval-store'
 import { ModelPicker } from '@/features/settings/ModelPicker'
 import { ReasoningEffortInput } from '@/features/settings/ReasoningEffortInput'
 import { AgentPermissionPicker } from './AgentPermissionPicker'
@@ -71,8 +72,8 @@ export function Composer({
     (state) => Boolean(state.streaming && !state.streaming.error) && !isStreamingIn(state.streaming, nodeId),
   )
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
-  const assessmentPermission =
-    useWorkspaceStore((state) => state.projectSettings?.agentAssessmentPermission) ?? 'prompt'
+  const toolPermission =
+    useWorkspaceStore((state) => state.projectSettings?.agentToolPermission) ?? 'prompt'
   const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
   const { t } = useTranslation('chat')
 
@@ -290,11 +291,13 @@ export function Composer({
                 {/* 模型在前，推理强度在后：跟随当前所选模型做智能匹配与在线快切 */}
                 <ChatReasoningPicker chatModelRef={chatModelRef} />
                 <AgentPermissionPicker
-                  value={assessmentPermission}
+                  value={toolPermission}
                   onChange={(next) => {
-                    void updateProjectSettings({ agentAssessmentPermission: next })
+                    void updateProjectSettings({ agentToolPermission: next })
+                    // 拨到「自动允许」时，眼前这张卡不必再等一次点击 ——
+                    // 用户的意图已经表达清楚了
                     if (next === 'always_allow') {
-                      useWorkspaceStore.getState().respondToolApproval('allow_always')
+                      useToolApprovalStore.getState().respond('allow')
                     }
                   }}
                 />

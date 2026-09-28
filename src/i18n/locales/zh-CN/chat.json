@@ -153,23 +153,75 @@
     "searchNotesPlain": "检索标注",
     "updateAssessment": "更新学习评估",
     "updateAssessmentReason": "更新学习评估（{{reason}}）",
+    "createNode": "新建节点「{{title}}」",
+    "createNodePlain": "新建节点",
+    "renameNode": "改名为「{{title}}」",
+    "renameNodePlain": "改节点标题",
+    "tagSpan": "给原文打标签 {{labels}}",
+    "tagSpanPlain": "给原文打标签",
     "failed": "失败",
     "collapse": "收起",
     "returned": "已返回"
   },
-  "permission": {
-    "requestTitle": "Agent 申请更新学习评估",
-    "requestDesc": "Agent 建议为《{{title}}》更新掌握度与学习评估。",
-    "allowOnce": "确认",
+  "approval": {
+    "allow": "允许",
     "deny": "拒绝",
-    "autoHint": "想免打扰，可在下方输入框切换为自动允许",
-    "pickerLabel": "Agent 权限",
+    "hint": "想免打扰，可在下方输入框切换为自动允许",
+    "queued": "还有 {{count}} 项等待授权",
     "ask": "权限: 询问",
-    "askHint": "每次询问",
     "autoAllow": "权限: 自动允许",
-    "autoAllowHint": "不再询问",
-    "toggleToAuto": "点击切换为自动允许（不再询问）",
-    "toggleToPrompt": "点击切换为询问模式（每次确认）"
+    "toggleToAuto": "点击切换为自动允许（需授权的工具不再逐次询问）",
+    "toggleToPrompt": "点击切换为每次询问",
+    "field": {
+      "tool": "工具",
+      "target": "目标",
+      "currentTitle": "当前标题",
+      "newTitle": "改为",
+      "kind": "类型",
+      "labels": "标签",
+      "scope": "范围"
+    },
+    "scope": {
+      "outsideProject": "当前项目之外"
+    },
+    "value": {
+      "node": "《{{title}}》",
+      "unknownNode": "未知节点（{{id}}）",
+      "nodeTitle": "「{{title}}」",
+      "labels": "{{labels}}",
+      "rawName": "{{name}}"
+    },
+    "nodeKind": {
+      "child": "子节点",
+      "branch": "分支节点",
+      "diverge": "发散节点"
+    },
+    "toolName": {
+      "search_nodes": "检索节点",
+      "get_node": "读节点详情",
+      "get_tree_outline": "看树大纲",
+      "list_note_labels": "统计标注标签",
+      "search_notes": "检索标注",
+      "get_review_history": "查复习历史",
+      "create_node": "新建节点",
+      "rename_node": "改节点标题",
+      "tag_span": "给原文打标签",
+      "update_assessment": "更新学习评估"
+    },
+    "askTitle": {
+      "get_node": "Agent 想读一个节点",
+      "search_notes": "Agent 想检索标注",
+      "get_review_history": "Agent 想查复习历史",
+      "create_node": "Agent 想新建一个节点",
+      "rename_node": "Agent 想改节点标题",
+      "tag_span": "Agent 想给一段原文打标签",
+      "update_assessment": "Agent 想更新学习评估",
+      "read_outside": "Agent 想读当前项目之外的数据",
+      "search_nodes": "Agent 想检索节点",
+      "get_tree_outline": "Agent 想看树大纲",
+      "list_note_labels": "Agent 想统计标注标签",
+      "unregistered": "Agent 想调用一个未登记的工具"
+    }
   },
   "branch": {
     "title": "新建子节点",

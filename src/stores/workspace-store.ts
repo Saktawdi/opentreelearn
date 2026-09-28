@@ -63,7 +63,7 @@ import {
   getLastOpenedNodeId,
   setLastOpenedNodeId,
 } from '@/lib/last-opened-node'
-import type { ToolPermissionDecision, ToolPermissionRequest } from '@/domain/agent/permissions'
+import { useToolApprovalStore } from '@/stores/tool-approval-store'
 import { touchProject } from './projects-store'
 import { useSettingsStore } from './settings-store'
 
@@ -224,15 +224,10 @@ interface WorkspaceState {
   /** 撤销 Agent 刚做的改动（建节点 / 改标题 / 打标签） */
   undoAgentChange: () => Promise<void>
   dismissAgentChange: () => void
-  /** 当前是否有正在等待用户审批的工具调用请求 */
-  pendingToolApproval: ToolPermissionRequest | null
-  /** 用户做出授权决策（允许本次 / 总是允许 / 拒绝） */
-  respondToolApproval: (decision: ToolPermissionDecision) => void
   clearError: () => void
 }
 
 let activeAbort: AbortController | null = null
-let currentApprovalResolver: ((decision: ToolPermissionDecision) => void) | null = null
 
 function groupMessages(messages: Message[]): Record<Id, Message[]> {
   const grouped: Record<Id, Message[]> = {}
@@ -291,7 +286,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     streaming: null,
     summarizingNodeIds: [],
     agentChange: null,
-    pendingToolApproval: null,
     reasoningOverride: 'auto',
 
     setReasoningOverride: (value) => {
@@ -357,6 +351,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     reset: () => {
       activeAbort?.abort()
       activeAbort = null
+      useToolApprovalStore.getState().cancelAll()
       set((state) => {
         state.projectId = null
         state.project = null
@@ -797,6 +792,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     stopStreaming: () => {
       activeAbort?.abort()
       activeAbort = null
+      // 挂着的授权卡要一并收掉：用户已经不想看这一轮了，卡片留着不撤，
+      // 那次工具调用的 Promise 就永远不落地，流也收不了尾。
+      useToolApprovalStore.getState().cancelAll()
     },
 
     regenerate: async (nodeId, messageId) => {
@@ -1046,17 +1044,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.agentChange = null
       })
     },
-
-    respondToolApproval: (decision) => {
-      const resolver = currentApprovalResolver
-      currentApprovalResolver = null
-      set((state) => {
-        state.pendingToolApproval = null
-      })
-      if (resolver) {
-        resolver(decision)
-      }
-    },
   })),
 )
 
@@ -1167,6 +1154,9 @@ function assistantParts(text: string, tools: MessagePart[]): MessagePart[] {
  *
  * 放在 store 里而不是工具里：写操作必须走既有 action（版本结构、台账、级联都在
  * 那些函数里），工具只负责「把模型的意图翻译成一次 action 调用」。
+ *
+ * 这里**不含任何权限判断** —— 授权统一由工具闸门在 execute 之前拦（见
+ * services/llm/tools/gate.ts）。业务函数只管做事，权限只管一次，二者不互相知道。
  */
 function createWriteHandlers(
   store: typeof useWorkspaceStore,
@@ -1289,40 +1279,10 @@ function createWriteHandlers(
       return { label: i18n.t('common:agent.taggedDone', { labels: label }), noteId: note.id }
     },
 
-    updateAssessment: async ({ nodeId: target, reason }) => {
+    updateAssessment: async ({ nodeId: target }) => {
       const state = store.getState()
       const node = state.nodes.find((item) => item.id === target)
       if (!node || node.kind === 'review') return null
-
-      const projectSettings = state.projectSettings
-      const permission = projectSettings?.agentAssessmentPermission ?? 'prompt'
-
-      // 若策略是每次询问，且未记住免打扰，进行阻塞式权限确认
-      if (permission === 'prompt') {
-        const approved = await new Promise<ToolPermissionDecision>((resolve) => {
-          currentApprovalResolver = resolve
-          store.setState((draft) => {
-            draft.pendingToolApproval = {
-              id: newId(),
-              toolName: 'update_assessment',
-              nodeId: target,
-              nodeTitle: node.title,
-              reason,
-            }
-          })
-        })
-
-        if (approved === 'deny') {
-          return null
-        }
-
-        if (approved === 'allow_always') {
-          // 记住本次选择：走既有 action，仓储与内存同一处收敛
-          await store.getState().updateProjectSettings({
-            agentAssessmentPermission: 'always_allow',
-          })
-        }
-      }
 
       // 执行评估前备份旧状态，用于撤销
       const previousSummary = node.summary
@@ -1431,30 +1391,25 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
 
   // 能力位：false = 明确不支持（完全不带工具，请求体与今天逐字节一致）；
   // undefined = 还没探过 —— 先按支持试一次，失败再退回无工具重试（见下方 catch）。
-  const writeRuntime: ToolRuntime = {
+  const provider = findProvider(settings.providers, modelRef)
+  const capabilityUnknown = provider?.capabilities?.tools === undefined
+  const toolsAllowed = provider?.capabilities?.tools !== false
+  // 写工具无条件注册；授权在 execute 之前逐次问（闸门），不再有「关掉写能力」这回事
+  const toolRuntime: ToolRuntime = {
     nodes,
     messagesByNode,
     notes: Object.values(state.notesByMessage).flat(),
     currentNodeId: nodeId,
+    approvalPolicy: 'enforced',
+    permission: state.projectSettings?.agentToolPermission ?? 'prompt',
   }
-  const provider = findProvider(settings.providers, modelRef)
-  const capabilityUnknown = provider?.capabilities?.tools === undefined
-  const toolsAllowed = provider?.capabilities?.tools !== false
-  const writeEnabled = projectSettings?.agentWriteEnabled === true
   const tools = toolsAllowed
     ? {
-        ...buildReadOnlyTools({
-          nodes,
-          messagesByNode,
-          notes: Object.values(state.notesByMessage).flat(),
-          currentNodeId: nodeId,
-        }),
-        // 写工具跟着项目开关走：默认关闭（见 ProjectSettings.agentWriteEnabled）
-        ...(writeEnabled ? buildWriteTools(writeRuntime, createWriteHandlers(store, nodeId)) : {}),
+        ...buildReadOnlyTools(toolRuntime),
+        ...buildWriteTools(toolRuntime, createWriteHandlers(store, nodeId)),
       }
     : undefined
-  // 写工具只在真带上时才向模型承诺「你能改树」
-  const toolSystem = writeEnabled ? `${TOOLS_SYSTEM}\n\n${WRITE_TOOLS_SYSTEM}` : TOOLS_SYSTEM
+  const toolSystem = `${TOOLS_SYSTEM}\n\n${WRITE_TOOLS_SYSTEM}`
 
   const abortController = new AbortController()
   activeAbort = abortController
