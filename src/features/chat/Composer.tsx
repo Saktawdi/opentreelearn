@@ -14,6 +14,7 @@ import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { ModelPicker } from '@/features/settings/ModelPicker'
 import { ReasoningEffortInput } from '@/features/settings/ReasoningEffortInput'
+import { AgentPermissionPicker } from './AgentPermissionPicker'
 import { useSettingsStore } from '@/stores/settings-store'
 
 interface PendingImage {
@@ -70,6 +71,9 @@ export function Composer({
     (state) => Boolean(state.streaming && !state.streaming.error) && !isStreamingIn(state.streaming, nodeId),
   )
   const stopStreaming = useWorkspaceStore((state) => state.stopStreaming)
+  const assessmentPermission =
+    useWorkspaceStore((state) => state.projectSettings?.agentAssessmentPermission) ?? 'prompt'
+  const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
   const { t } = useTranslation('chat')
 
   const [text, setText] = useState('')
@@ -285,6 +289,15 @@ export function Composer({
                 />
                 {/* 模型在前，推理强度在后：跟随当前所选模型做智能匹配与在线快切 */}
                 <ChatReasoningPicker chatModelRef={chatModelRef} />
+                <AgentPermissionPicker
+                  value={assessmentPermission}
+                  onChange={(next) => {
+                    void updateProjectSettings({ agentAssessmentPermission: next })
+                    if (next === 'always_allow') {
+                      useWorkspaceStore.getState().respondToolApproval('allow_always')
+                    }
+                  }}
+                />
               </>
             ) : null}
 
@@ -309,9 +322,6 @@ export function Composer({
                 event.target.value = ''
               }}
             />
-            <span className="hidden pl-1 text-2xs text-faint sm:inline">
-              {t('composer.enterHint')}
-            </span>
           </div>
 
           {isStreaming ? (

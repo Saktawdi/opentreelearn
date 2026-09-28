@@ -63,6 +63,7 @@ import {
   getLastOpenedNodeId,
   setLastOpenedNodeId,
 } from '@/lib/last-opened-node'
+import type { ToolPermissionDecision, ToolPermissionRequest } from '@/domain/agent/permissions'
 import { touchProject } from './projects-store'
 import { useSettingsStore } from './settings-store'
 
@@ -223,10 +224,15 @@ interface WorkspaceState {
   /** 撤销 Agent 刚做的改动（建节点 / 改标题 / 打标签） */
   undoAgentChange: () => Promise<void>
   dismissAgentChange: () => void
+  /** 当前是否有正在等待用户审批的工具调用请求 */
+  pendingToolApproval: ToolPermissionRequest | null
+  /** 用户做出授权决策（允许本次 / 总是允许 / 拒绝） */
+  respondToolApproval: (decision: ToolPermissionDecision) => void
   clearError: () => void
 }
 
 let activeAbort: AbortController | null = null
+let currentApprovalResolver: ((decision: ToolPermissionDecision) => void) | null = null
 
 function groupMessages(messages: Message[]): Record<Id, Message[]> {
   const grouped: Record<Id, Message[]> = {}
@@ -285,6 +291,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     streaming: null,
     summarizingNodeIds: [],
     agentChange: null,
+    pendingToolApproval: null,
     reasoningOverride: 'auto',
 
     setReasoningOverride: (value) => {
@@ -1039,6 +1046,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         state.agentChange = null
       })
     },
+
+    respondToolApproval: (decision) => {
+      const resolver = currentApprovalResolver
+      currentApprovalResolver = null
+      set((state) => {
+        state.pendingToolApproval = null
+      })
+      if (resolver) {
+        resolver(decision)
+      }
+    },
   })),
 )
 
@@ -1269,6 +1287,87 @@ function createWriteHandlers(
         },
       })
       return { label: i18n.t('common:agent.taggedDone', { labels: label }), noteId: note.id }
+    },
+
+    updateAssessment: async ({ nodeId: target, reason }) => {
+      const state = store.getState()
+      const node = state.nodes.find((item) => item.id === target)
+      if (!node || node.kind === 'review') return null
+
+      const projectSettings = state.projectSettings
+      const permission = projectSettings?.agentAssessmentPermission ?? 'prompt'
+
+      // 若策略是每次询问，且未记住免打扰，进行阻塞式权限确认
+      if (permission === 'prompt') {
+        const approved = await new Promise<ToolPermissionDecision>((resolve) => {
+          currentApprovalResolver = resolve
+          store.setState((draft) => {
+            draft.pendingToolApproval = {
+              id: newId(),
+              toolName: 'update_assessment',
+              nodeId: target,
+              nodeTitle: node.title,
+              reason,
+            }
+          })
+        })
+
+        if (approved === 'deny') {
+          return null
+        }
+
+        if (approved === 'allow_always') {
+          // 记住本次选择：走既有 action，仓储与内存同一处收敛
+          await store.getState().updateProjectSettings({
+            agentAssessmentPermission: 'always_allow',
+          })
+        }
+      }
+
+      // 执行评估前备份旧状态，用于撤销
+      const previousSummary = node.summary
+      const previousMastery = node.mastery
+      const previousMeta = node.assessmentMeta
+
+      // 评估只总结当前显示的这一版
+      const messages = resolveThread(node, state.messagesByNode[target] ?? []).path
+      if (messages.length < 2) return null
+
+      const settings = useSettingsStore.getState().settings
+      const model = await resolveModel(settings, settings.summaryModelRef)
+      if (!model) return null
+
+      const assessment = await generateSummary(model, {
+        title: node.title,
+        transcript: buildTranscript(messages),
+      }).catch(() => null)
+
+      if (!assessment) return null
+
+      await store.getState().setNodeAssessment(target, assessment)
+
+      const outcomeLabel = i18n.t('common:agent.assessmentUpdated', { title: node.title })
+      remember({
+        label: outcomeLabel,
+        undo: async () => {
+          const patch: Partial<Node> = {
+            summary: previousSummary,
+            mastery: previousMastery,
+            assessmentMeta: previousMeta,
+            updatedAt: Date.now(),
+          }
+          await getRepositories().nodes.update(target, patch)
+          store.setState((draft) => {
+            const targetNode = draft.nodes.find((item) => item.id === target)
+            if (targetNode) Object.assign(targetNode, patch)
+          })
+        },
+      })
+
+      return {
+        label: outcomeLabel,
+        nodeId: target,
+      }
     },
   }
 }

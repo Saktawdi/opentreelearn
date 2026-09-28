@@ -35,6 +35,10 @@ function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
       if (labels) return t('tool.searchNotesLabels', { labels })
       return query ? t('tool.searchNotes', { query }) : t('tool.searchNotesPlain')
     }
+    case 'update_assessment': {
+      const reason = typeof args.reason === 'string' ? args.reason : ''
+      return reason ? t('tool.updateAssessmentReason', { reason }) : t('tool.updateAssessment')
+    }
     default:
       return name
   }

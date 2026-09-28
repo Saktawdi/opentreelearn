@@ -35,6 +35,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { LearningStatusDialog } from '@/features/review/LearningStatusDialog'
 import { useArchiveNodeWithUndo } from '@/features/canvas/use-archive-node'
+import { ToolPermissionCard } from './ToolPermissionCard'
 import { Composer, type ComposerHandle } from './Composer'
 import { MessageList } from './MessageList'
 import { useTranslation } from 'react-i18next'
@@ -70,6 +71,8 @@ export function FocusChatView({
   const agentChange = useWorkspaceStore((state) => state.agentChange)
   const undoAgentChange = useWorkspaceStore((state) => state.undoAgentChange)
   const dismissAgentChange = useWorkspaceStore((state) => state.dismissAgentChange)
+  const pendingToolApproval = useWorkspaceStore((state) => state.pendingToolApproval)
+  const respondToolApproval = useWorkspaceStore((state) => state.respondToolApproval)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
   const navigate = useNavigate()
 
@@ -276,6 +279,18 @@ export function FocusChatView({
       {/* 沉浸对话主舞台（完全铺满容器宽度） */}
       <div className="flex h-full min-h-0 w-full flex-1 flex-col">
         <MessageList nodeId={node.id} />
+
+        {/* Agent 试图执行需确认的敏感工具（如更新学习评估）：弹出权限拦截卡片。
+            长期偏好（自动允许）在输入框工具栏的 AgentPermissionPicker 上切。 */}
+        <AnimatePresence initial={false}>
+          {pendingToolApproval ? (
+            <ToolPermissionCard
+              key={pendingToolApproval.id}
+              request={pendingToolApproval}
+              onRespond={respondToolApproval}
+            />
+          ) : null}
+        </AnimatePresence>
 
         {/* Agent 刚改动了这棵树：给一条可撤销的提示。只留最近一条 —— 撤销是后悔药，不是操作历史。
             动画只在这一刻出现（滑入以认领注意力），不该跟着节点切换重演。 */}

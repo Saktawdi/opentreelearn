@@ -4,7 +4,9 @@ import { makeMessage, makeNode, messagesByNode } from '@/test/fixtures'
 import {
   TOOL_RESULT_LIMIT,
   TOOLS_SYSTEM,
+  WRITE_TOOLS_SYSTEM,
   buildReadOnlyTools,
+  buildWriteTools,
 } from './registry'
 
 /** 工具对象上的 execute 由 AI SDK 调用；测试里直接调，参数只用到 input。 */
@@ -118,5 +120,26 @@ describe('read-only tool registry', () => {
     const empty = buildReadOnlyTools({ nodes: [node], messagesByNode: new Map(), notes: [] })
     const stats = await run(empty.list_note_labels, {})
     expect(stats).toContain('还没有打过标签的标注')
+  })
+
+  it('provides update_assessment write tool and delegates to handlers', async () => {
+    expect(WRITE_TOOLS_SYSTEM).toContain('更新学习评估')
+    let handled: { nodeId: string; reason?: string } | null = null
+    const writeTools = buildWriteTools(
+      { nodes: [node], messagesByNode: new Map(), notes: [], currentNodeId: 'n1' },
+      {
+        createNode: async () => null,
+        renameNode: async () => null,
+        tagSpan: async () => null,
+        updateAssessment: async (input) => {
+          handled = input
+          return { label: '已更新评估', nodeId: input.nodeId }
+        },
+      },
+    )
+
+    const res = await run(writeTools.update_assessment, { reason: '已理解公式' })
+    expect(res).toContain('已更新评估')
+    expect(handled).toEqual({ nodeId: 'n1', reason: '已理解公式' })
   })
 })

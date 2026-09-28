@@ -1,6 +1,6 @@
 {
   "composer": {
-    "placeholder": "问点什么…",
+    "placeholder": "问点什么… (Enter 发送，Shift+Enter 换行)",
     "enterHint": "Enter 发送 · Shift+Enter 换行",
     "insertImage": "插入图片",
     "pendingImageAlt": "待发送图片",
@@ -151,9 +151,25 @@
     "searchNotesLabels": "检索标注（{{labels}}）",
     "searchNotes": "检索标注「{{query}}」",
     "searchNotesPlain": "检索标注",
+    "updateAssessment": "更新学习评估",
+    "updateAssessmentReason": "更新学习评估（{{reason}}）",
     "failed": "失败",
     "collapse": "收起",
     "returned": "已返回"
+  },
+  "permission": {
+    "requestTitle": "Agent 申请更新学习评估",
+    "requestDesc": "Agent 建议为《{{title}}》更新掌握度与学习评估。",
+    "allowOnce": "确认",
+    "deny": "拒绝",
+    "autoHint": "想免打扰，可在下方输入框切换为自动允许",
+    "pickerLabel": "Agent 权限",
+    "ask": "权限: 询问",
+    "askHint": "每次询问",
+    "autoAllow": "权限: 自动允许",
+    "autoAllowHint": "不再询问",
+    "toggleToAuto": "点击切换为自动允许（不再询问）",
+    "toggleToPrompt": "点击切换为询问模式（每次确认）"
   },
   "branch": {
     "title": "新建子节点",

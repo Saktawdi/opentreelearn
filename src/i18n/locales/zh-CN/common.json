@@ -106,7 +106,8 @@
     "renamed": "把《{{previous}}》改名为《{{title}}》",
     "renamedDone": "《{{previous}}》改名为《{{title}}》",
     "tagged": "给一段原文打了标签 {{labels}}",
-    "taggedDone": "已打标签 {{labels}}"
+    "taggedDone": "已打标签 {{labels}}",
+    "assessmentUpdated": "更新了《{{title}}》的学习评估"
   },
   "session": {
     "imageAnswer": "（提交了图片作答）",

@@ -272,11 +272,10 @@ export type ReadOnlyToolSet = ReturnType<typeof buildReadOnlyTools>
  */
 export const WRITE_TOOLS_SYSTEM = [
   '## 改动这棵树的规则',
-  '- 你有建节点、改标题、给某段文字打标签的能力（都可在界面上撤销）。',
-  '- 用户明确要求改动时才动手（例如「帮我拆成三个子节点」「把这题标成错题」）；',
-  '  只是在讨论某个想法时，先问一句要不要真的建。',
+  '- 你有建节点、改标题、给某段文字打标签、更新学习评估的能力（都可在界面上撤销）。',
+  '- 用户明确要求改动，或者某个学习主题有了明显的进展/掌握程度变化（如完成了核心概念推导、理解了关键例题）时，才主动调用相应工具。',
   '- 一次别建太多：拆解最多 3~5 个节点，且标题要短（不超过 16 字）。',
-  '- 改完用一句话说明你动了什么（建了哪些节点、改了什么标题），用户才知道去哪儿看。',
+  '- 改完用一句话说明你动了什么（建了哪些节点、改了什么标题、更新了评估），用户才知道去哪儿看。',
   '- 你没有删除、归档的能力：这类要求如实说明做不到，并建议用户手动处理。',
 ].join('\n')
 
@@ -304,6 +303,10 @@ export interface WriteToolHandlers {
     /** 已定好的出现位置（源文下标）；省掉时由 handlers 自己找第一处 */
     start?: number
     body?: string
+  }) => Promise<AgentWriteOutcome | null>
+  updateAssessment: (input: {
+    nodeId: string
+    reason?: string
   }) => Promise<AgentWriteOutcome | null>
 }
 
@@ -391,6 +394,25 @@ export function buildWriteTools(runtime: ToolRuntime, handlers: WriteToolHandler
           ...(body !== undefined ? { body } : {}),
         })
         if (!outcome) return failure('没能写入标注')
+        return asData({ ok: true, ...outcome })
+      },
+    }),
+
+    update_assessment: tool({
+      description:
+        '为当前节点（或指定节点）更新学习评估与掌握度。当用户理解了某个难点、推导出了关键步骤、或完成了概念讨论且掌握情况发生变化时，调用它发起更新。',
+      inputSchema: z.object({
+        nodeId: z.string().optional().describe('节点 id；省略则更新当前节点'),
+        reason: z
+          .string()
+          .optional()
+          .describe('建议更新评估的简要理由，例如「已掌握动量守恒公式并正确解答例题」'),
+      }),
+      execute: async ({ nodeId, reason }) => {
+        const target = nodeId ?? runtime.currentNodeId
+        if (!target) return failure('没有指定节点，且当前不在任何节点里')
+        const outcome = await handlers.updateAssessment({ nodeId: target, reason })
+        if (!outcome) return failure('未能更新学习评估（可能已被用户拒绝、或当前未配置评估模型）')
         return asData({ ok: true, ...outcome })
       },
     }),

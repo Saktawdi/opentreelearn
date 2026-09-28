@@ -22,13 +22,19 @@ export interface ProjectSettings {
   titleModelRef?: ModelRef
   summaryModelRef?: ModelRef
   /**
-   * 允许 Agent 改动这棵树（建节点、改标题、打标签）。
+   * 允许 Agent 改动这棵树（建节点、改标题、打标签、更新评估）。
    *
    * 缺省（含老数据）= 关闭：只读工具随时可用，写工具必须由用户显式打开 ——
    * 「默认不让 AI 改我的数据」是这套设计的硬约定（见设计文档 §6.3）。
    * 打开后也只放可逆操作，破坏性的（归档、删除）不提供。
    */
   agentWriteEnabled?: boolean
+  /**
+   * Agent 主动更新评估的权限策略：
+   * - 'prompt' (缺省): 拦截并弹出卡片征询用户确认；
+   * - 'always_allow': 默认放行，不再弹卡片。
+   */
+  agentAssessmentPermission?: 'prompt' | 'always_allow'
   /** 最后修改时间；历史数据可能没有，同步时以 outbox 的变更时间为准。 */
   updatedAt?: number
 }

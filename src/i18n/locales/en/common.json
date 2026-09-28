@@ -110,7 +110,8 @@
     "renamed": "Renamed “{{previous}}” to “{{title}}”",
     "renamedDone": "“{{previous}}” renamed to “{{title}}”",
     "tagged": "Tagged a passage with {{labels}}",
-    "taggedDone": "Tagged with {{labels}}"
+    "taggedDone": "Tagged with {{labels}}",
+    "assessmentUpdated": "Updated learning assessment for “{{title}}”"
   },
   "session": {
     "imageAnswer": "(answered with an image)",

@@ -1,6 +1,6 @@
 {
   "composer": {
-    "placeholder": "Ask anything…",
+    "placeholder": "Ask anything… (Enter to send, Shift+Enter for newline)",
     "enterHint": "Enter to send · Shift+Enter for a new line",
     "insertImage": "Insert image",
     "pendingImageAlt": "Pending image",
@@ -151,9 +151,25 @@
     "searchNotesLabels": "Search annotations ({{labels}})",
     "searchNotes": "Search annotations \"{{query}}\"",
     "searchNotesPlain": "Search annotations",
+    "updateAssessment": "Update learning assessment",
+    "updateAssessmentReason": "Update learning assessment ({{reason}})",
     "failed": "Failed",
     "collapse": "Collapse",
     "returned": "Returned"
+  },
+  "permission": {
+    "requestTitle": "Agent requests updating learning assessment",
+    "requestDesc": "Agent suggests updating the mastery score and assessment for “{{title}}”.",
+    "allowOnce": "Confirm",
+    "deny": "Decline",
+    "autoHint": "To stop these prompts, switch the composer below to auto-allow",
+    "pickerLabel": "Agent permission",
+    "ask": "Permission: Ask",
+    "askHint": "Ask each time",
+    "autoAllow": "Permission: Auto-allow",
+    "autoAllowHint": "Never ask",
+    "toggleToAuto": "Click to switch to auto-allow (no more prompts)",
+    "toggleToPrompt": "Click to switch to ask mode (confirm each time)"
   },
   "branch": {
     "title": "New child node",

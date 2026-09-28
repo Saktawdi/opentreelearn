@@ -26,41 +26,53 @@ const llm = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/llm/chat', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/llm/chat')>()
-  return {
-    ...actual,
-    streamReply: async (params: unknown) => {
-      const options = params as {
-        onDelta?: (delta: string) => void
-        onToolCall?: (activity: { callId: string; name: string; input: unknown }) => void
-        onToolResult?: (outcome: { callId: string; name: string; output?: string; error?: string }) => void
-      }
-      llm.calls.push(options as Record<string, unknown>)
+    const actual = await importOriginal<typeof import('@/services/llm/chat')>()
+    return {
+      ...actual,
+      streamReply: async (params: unknown) => {
+        const options = params as {
+          onDelta?: (delta: string) => void
+          onToolCall?: (activity: { callId: string; name: string; input: unknown }) => void
+          onToolResult?: (outcome: { callId: string; name: string; output?: string; error?: string }) => void
+        }
+        llm.calls.push(options as Record<string, unknown>)
 
-      for (const tool of llm.tools) {
-        options.onToolCall?.({ callId: tool.callId, name: tool.name, input: tool.input })
-        options.onToolResult?.({
-          callId: tool.callId,
-          name: tool.name,
-          ...(tool.output !== undefined ? { output: tool.output } : {}),
-          ...(tool.error !== undefined ? { error: tool.error } : {}),
-        })
-      }
-      // 举了手但没等到结果：中断的写照
-      if (llm.halfRecord) {
-        options.onToolCall?.({ callId: llm.halfRecord.callId, name: 'search_nodes', input: {} })
-      }
+        for (const tool of llm.tools) {
+          options.onToolCall?.({ callId: tool.callId, name: tool.name, input: tool.input })
+          options.onToolResult?.({
+            callId: tool.callId,
+            name: tool.name,
+            ...(tool.output !== undefined ? { output: tool.output } : {}),
+            ...(tool.error !== undefined ? { error: tool.error } : {}),
+          })
+        }
+        // 举了手但没等到结果：中断的写照
+        if (llm.halfRecord) {
+          options.onToolCall?.({ callId: llm.halfRecord.callId, name: 'search_nodes', input: {} })
+        }
 
-      options.onDelta?.(llm.plan.text)
-      return {
-        text: llm.plan.text,
-        aborted: false,
-        toolCalls: llm.plan.toolCalls,
-        hitStepLimit: llm.plan.hitStepLimit,
-      }
-    },
-  }
-})
+        options.onDelta?.(llm.plan.text)
+        return {
+          text: llm.plan.text,
+          aborted: false,
+          toolCalls: llm.plan.toolCalls,
+          hitStepLimit: llm.plan.hitStepLimit,
+        }
+      },
+    }
+  })
+
+  vi.mock('@/services/llm/derive', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/services/llm/derive')>()
+    return {
+      ...actual,
+      generateSummary: async () => ({
+        summary: '已掌握牛顿第二定律公式',
+        mastery: 85,
+        weakPoints: [],
+      }),
+    }
+  })
 
 async function seed(): Promise<void> {
   const project: Project = { id: 'p1', name: '线性代数', tags: [], createdAt: 1, updatedAt: 1 }
@@ -79,6 +91,7 @@ async function seed(): Promise<void> {
         },
       ],
       defaultChatModelRef: { providerId: 'prov1', modelId: 'test-model' },
+      summaryModelRef: { providerId: 'prov1', modelId: 'test-model' },
     },
     loaded: true,
   })
@@ -267,5 +280,165 @@ describe('写工具（默认关闭 + 撤销）', () => {
 
     await useWorkspaceStore.getState().undoAgentChange()
     expect(await getRepositories().notes.listByProject('p1')).toEqual([])
+  })
+
+  it('handles update_assessment with permission prompt, approval, and undo', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+    // 评估要求可见路径里至少一轮问答：补上一条回答
+    const assistantMsg = {
+      id: 'm2',
+      nodeId: root!.id,
+      projectId: 'p1',
+      role: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: 'F=ma' }],
+      createdAt: Date.now(),
+    }
+    await getRepositories().messages.create(assistantMsg)
+    useWorkspaceStore.setState((draft) => {
+      draft.messagesByNode[root!.id].push(assistantMsg)
+    })
+
+    const tools = toolsOfLastCall() as {
+      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
+    }
+
+    // 1. 发起调用：触发权限拦截挂起
+    const callPromise = tools.update_assessment.execute(
+      { nodeId: root!.id, reason: '学习者已掌握牛顿第二定律公式' },
+      {},
+    )
+
+    // 状态中应出现待确认请求
+    expect(useWorkspaceStore.getState().pendingToolApproval).toMatchObject({
+      toolName: 'update_assessment',
+      nodeId: root!.id,
+      reason: '学习者已掌握牛顿第二定律公式',
+    })
+
+    // 2. 用户在卡片上点击批准（allow_once）
+    useWorkspaceStore.getState().respondToolApproval('allow_once')
+
+    // 挂起应被 resolve
+    await callPromise
+    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
+    expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.mastery)
+      .toMatchObject({ score: 85 })
+
+    // 验证撤销可用
+    expect(useWorkspaceStore.getState().agentChange?.label).toContain('牛顿第二定律')
+    await useWorkspaceStore.getState().undoAgentChange()
+    expect(useWorkspaceStore.getState().agentChange).toBeNull()
+  })
+
+  it('rejects update_assessment when user denies permission', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+
+    const tools = toolsOfLastCall() as {
+      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
+    }
+
+    const callPromise = tools.update_assessment.execute(
+      { nodeId: root!.id, reason: '测试拒绝' },
+      {},
+    )
+
+    expect(useWorkspaceStore.getState().pendingToolApproval).not.toBeNull()
+
+    // 用户点击拒绝
+    useWorkspaceStore.getState().respondToolApproval('deny')
+
+    const res = await callPromise
+    expect(res).toContain('未能更新学习评估')
+    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
+  })
+
+  it('allows subsequent calls without prompt when user chooses allow_always', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+    const assistantMsg = {
+      id: 'm2',
+      nodeId: root!.id,
+      projectId: 'p1',
+      role: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: 'F=ma' }],
+      createdAt: Date.now(),
+    }
+    await getRepositories().messages.create(assistantMsg)
+    useWorkspaceStore.setState((draft) => {
+      draft.messagesByNode[root!.id].push(assistantMsg)
+    })
+
+    const tools = toolsOfLastCall() as {
+      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
+    }
+
+    // 第一次调用：用户在卡片里把「自动确认」拨开 —— 本次同时放行
+    const firstCall = tools.update_assessment.execute(
+      { nodeId: root!.id, reason: '初次评估' },
+      {},
+    )
+    expect(useWorkspaceStore.getState().pendingToolApproval).not.toBeNull()
+    useWorkspaceStore.getState().respondToolApproval('allow_always')
+    await firstCall
+
+    // 状态已更新为 always_allow
+    expect(useWorkspaceStore.getState().projectSettings?.agentAssessmentPermission).toBe('always_allow')
+
+    // 第二次调用：直接自动放行，不再挂起弹窗
+    const secondCall = tools.update_assessment.execute(
+      { nodeId: root!.id, reason: '二次评估' },
+      {},
+    )
+    expect(useWorkspaceStore.getState().pendingToolApproval).toBeNull()
+    const res = await secondCall
+    expect(res).toContain('更新了《牛顿第二定律》的学习评估')
+  })
+
+  it('prompts again after the user switches auto-confirm back off', async () => {
+    await seed()
+    await enableWrite()
+    const root = await useWorkspaceStore.getState().startRootNode('牛顿第二定律')
+    const assistantMsg = {
+      id: 'm2',
+      nodeId: root!.id,
+      projectId: 'p1',
+      role: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: 'F=ma' }],
+      createdAt: Date.now(),
+    }
+    await getRepositories().messages.create(assistantMsg)
+    useWorkspaceStore.setState((draft) => {
+      draft.messagesByNode[root!.id].push(assistantMsg)
+    })
+
+    const tools = toolsOfLastCall() as {
+      update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> }
+    }
+
+    // 先切到自动确认模式
+    const autoCall = tools.update_assessment.execute({ nodeId: root!.id }, {})
+    useWorkspaceStore.getState().respondToolApproval('allow_always')
+    await autoCall
+    expect(useWorkspaceStore.getState().projectSettings?.agentAssessmentPermission).toBe(
+      'always_allow',
+    )
+
+    // 用户在别处把偏好拨回询问模式（持久化动作由 updateProjectSettings 承担）
+    await useWorkspaceStore.getState().updateProjectSettings({
+      agentAssessmentPermission: 'prompt',
+    })
+
+    // 下一次调用必须重新挂起，不能因为曾经开过自动就一路放行
+    const promptCall = tools.update_assessment.execute({ nodeId: root!.id }, {})
+    expect(useWorkspaceStore.getState().pendingToolApproval).toMatchObject({
+      toolName: 'update_assessment',
+    })
+    useWorkspaceStore.getState().respondToolApproval('deny')
+    expect(await promptCall).toContain('未能更新学习评估')
   })
 })
