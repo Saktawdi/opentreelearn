@@ -39,7 +39,16 @@ interface EntityAdapter {
 export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<void> {
   await db.transaction(
     'rw',
-    [db.projects, db.projectSettings, db.nodes, db.messages, db.assets, db.notes, db.reviewSessions],
+    [
+      db.projects,
+      db.projectSettings,
+      db.nodes,
+      db.messages,
+      db.assets,
+      db.notes,
+      db.reviewSessions,
+      db.composerDrafts,
+    ],
     async () => {
       await db.projects.delete(projectId)
       await db.projectSettings.delete(projectId)
@@ -49,6 +58,8 @@ export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<
       await db.notes.where('projectId').equals(projectId).delete()
       // 复习会话只存在本机：项目没了，参考它的进度与草稿也没有意义
       await db.reviewSessions.where('projectId').equals(projectId).delete()
+      // 输入框草稿同理，还带着待发图片的 Blob，不清就是实打实的孤儿数据
+      await db.composerDrafts.where('projectId').equals(projectId).delete()
     },
   )
 }

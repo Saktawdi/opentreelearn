@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import type { ComposerDraft } from '@/domain/composer/draft'
 import type {
   Asset,
   GlobalSettings,
@@ -87,6 +88,7 @@ export class AppDatabase extends Dexie {
   syncState!: Table<SyncStateRecord, string>
   reviewSessions!: Table<ReviewSessionRow, Id>
   modelCatalog!: Table<ModelCatalogRecord, string>
+  composerDrafts!: Table<ComposerDraft, Id>
 
   constructor(name = 'opentreelearn') {
     super(name)
@@ -123,6 +125,13 @@ export class AppDatabase extends Dexie {
     // v5 只加模型目录缓存表（见 ModelCatalogRecord）：智能匹配的原始目录不在同步域内。
     this.version(5).stores({
       modelCatalog: 'key',
+    })
+
+    // v6 只加输入框草稿表：一个节点至多一份草稿，主键就是 nodeId，
+    // `projectId` 索引给项目删除时的级联清理用。草稿不进同步台账 —— 它是本机
+    // 未完成的输入，跟着账号分库走即可，跨设备同步一份「没说完的话」没有意义。
+    this.version(6).stores({
+      composerDrafts: 'id, projectId',
     })
   }
 }

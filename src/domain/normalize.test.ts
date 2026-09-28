@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultSettings, DEFAULT_CONTEXT_BUDGET } from './defaults'
 import {
+  normalizeComposerDraft,
   normalizeGlobalSettings,
   normalizeMastery,
   normalizeModelRef,
@@ -441,5 +442,66 @@ describe('normalizeNote', () => {
     expect(normalizeNote({ ...base, nodeId: undefined })).toBeNull()
     expect(normalizeNote({ ...base, projectId: null })).toBeNull()
     expect(normalizeNote(null)).toBeNull()
+  })
+})
+
+describe('normalizeComposerDraft', () => {
+  const blob = new Blob(['图片字节'], { type: 'image/jpeg' })
+  const base = {
+    id: 'n1',
+    projectId: 'p1',
+    nodeId: 'n1',
+    text: '草稿正文',
+    quotes: ['引用'],
+    assets: [{ id: 'a1', projectId: 'p1', mime: 'image/jpeg', createdAt: 1, blob }],
+    updatedAt: 10,
+  }
+
+  // 坏草稿的代价是「用户打好的字回不来」，所以每个字段都要有确定的回退值，
+  // 而不是把 undefined 透传给 textarea 变成非受控组件。
+  it('缺字段的记录补成可用形状', () => {
+    const draft = normalizeComposerDraft({ id: 'n1' })
+    expect(draft).toEqual({
+      id: 'n1',
+      projectId: '',
+      nodeId: 'n1',
+      text: '',
+      quotes: [],
+      assets: [],
+      updatedAt: 0,
+    })
+  })
+
+  it('quotes 过滤非字符串与空串', () => {
+    const draft = normalizeComposerDraft({ ...base, quotes: [' a ', '', 'b', 42, null] })
+    expect(draft?.quotes).toEqual(['a', 'b'])
+    expect(normalizeComposerDraft({ ...base, quotes: 'not-an-array' })?.quotes).toEqual([])
+  })
+
+  // 这里曾经栽过一次：写成 `typeof item.blob instanceof Blob`，
+  // 实际解析成 `(typeof item.blob) instanceof Blob`，拿字符串去 instanceof 恒为 false，
+  // 结果所有图片被静默丢弃。用真 Blob 兜住这个回归。
+  it('带真 Blob 的图片原样保留', () => {
+    const draft = normalizeComposerDraft(base)
+    expect(draft?.assets).toHaveLength(1)
+    expect(draft?.assets[0].id).toBe('a1')
+    expect(draft?.assets[0].blob).toBeInstanceOf(Blob)
+    expect(draft?.assets[0].blob.size).toBe(blob.size)
+  })
+
+  it('丢掉没有 Blob 的坏资产，但保留同记录里的正文', () => {
+    const draft = normalizeComposerDraft({
+      ...base,
+      assets: [{ id: 'a1', projectId: 'p1' }, { id: 'a2', projectId: 'p1', blob: '不是 Blob' }, '乱码'],
+    })
+    expect(draft?.assets).toEqual([])
+    expect(draft?.text).toBe('草稿正文')
+  })
+
+  it('丢弃无法归属的记录', () => {
+    expect(normalizeComposerDraft({ ...base, id: '' })).toBeNull()
+    expect(normalizeComposerDraft({ ...base, id: 42 })).toBeNull()
+    expect(normalizeComposerDraft(null)).toBeNull()
+    expect(normalizeComposerDraft('草稿')).toBeNull()
   })
 })

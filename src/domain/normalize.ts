@@ -1,6 +1,8 @@
 import i18n from '@/i18n'
 import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget, DEFAULT_BRANCH_PROMPT } from './defaults'
+import type { ComposerDraft } from './composer/draft'
 import type {
+  Asset,
   AssessmentMeta,
   AssessmentSource,
   BranchPromptPreference,
@@ -410,5 +412,53 @@ export function normalizeGlobalSettings(value: unknown): GlobalSettings {
           .filter((provider): provider is ProviderConfig => provider !== null)
       : [],
     updatedAt: readNumber(value.updatedAt, defaults.updatedAt),
+  }
+}
+
+/**
+ * 输入框草稿的读回归一化。
+ *
+ * 草稿只由本机写入，出坏记录的概率比消息/节点低，但它照样会经过「旧版本写入、
+ * 浏览器异常中断的写入、手工改库」这些路径，而后果是输入框直接不可用：
+ * `text` 缺字段会让 textarea 变成非受控组件，`assets` 里一条没有 `blob` 的记录
+ * 会让 `URL.createObjectURL` 抛异常 —— 后者正好落在草稿读取的 `.then` 里，
+ * 一个坏图片就能连带整份草稿（连同用户打好的正文）一起读不回来。
+ */
+export function normalizeComposerDraft(value: unknown): ComposerDraft | null {
+  if (!isRecord(value)) return null
+  const id = readString(value.id)
+  if (!id) return null
+
+  const assets: Asset[] = []
+  if (Array.isArray(value.assets)) {
+    for (const item of value.assets) {
+      if (!isRecord(item)) continue
+      const assetId = readString(item.id)
+      const blob = item.blob as Blob
+      // 只认带得出预览的记录：没有 Blob 的资产渲染不出来，留着只会拖垮整份草稿
+      if (!assetId || !(blob instanceof Blob)) continue
+      assets.push({
+        id: assetId,
+        projectId: readString(item.projectId) ?? id,
+        kind: 'image',
+        mime: readString(item.mime) ?? 'image/jpeg',
+        name: readString(item.name),
+        width: typeof item.width === 'number' ? item.width : undefined,
+        height: typeof item.height === 'number' ? item.height : undefined,
+        createdAt: readNumber(item.createdAt, 0),
+        blob,
+      })
+    }
+  }
+
+  return {
+    id,
+    // 主键就是 nodeId，两者恒等：按主键取值，不采信记录里自称的 nodeId
+    nodeId: id,
+    projectId: readString(value.projectId) ?? '',
+    text: readString(value.text) ?? '',
+    quotes: readStringArray(value.quotes),
+    assets,
+    updatedAt: readNumber(value.updatedAt, 0),
   }
 }

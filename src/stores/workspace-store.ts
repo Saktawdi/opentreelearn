@@ -601,6 +601,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             ...messages.map((message) => repositories.messages.remove(message.id)),
             repositories.notes.removeByNode(nodeId),
             repositories.nodes.remove(nodeId),
+            // 草稿不设过期时间，节点没了就没人会再来读它 —— 不清就是带 Blob 的孤儿
+            repositories.composerDrafts.remove(nodeId),
           ]
         }),
       )

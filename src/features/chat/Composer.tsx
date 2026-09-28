@@ -4,24 +4,21 @@ import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip } from '@/components/ui/tooltip'
 import { getRepositories } from '@/data'
-import type { Asset, Id, MessagePart, ModelRef } from '@/domain/models'
+import type { Id, MessagePart, ModelRef } from '@/domain/models'
 import { ENTER_FAST } from '@/lib/motion'
 import { normalizeWhitespace } from '@/lib/text'
 import { cn, errorMessage } from '@/lib/utils'
-import { createImageAsset, imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
+import { imagesFromClipboard, imagesFromDataTransfer } from '@/services/images'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { useToolApprovalStore } from '@/stores/tool-approval-store'
 import { ModelPicker } from '@/features/settings/ModelPicker'
 import { ReasoningEffortInput } from '@/features/settings/ReasoningEffortInput'
 import { AgentPermissionPicker } from './AgentPermissionPicker'
 import { useSettingsStore } from '@/stores/settings-store'
-
-interface PendingImage {
-  asset: Asset
-  url: string
-}
+import { useComposerDraft } from './useComposerDraft'
 
 /** 对话页的推理强度选择器：绑定到会话级临时覆盖，跟随当前对话所用的模型做智能匹配。 */
 function ChatReasoningPicker({ chatModelRef }: { chatModelRef?: ModelRef | null }) {
@@ -77,37 +74,32 @@ export function Composer({
   const updateProjectSettings = useWorkspaceStore((state) => state.updateProjectSettings)
   const { t } = useTranslation('chat')
 
-  const [text, setText] = useState('')
-  const [quotes, setQuotes] = useState<string[]>([])
-  const [pending, setPending] = useState<PendingImage[]>([])
+  const {
+    loading: draftLoading,
+    text,
+    setText,
+    quotes,
+    addQuote,
+    removeQuote,
+    pending,
+    attachFiles,
+    removePending,
+    clear,
+  } = useComposerDraft(nodeId, projectId)
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const pendingRef = useRef<PendingImage[]>([])
 
   useImperativeHandle(
     ref,
     () => ({
       appendQuote: (value) => {
-        const clean = value.trim()
-        if (!clean) return
-        setQuotes((previous) => (previous.includes(clean) ? previous : [...previous, clean]))
+        addQuote(value)
         textareaRef.current?.focus()
       },
     }),
-    [],
-  )
-
-  useEffect(() => {
-    pendingRef.current = pending
-  }, [pending])
-
-  useEffect(
-    () => () => {
-      for (const item of pendingRef.current) URL.revokeObjectURL(item.url)
-    },
-    [],
+    [addQuote],
   )
 
   const resize = () => {
@@ -117,28 +109,11 @@ export function Composer({
     element.style.height = `${Math.min(element.scrollHeight, 180)}px`
   }
 
-  const attach = async (files: File[]) => {
-    if (files.length === 0) return
-    const created = await Promise.all(
-      files.map(async (file) => {
-        const asset = await createImageAsset(file, projectId)
-        return { asset, url: URL.createObjectURL(asset.blob) }
-      }),
-    )
-    setPending((previous) => [...previous, ...created])
-  }
-
-  const removePending = (assetId: Id) => {
-    setPending((previous) => {
-      const target = previous.find((item) => item.asset.id === assetId)
-      if (target) URL.revokeObjectURL(target.url)
-      return previous.filter((item) => item.asset.id !== assetId)
-    })
-  }
-
-  const removeQuote = (value: string) => {
-    setQuotes((previous) => previous.filter((quote) => quote !== value))
-  }
+  // 草稿是 await 读回来的，恢复那一刻不会触发 onChange，高度得在这里补一次
+  useEffect(() => {
+    if (draftLoading) return
+    resize()
+  }, [draftLoading])
 
   const submit = async () => {
     const trimmed = text.trim()
@@ -158,10 +133,8 @@ export function Composer({
         parts.push({ type: 'image', assetId: item.asset.id })
       }
 
-      for (const item of pending) URL.revokeObjectURL(item.url)
-      setText('')
-      setQuotes([])
-      setPending([])
+      // 图片已转存进 assets 表，草稿整条清掉（含待发图片的 blob）
+      clear()
       const element = textareaRef.current
       if (element) element.style.height = 'auto'
 
@@ -174,6 +147,7 @@ export function Composer({
   }
 
   const canSend =
+    !draftLoading &&
     (text.trim().length > 0 || quotes.length > 0 || pending.length > 0) &&
     !isStreaming &&
     !isStreamingElsewhere &&
@@ -189,7 +163,9 @@ export function Composer({
       onDrop={(event) => {
         event.preventDefault()
         setDragging(false)
-        void attach(imagesFromDataTransfer(event.dataTransfer))
+        // 拖放区在草稿读取期间也一直在：图片进来了也会被随后到达的草稿整个盖掉
+        if (draftLoading) return
+        void attachFiles(imagesFromDataTransfer(event.dataTransfer))
       }}
       className={cn(
         'shrink-0 border-t border-line/60 p-3 transition-colors',
@@ -254,30 +230,35 @@ export function Composer({
           </AnimatePresence>
         </div>
 
-        <textarea
-          ref={textareaRef}
-          value={text}
-          rows={1}
-          onChange={(event) => {
-            setText(event.target.value)
-            resize()
-          }}
-          onPaste={(event) => {
-            const files = imagesFromClipboard(event.nativeEvent)
-            if (files.length > 0) {
-              event.preventDefault()
-              void attach(files)
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault()
-              void submit()
-            }
-          }}
-          placeholder={t('composer.placeholder')}
-          className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
-        />
+        {/* 草稿读取期间不渲染输入框：用户此刻打的字会被随后到达的草稿覆盖 */}
+        {draftLoading ? (
+          <Skeleton className="mx-3 my-3 h-5 w-2/3" />
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={text}
+            rows={1}
+            onChange={(event) => {
+              setText(event.target.value)
+              resize()
+            }}
+            onPaste={(event) => {
+              const files = imagesFromClipboard(event.nativeEvent)
+              if (files.length > 0) {
+                event.preventDefault()
+                void attachFiles(files)
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                void submit()
+              }
+            }}
+            placeholder={t('composer.placeholder')}
+            className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
+          />
+        )}
 
         <div className="flex items-center justify-between px-2 pb-1.5">
           <div className="flex items-center gap-1">
@@ -308,6 +289,8 @@ export function Composer({
               <Button
                 variant="ghost"
                 size="icon-sm"
+                // 草稿还在读时先别让图片进来：它会被随后到达的草稿整个覆盖掉
+                disabled={draftLoading}
                 onClick={() => fileInputRef.current?.click()}
                 className="text-muted hover:text-ink"
               >
@@ -321,7 +304,7 @@ export function Composer({
               multiple
               className="hidden"
               onChange={(event) => {
-                void attach(Array.from(event.target.files ?? []))
+                void attachFiles(Array.from(event.target.files ?? []))
                 event.target.value = ''
               }}
             />

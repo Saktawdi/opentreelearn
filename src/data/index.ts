@@ -5,6 +5,7 @@ import type { Repositories } from './repository'
 
 export type {
   AssetRepository,
+  ComposerDraftRepository,
   GradeReviewInput,
   GradeReviewOutcome,
   MessageRepository,

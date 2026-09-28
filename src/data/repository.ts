@@ -9,6 +9,7 @@ import type {
   ProjectSettings,
   ReviewGrade,
 } from '@/domain/models'
+import type { ComposerDraft } from '@/domain/composer/draft'
 import type { ReviewItemResult, ReviewSessionRecord } from '@/domain/review/session'
 
 export interface ProjectRepository {
@@ -70,6 +71,21 @@ export interface AssetRepository {
   listByProject(projectId: Id): Promise<Asset[]>
   create(asset: Asset): Promise<void>
   remove(id: Id): Promise<void>
+  removeByProject(projectId: Id): Promise<void>
+}
+
+/**
+ * 输入框草稿仓储。
+ *
+ * 主键是 nodeId（一个节点至多一份草稿），**不接同步台账** —— 草稿是本机
+ * 未完成的输入，跟着账号分库隔离即可。图片不提前落 assets 表，只在草稿里存着，
+ * 随消息发出时才转存过去。
+ */
+export interface ComposerDraftRepository {
+  get(nodeId: Id): Promise<ComposerDraft | undefined>
+  /** 整条覆盖（`put`）：清掉引用或图片后，对应键必须真正从记录里消失。 */
+  save(draft: ComposerDraft): Promise<void>
+  remove(nodeId: Id): Promise<void>
   removeByProject(projectId: Id): Promise<void>
 }
 
@@ -181,4 +197,5 @@ export interface Repositories {
   notes: NoteRepository
   settings: SettingsRepository
   reviewSessions: ReviewSessionRepository
+  composerDrafts: ComposerDraftRepository
 }

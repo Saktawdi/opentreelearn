@@ -18,6 +18,7 @@ import type {
 import { createSyncLocal, purgeProjectRows, type SyncLocal } from '../sync-local'
 import { SETTINGS_KEY, type AppDatabase } from './db'
 import { createReviewSessionRepository } from './review-sessions'
+import { createComposerDraftRepository } from './composer-drafts'
 
 function createProjectRepository(db: AppDatabase, sync: SyncLocal): ProjectRepository {
   return {
@@ -210,6 +211,7 @@ export function createDexieRepositories(db: AppDatabase): Repositories {
     notes: createNoteRepository(db, sync),
     settings: createSettingsRepository(db, sync),
     reviewSessions: createReviewSessionRepository(db),
+    composerDrafts: createComposerDraftRepository(db),
   }
 }
 
