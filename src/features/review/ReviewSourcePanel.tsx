@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { Id, Message, Node } from '@/domain/models'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { resolveThread } from '@/domain/thread/resolve'
-import { messageText } from '@/domain/messages'
+import { messageSource } from '@/domain/messages'
 import { formatRelativeTime } from '@/lib/time'
 import { Button } from '@/components/ui/button'
 import { SelectionMenu } from '@/features/chat/SelectionMenu'
@@ -185,7 +185,7 @@ function SourceMessageCard({ message }: { message: Message }) {
         <span className="font-medium">{isAssistant ? t('roles.mentor') : t('roles.learner')}</span>
         <span>{formatRelativeTime(message.createdAt)}</span>
       </div>
-      <ReviewAnnotatableText messageId={message.id} source={messageText(message)} />
+      <ReviewAnnotatableText messageId={message.id} source={messageSource(message)} />
       <MessageNotes notes={notes} className="mt-2" />
     </div>
   )

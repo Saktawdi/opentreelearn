@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { normalizeDisplayMath } from './math-fences'
+import { normalizeForRender } from './render-source'
 import { REMARK_PLUGINS } from './remark-options'
 
 /**
@@ -24,7 +25,7 @@ function renderWithAppPipeline(content: string): string {
     ReactMarkdown({
       remarkPlugins: REMARK_PLUGINS,
       rehypePlugins: [[rehypeKatex, { throwOnError: false, strict: false, output: 'html' }]],
-      children: normalizeDisplayMath(content),
+      children: normalizeForRender(content),
     }),
   )
 }
@@ -284,5 +285,103 @@ describe('修复后的端到端渲染', () => {
     expect(hasKatexError(html)).toBe(false)
     expect(html).toContain('katex')
     expect(html).not.toContain('katex-error')
+  })
+})
+
+describe('深层列表与引用块（容器边界第二层）', () => {
+  // 两位编号 `10. ` 的内容列是 4 空格、嵌套列表更深 —— 旧版只认 ≤ 3 空格缩进，
+  // 这些位置上的模型写法（开栏带内容 / 行尾闭合 / 块内顶格）仍然渲染成红色原文。
+  it('两位编号列表（内容列 4 空格）里的模型写法照常修复', () => {
+    const input = [
+      '10. **求驻点**：',
+      '    $$I_n = \\begin{cases}',
+      '    \\frac{1}{2}, & n \\\\',
+      '    \\end{cases}$$',
+      '11. **后文一项**。',
+    ].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(
+      [
+        '10. **求驻点**：',
+        '    $$',
+        '    I_n = \\begin{cases}',
+        '    \\frac{1}{2}, & n \\\\',
+        '    \\end{cases}',
+        '    $$',
+        '11. **后文一项**。',
+      ].join('\n'),
+    )
+    // 幂等
+    expect(normalizeDisplayMath(normalizeDisplayMath(input))).toBe(normalizeDisplayMath(input))
+  })
+
+  it('端到端：两位编号 cases 渲染成功、第 11 项不被吞', () => {
+    const input = [
+      '10. **求驻点**：',
+      '    $$I_n = \\begin{cases}',
+      '    \\frac{1}{2}, & n \\\\',
+      '    \\end{cases}$$',
+      '11. **后文一项**。',
+    ].join('\n')
+    const html = renderWithAppPipeline(input)
+    expect(hasKatexError(html)).toBe(false)
+    expect(html).toContain('mtable')
+    expect(html).toContain('<ol start="10">')
+    expect(html).toContain('后文一项')
+  })
+
+  it('嵌套列表（二级项内容列 4 空格）补齐到开栏缩进', () => {
+    const input = ['- 外层', '  - 内层：', '      $$', 'x = 1', '      $$', '- 后文'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(
+      ['- 外层', '  - 内层：', '      $$', '      x = 1', '      $$', '- 后文'].join('\n'),
+    )
+  })
+
+  it('标记行直接开栏（- $$）把块内行补齐到内容列', () => {
+    const input = ['- $$', '\\begin{cases}', 'x = 1 \\\\', '\\end{cases}', '$$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(
+      ['- $$', '  \\begin{cases}', '  x = 1 \\\\', '  \\end{cases}', '  $$'].join('\n'),
+    )
+    const html = renderWithAppPipeline(input)
+    expect(hasKatexError(html)).toBe(false)
+    expect(html).toContain('mtable')
+  })
+
+  it('引用块里的模型写法照常修复（每行保持 > 前缀）', () => {
+    const input = [
+      '> $$I_n = \\begin{cases}',
+      '> \\frac{1}{2}, & n \\\\',
+      '> \\end{cases}$$',
+    ].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(
+      ['> $$', '> I_n = \\begin{cases}', '> \\frac{1}{2}, & n \\\\', '> \\end{cases}', '> $$'].join(
+        '\n',
+      ),
+    )
+    // 幂等
+    expect(normalizeDisplayMath(normalizeDisplayMath(input))).toBe(normalizeDisplayMath(input))
+    const html = renderWithAppPipeline(input)
+    expect(hasKatexError(html)).toBe(false)
+    expect(html).toContain('<blockquote')
+    expect(html).toContain('mtable')
+  })
+
+  it('引用块里有行脱离引用时不改写（块在原文档里本就断开）', () => {
+    const input = ['> $$x = 1', '脱队的一行', '> $$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(input)
+  })
+
+  it('代码围栏的引用前缀写法（> ```）同样豁免', () => {
+    const input = ['> ```latex', '> $$I_n = \\begin{cases}', '> a & b', '> $$', '> ```'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(input)
+  })
+
+  it('块中间冒出顶格列表标记时不改写（新项开始，外层块无从闭合）', () => {
+    const input = ['- $$', 'x = 1', '- 下一项', '$$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(input)
+  })
+
+  it('顶层 4 空格缩进（缩进代码块）仍不动', () => {
+    const input = ['    $$', 'x = 1', '    $$'].join('\n')
+    expect(normalizeDisplayMath(input)).toBe(input)
   })
 })

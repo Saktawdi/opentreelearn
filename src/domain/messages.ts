@@ -2,7 +2,7 @@ import i18n from '@/i18n'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import { findBranchQuickChoice } from '@/domain/defaults'
 import { stripReviewRating } from '@/domain/review/protocol'
-import { normalizeDisplayMath } from '@/lib/markdown/math-fences'
+import { normalizeForRender } from '@/lib/markdown/render-source'
 import { firstLine, truncate } from '@/lib/text'
 
 /** 引用片段以 Markdown 引用行进入模型上下文与导出，让「这段是引用」的语义不丢失。 */
@@ -136,12 +136,13 @@ export function deriveTitle(message: Message): string {
  * 但标注、AI 上下文与写工具要的是模型能读懂的原文（见 lib/markdown/source-map.ts）。
  *
  * 两边口径必须与渲染端完全一致：助手气泡走 MarkdownView，它渲染的就是
- * `normalizeDisplayMath(stripReviewRating(messageText))`；用户气泡直接渲染引用与正文，
+ * `normalizeForRender(stripReviewRating(messageText))`（见 lib/markdown/render-source，
+ * 那一个入口是渲染与坐标的双份保证）；用户气泡直接渲染引用与正文，
  * 所以用它自己的 `messageText`（其中引用带 `> ` 前缀，与进 AI 上下文的样子相同）。
  */
 export function messageSource(message: Message): string {
   const text = messageText(message)
-  return message.role === 'user' ? text : normalizeDisplayMath(stripReviewRating(text))
+  return message.role === 'user' ? text : normalizeForRender(stripReviewRating(text))
 }
 
 /** 源文里的一截：`[start, end)`，供 JSX 直接标到对应元素上（见 note-anchor.sourceSpanProps）。 */

@@ -201,8 +201,8 @@ function mapNode(node: MarkdownNode, source: string): MarkdownNode[] {
 /**
  * 生成给 react-markdown 用的 rehype 插件：把源文区间标注到单位元素上。
  *
- * `source` 必须是**同一份**交给 Markdown 的字符串（含 normalizeDisplayMath 的结果），
- * 否则位置会整体错位。
+ * `source` 必须是**同一份**交给 Markdown 的字符串（即 render-source.normalizeForRender
+ * 的结果，与登记源文同一入口），否则位置会整体错位。
  */
 export function rehypeSourceMap(source: string) {
   return (tree: MarkdownNode): void => {

@@ -121,14 +121,16 @@ describe('free-ask context assembly', () => {
     const context = assembleFreeAskContext({
       nodes: many,
       history: [userMessage('今天学了什么')],
-      budgetTokens: 3200,
+      // 系统提示加入了公式围栏写法约定（约 60 token），预算随之上调，
+      // 继续钉住第 2 档行为：砍掉摘要、30 个主题一个不少
+      budgetTokens: 3300,
       now: NOW,
     })
 
     expect(context.system).not.toContain('摘要：')
     expect(context.listed).toBe(30)
     expect(context.system).not.toContain('因上下文预算未列出')
-    expect(context.estimatedTokens).toBeLessThanOrEqual(3200)
+    expect(context.estimatedTokens).toBeLessThanOrEqual(3300)
   })
 
   it('cuts the inventory down and says so when summaries alone are not enough', () => {

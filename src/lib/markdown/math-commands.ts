@@ -66,20 +66,21 @@ function fixSegment(segment: string): string {
 
 /**
  * 把 KaTeX 不支持的命令替换成支持的等价写法；代码围栏与行内代码原样输出（幂等）。
- * 输入输出都是整篇正文，与 normalizeDisplayMath 组合使用。
+ * 输入输出都是整篇正文，与 normalizeDisplayMath 的组合顺序见 render-source.ts（应用唯一入口）。
  */
 export function normalizeMathCommands(content: string): string {
   if (!content.includes('\\')) return content
 
   const output: string[] = []
-  // 与 math-fences.ts 同一套围栏判定：代码围栏内部一律不动
-  let codeFence: { char: string; size: number } | null = null
+  // 与 math-fences.ts 同一套围栏判定（含 `>` 引用前缀写法）：代码围栏内部一律不动
+  let codeFence: { quote: string; char: string; size: number } | null = null
 
   for (const line of content.split('\n')) {
     if (codeFence) {
       const marker = codeFenceMarker(line)
       if (
         marker &&
+        marker.quote === codeFence.quote &&
         marker.char === codeFence.char &&
         marker.size >= codeFence.size &&
         marker.info.trim() === ''
@@ -92,7 +93,7 @@ export function normalizeMathCommands(content: string): string {
 
     const marker = codeFenceMarker(line)
     if (marker) {
-      codeFence = { char: marker.char, size: marker.size }
+      codeFence = { quote: marker.quote, char: marker.char, size: marker.size }
       output.push(line)
       continue
     }

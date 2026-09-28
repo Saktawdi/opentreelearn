@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { messageSource, userBodySpans } from '@/domain/messages'
+import { normalizeForRender } from '@/lib/markdown/render-source'
 import { makeMessage } from '@/test/fixtures'
 
 /**
@@ -50,6 +51,19 @@ describe('messageSource', () => {
       ],
     })
     expect(messageSource(message)).toBe('> 被引用的原文\n\n为什么？')
+  })
+
+  it('助手消息的源文与渲染串走同一入口（命令归一化不再缺席，坐标系不分叉）', () => {
+    // 真实回归：渲染端加了 normalizeMathCommands 而这里没跟上，含不受支持命令的
+    // 消息里公式之后的每个标注区间整体错位（错切自洽，自愈校验发现不了）
+    const text = '记号 $\\centernot\\implies$ 之后是后文。'
+    const message = makeMessage({
+      id: 'm1',
+      nodeId: 'n1',
+      role: 'assistant',
+      parts: [{ type: 'text', text }],
+    })
+    expect(messageSource(message)).toBe(normalizeForRender(text))
   })
 })
 

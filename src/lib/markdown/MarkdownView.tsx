@@ -5,8 +5,7 @@ import { useTranslation } from 'react-i18next'
 import rehypeKatex from 'rehype-katex'
 import { cn } from '@/lib/utils'
 import { highlightCode } from './highlighter'
-import { normalizeDisplayMath } from './math-fences'
-import { normalizeMathCommands } from './math-commands'
+import { normalizeForRender } from './render-source'
 import { REMARK_PLUGINS } from './remark-options'
 import { rehypeSourceMap } from './source-map'
 
@@ -95,11 +94,7 @@ export const MarkdownView = memo(function MarkdownView({
   className?: string
 }) {
   // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
-  // 规范化只依赖原文：流式渲染每帧都会进来，缓存住避免重复扫全文
-  const normalized = useMemo(
-    () => normalizeMathCommands(normalizeDisplayMath(content)),
-    [content],
-  )
+  const normalized = useMemo(() => normalizeForRender(content), [content])
 
   // 源文标注必须排在 rehype-katex **之前**：KaTeX 会把公式元素整个换成排版结果，
   // 之后再挂就找不到它了（见 source-map.ts）

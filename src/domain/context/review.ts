@@ -209,6 +209,7 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
 const BASE_TUTOR = [
   '你是一位严谨的学科导师，正在陪学习者做一次**复习**。',
   '使用 Markdown 作答；数学公式使用 LaTeX（行内 $...$，行间 $$...$$），只使用标准命令。',
+  '块级公式的 $$ 独占一行：开栏与闭合都不要和其他内容写在同一行；列表里写公式时，公式每一行都与条目正文对齐缩进，不要顶格。',
   '回答准确、简洁，不要客套，不要复述学习者的整段回答。',
 ].join('\n')
 
