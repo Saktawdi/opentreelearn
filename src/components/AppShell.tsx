@@ -9,6 +9,7 @@ import { Tooltip, TooltipProvider } from '@/components/ui/tooltip'
 import { FirstLoginDialog } from '@/features/me/FirstLoginDialog'
 import { ProjectsPageSkeleton } from '@/features/projects/ProjectsPageSkeleton'
 import { EASE_OUT_EXPO } from '@/lib/motion'
+import { useIsMobile } from '@/lib/use-is-mobile'
 import { cn } from '@/lib/utils'
 import { useBootstrap } from '@/stores/bootstrap'
 import { useSyncRuntime } from '@/stores/sync-runtime'
@@ -55,6 +56,7 @@ export function AppShell() {
   const { phase } = bootstrap
   const location = useLocation()
   const isCanvasRoute = location.pathname.startsWith('/p/')
+  const isMobile = useIsMobile()
 
   // 账号与同步的运行期接线挂在这里而不是「我的」页：进不进那一页都要持续同步。
   useSyncRuntime(phase === 'ready')
@@ -190,11 +192,8 @@ export function AppShell() {
               })}
             </nav>
           </motion.header>
-        ) : (
-          /* 方案 B：工作区页面中绝对禁止全宽条带遮挡！
-             整层 pointer-events-none，无任何全宽透明层拦截事件，两端完全透传给下层按钮。
-             中央顶部只有一枚隐形热点（聚焦/点按时才以 focus ring 现形），
-             鼠标靠近时胶囊滑出 + 琥珀脉冲，动效即引导。 */
+        ) : !isMobile ? (
+          /* 方案 B：桌面端工作区页面保留居中隐形热点与悬浮胶囊 */
           <div
             className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-start justify-center pt-2 pt-safe"
             onFocus={() => {
@@ -282,7 +281,7 @@ export function AppShell() {
               })}
             </nav>
           </div>
-        )}
+        ) : null}
 
         <main className="flex min-h-0 flex-1 flex-col">
           {phase === 'ready' ? (

@@ -52,6 +52,7 @@ export function ReasoningEffortInput({
   models,
   modelConfigs,
   className,
+  compactOnMobile = false,
 }: {
   /** 当前值：'auto'（跟随提供商）| 合法档位 | 自由输入文本 */
   value: string
@@ -61,6 +62,7 @@ export function ReasoningEffortInput({
   /** 可选：该 provider 下各个模型的自定义配置（含自定义 reasoningLevels） */
   modelConfigs?: Record<string, CustomModelConfig>
   className?: string
+  compactOnMobile?: boolean
 }) {
   const { t } = useTranslation('settings')
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null)
@@ -106,15 +108,30 @@ export function ReasoningEffortInput({
         <Button
           variant="ghost"
           size="sm"
+          title={t('reasoning.button', { level: levelLabel })}
+          aria-label={t('reasoning.button', { level: levelLabel })}
           className={cn(
             'max-w-[220px] justify-between gap-1.5 text-muted',
             current && isValidReasoningLevel(current) && 'text-ink',
+            compactOnMobile && 'w-7 px-0 sm:w-auto sm:px-1.5 justify-center sm:justify-between',
             className,
           )}
         >
           <Brain className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          <span className="truncate text-xs">{t('reasoning.button', { level: levelLabel })}</span>
-          <Check className="h-3 w-3 shrink-0 opacity-60" />
+          <span
+            className={cn(
+              'truncate text-xs',
+              compactOnMobile && 'hidden sm:inline',
+            )}
+          >
+            {t('reasoning.button', { level: levelLabel })}
+          </span>
+          <Check
+            className={cn(
+              'h-3 w-3 shrink-0 opacity-60',
+              compactOnMobile && 'hidden sm:inline',
+            )}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[280px]">

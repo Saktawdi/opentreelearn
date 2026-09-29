@@ -15,17 +15,21 @@ import { cn } from '@/lib/utils'
 export function AgentPermissionPicker({
   value,
   onChange,
+  compactOnMobile = true,
 }: {
   value: ToolPermissionMode
   onChange: (value: ToolPermissionMode) => void
+  compactOnMobile?: boolean
 }) {
   const { t } = useTranslation('chat')
   const auto = value === 'always_allow'
+  const label = t(auto ? 'approval.autoAllow' : 'approval.ask')
 
   return (
     <button
       type="button"
       title={t(auto ? 'approval.toggleToPrompt' : 'approval.toggleToAuto')}
+      aria-label={label}
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -33,6 +37,7 @@ export function AgentPermissionPicker({
       }}
       className={cn(
         'inline-flex h-7 select-none items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium outline-none transition-[background-color,border-color,color,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-accent/45',
+        compactOnMobile && 'w-7 px-0 sm:w-auto sm:px-2',
         auto
           ? 'bg-accent-soft/70 text-accent hover:bg-accent-soft'
           : 'text-muted hover:bg-elevated hover:text-ink',
@@ -43,8 +48,8 @@ export function AgentPermissionPicker({
       ) : (
         <ShieldQuestion className="h-3.5 w-3.5 shrink-0 opacity-70" />
       )}
-      <span className="truncate">
-        {t(auto ? 'approval.autoAllow' : 'approval.ask')}
+      <span className={cn('truncate', compactOnMobile && 'hidden sm:inline')}>
+        {label}
       </span>
     </button>
   )

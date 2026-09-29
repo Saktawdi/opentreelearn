@@ -15,7 +15,13 @@ import { ComposerShell, type ComposerShellHandle } from './ComposerShell'
 import { useComposerDraft } from './useComposerDraft'
 
 /** 对话页的推理强度选择器：绑定到会话级临时覆盖，跟随当前对话所用的模型做智能匹配。 */
-function ChatReasoningPicker({ chatModelRef }: { chatModelRef?: ModelRef | null }) {
+function ChatReasoningPicker({
+  chatModelRef,
+  compactOnMobile = false,
+}: {
+  chatModelRef?: ModelRef | null
+  compactOnMobile?: boolean
+}) {
   const reasoningOverride = useWorkspaceStore((state) => state.reasoningOverride)
   const setReasoningOverride = useWorkspaceStore((state) => state.setReasoningOverride)
   const providers = useSettingsStore((state) => state.settings.providers)
@@ -34,6 +40,7 @@ function ChatReasoningPicker({ chatModelRef }: { chatModelRef?: ModelRef | null 
       models={chatModelRef ? [chatModelRef.modelId] : []}
       modelConfigs={provider?.modelConfigs}
       className="h-7 px-1.5 text-muted hover:text-ink"
+      compactOnMobile={compactOnMobile}
     />
   )
 }
@@ -151,9 +158,10 @@ export function Composer({
               value={chatModelRef}
               onChange={onChatModelChange}
               className="h-7 px-1.5 text-muted hover:text-ink"
+              compactOnMobile
             />
             {/* 模型在前，推理强度在后：跟随当前所选模型做智能匹配与在线快切 */}
-            <ChatReasoningPicker chatModelRef={chatModelRef} />
+            <ChatReasoningPicker chatModelRef={chatModelRef} compactOnMobile />
             <AgentPermissionPicker
               value={toolPermission}
               onChange={(next) => {
@@ -164,6 +172,7 @@ export function Composer({
                   useToolApprovalStore.getState().respond('allow')
                 }
               }}
+              compactOnMobile
             />
           </>
         ) : null

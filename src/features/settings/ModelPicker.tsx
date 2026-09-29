@@ -20,11 +20,13 @@ export function ModelPicker({
   onChange,
   placeholder,
   className,
+  compactOnMobile = false,
 }: {
   value: ModelRef | null | undefined
   onChange: (ref: ModelRef | null) => void
   placeholder?: string
   className?: string
+  compactOnMobile?: boolean
 }) {
   const { t } = useTranslation('settings')
   const providers = useSettingsStore((state) => state.settings.providers)
@@ -39,11 +41,29 @@ export function ModelPicker({
         <Button
           variant="ghost"
           size="sm"
-          className={cn('max-w-[240px] justify-between gap-1.5 text-muted', className)}
+          title={label ?? placeholder ?? t('picker.placeholder')}
+          aria-label={label ?? placeholder ?? t('picker.placeholder')}
+          className={cn(
+            'max-w-[240px] justify-between gap-1.5 text-muted',
+            compactOnMobile && 'w-7 px-0 sm:w-auto sm:px-1.5 justify-center sm:justify-between',
+            className,
+          )}
         >
           <Cpu className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-xs">{label ?? placeholder ?? t('picker.placeholder')}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+          <span
+            className={cn(
+              'truncate text-xs',
+              compactOnMobile && 'hidden sm:inline',
+            )}
+          >
+            {label ?? placeholder ?? t('picker.placeholder')}
+          </span>
+          <ChevronDown
+            className={cn(
+              'h-3 w-3 shrink-0 opacity-60',
+              compactOnMobile && 'hidden sm:inline',
+            )}
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-[320px] w-[248px] overflow-y-auto">
