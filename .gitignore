@@ -19,6 +19,7 @@ coverage
 /.gate/
 /.impeccable/
 /.freebuff/
+/.tmp-research/
 .zcodeignore
 
 # 宣传片工程（Remotion，随仓库一起保留在本地，不随开源发布）
