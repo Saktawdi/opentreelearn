@@ -185,13 +185,15 @@ describe('自由问答 store', () => {
 
     const { getRepositories } = await import('@/data')
     const createSpy = vi.spyOn(getRepositories().assets, 'create')
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
 
     useFreeAskStore.setState({ pendingImages: [{ asset, url: 'blob:fake' }] })
     await useFreeAskStore.getState().ask('这张图里的板书是什么意思？')
 
-    // 图片随提问转存进 assets 表
+    // 图片随提问转存进 assets 表，待发预览用的 URL 被释放
     expect(createSpy).toHaveBeenCalledTimes(1)
     expect(createSpy.mock.calls[0][0].id).toBe(asset.id)
+    expect(revokeSpy).toHaveBeenCalledWith('blob:fake')
 
     // 本轮上下文里提问带 image part（dataUrl）
     const parts = mocked.mock.calls[0][0].history.at(-1).parts

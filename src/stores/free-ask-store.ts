@@ -127,15 +127,17 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
 
     // 图片转存进 assets 表（发送时序与聊天一致：发出后才成为资产），模型侧吃 dataUrl。
     // 转存失败就当这张图没贴过：问句还在，不该被一张图整个挡住。
+    // 待发预览使用的 objectURL 在此统一释放（无论成败预览均已退场，避免内存泄漏）。
     const savedIds: Id[] = []
     for (const pending of images) {
       try {
         await getRepositories().assets.create(pending.asset)
         savedIds.push(pending.asset.id)
       } catch {
-        URL.revokeObjectURL(pending.url)
+        // 转存失败跳过该图
       }
     }
+    for (const pending of images) URL.revokeObjectURL(pending.url)
     const imageDataUrls = await Promise.all(
       savedIds.map(async (id) => {
         const asset = images.find((item) => item.asset.id === id)?.asset
