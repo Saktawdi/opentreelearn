@@ -147,6 +147,7 @@
     "searchNodesPlain": "Search nodes",
     "getNode": "View node details",
     "getOutline": "View tree outline",
+    "getSubtreeOutline": "View subtree outline",
     "listLabels": "Tally annotation labels",
     "searchNotesLabels": "Search annotations ({{labels}})",
     "searchNotes": "Search annotations \"{{query}}\"",

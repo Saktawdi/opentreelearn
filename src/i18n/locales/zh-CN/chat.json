@@ -147,6 +147,7 @@
     "searchNodesPlain": "查询节点",
     "getNode": "查看节点详情",
     "getOutline": "查看树大纲",
+    "getSubtreeOutline": "查看子树大纲",
     "listLabels": "统计标注标签",
     "searchNotesLabels": "检索标注（{{labels}}）",
     "searchNotes": "检索标注「{{query}}」",

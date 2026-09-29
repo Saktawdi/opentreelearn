@@ -7,6 +7,7 @@ import {
   inScope,
   searchLabeledNotes,
   searchNodes,
+  treeOutline,
   type ProjectSnapshot,
   type RetrievalScope,
 } from './retrieval'
@@ -85,6 +86,41 @@ describe('searchLabeledNotes 作用域', () => {
     expect(result.total).toBe(0)
     const widened = searchLabeledNotes(snap, { nodeId: 'n2' as Id, scope, widen: true })
     expect(widened.total).toBe(1)
+  })
+})
+
+describe('treeOutline 作用域', () => {
+  const selectedRoot = makeNode({ id: 'n1', title: '框选的主题' })
+  const selectedChild = makeNode({ id: 'n2', parentId: 'n1', title: '框选内的子节点' })
+  const outside = makeNode({ id: 'n3', title: '框选外' })
+  const snap = snapshot([selectedRoot, selectedChild, outside], [])
+  // 真实的框选集 = 选中节点 + 祖先路径，所以父子都在里面
+  const subtree: RetrievalScope = { nodeIds: ['n1' as Id, 'n2' as Id] }
+
+  it('默认只给作用域内的结构：框选外的节点连标题都不出现', () => {
+    const outline = treeOutline(snap, { scope: subtree })
+
+    expect(outline.entries.map((entry) => entry.nodeId)).toEqual(['n1', 'n2'])
+    expect(outline.total).toBe(2)
+    expect(outline.entries.every((entry) => entry.scope === undefined)).toBe(true)
+  })
+
+  it('widen 跨出：外部节点带 other 标注', () => {
+    const outline = treeOutline(snap, { scope: subtree, widen: true })
+
+    expect(outline.entries.map((entry) => [entry.nodeId, entry.scope])).toEqual([
+      ['n1', 'selected'],
+      ['n2', 'selected'],
+      ['n3', 'other'],
+    ])
+  })
+
+  it('parentId 指向作用域外：不给结果也不给结构（默认安全）', () => {
+    const outline = treeOutline(snap, { parentId: 'n3' as Id, scope: subtree })
+
+    expect(outline.root).toBeNull()
+    expect(outline.entries).toEqual([])
+    expect(outline.total).toBe(0)
   })
 })
 

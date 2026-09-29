@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Message, Note } from '@/domain/models'
+import type { Message, Node, Note } from '@/domain/models'
 import { makeMessage, makeNode, messagesByNode } from '@/test/fixtures'
 import {
   TOOL_RESULT_LIMIT,
@@ -100,24 +100,162 @@ describe('read-only tool registry', () => {
     expect(missing).toContain('不存在')
   })
 
-  it('clamps long results instead of letting one tool call blow up the history', async () => {
-    const many = Array.from({ length: 60 }, (_, index) => ({
-      ...node,
-      id: `n${index}`,
-      title: `主题${index}`,
-      summary: '学'.repeat(60),
-    }))
+  /**
+   * 工具结果的正文必须能被 JSON.parse。
+   *
+   * 半截 JSON 比没有结果更坏：模型解析不了它，却会顺着半截内容编下去，而这段
+   * 复述是唯一会留在正文里的东西。所以这是一条对**所有**工具成立的契约。
+   */
+  function payload(output: string): Record<string, unknown> {
+    return JSON.parse(output.split('\n').slice(1).join('\n')) as Record<string, unknown>
+  }
+
+  /** 一周的项目：6 天各一个主章节，各自挂 5 个子节点。 */
+  function week(): Node[] {
+    return Array.from({ length: 6 }, (_, day) => [
+      makeNode({ id: `d${day}`, title: `第${day + 1}天` }),
+      ...Array.from({ length: 5 }, (_, index) =>
+        makeNode({ id: `d${day}-${index}`, parentId: `d${day}`, title: `第${day + 1}天的笔记${index}` }),
+      ),
+    ]).flat()
+  }
+
+  it('degrades a grown outline instead of handing back half a JSON', async () => {
+    const nodes = week()
     const wide = buildReadOnlyTools({
-      nodes: many,
+      nodes,
       messagesByNode: new Map(),
       notes: [],
       approvalPolicy: 'open',
       permission: 'prompt',
     })
 
-    const outline = await run(wide.get_tree_outline, {})
-    expect(outline.length).toBeLessThanOrEqual(TOOL_RESULT_LIMIT + 64)
-    expect(outline).toContain('因过长已截断')
+    const output = await run(wide.get_tree_outline, {})
+    expect(output.length).toBeLessThanOrEqual(TOOL_RESULT_LIMIT)
+
+    const data = payload(output)
+    const rows = data.outline as Array<{ nodeId: string; depth: number }>
+    expect(data.total).toBe(nodes.length)
+    expect(rows.length).toBe(Number(data.shown))
+    // 没给全就如实报出省略了多少 —— 模型据此知道要下钻，而不是以为树就这么大
+    expect(Number(data.omitted)).toBe(nodes.length - rows.length)
+    expect(Number(data.omitted)).toBeGreaterThan(0)
+    // 给出的永远是结构的前缀（顺序即结构），不是从中间抽条
+    expect(rows[0].nodeId).toBe('d0')
+    expect(rows.every((row) => row.depth <= 1)).toBe(true)
+  })
+
+  it('drills into one branch by parentId so late study days stay reachable', async () => {
+    const nodes = week()
+    const wide = buildReadOnlyTools({
+      nodes,
+      messagesByNode: new Map(),
+      notes: [],
+      approvalPolicy: 'open',
+      permission: 'prompt',
+    })
+
+    const output = await run(wide.get_tree_outline, { parentId: 'd5' })
+    const data = payload(output)
+
+    expect(data.root).toMatchObject({ nodeId: 'd5', title: '第6天', path: ['第6天'] })
+    expect(data.total).toBe(6)
+    expect(data.omitted).toBeUndefined()
+    expect((data.outline as Array<{ nodeId: string; depth: number }>).map((row) => [row.nodeId, row.depth])).toEqual([
+      ['d5', 0],
+      ['d5-0', 1],
+      ['d5-1', 1],
+      ['d5-2', 1],
+      ['d5-3', 1],
+      ['d5-4', 1],
+    ])
+  })
+
+  it('keeps a scoped session inside its box: out-of-scope titles never show up', async () => {
+    const inside = makeNode({ id: 'n1', title: '框选的主题' })
+    const outside = makeNode({ id: 'n2', title: '没框选的主题' })
+    const scoped = buildReadOnlyTools({
+      nodes: [inside, outside],
+      messagesByNode: new Map(),
+      notes: [],
+      currentNodeId: 'n1',
+      retrievalScope: { nodeIds: ['n1'] },
+      approvalPolicy: 'open',
+      permission: 'prompt',
+    })
+
+    const output = await run(scoped.get_tree_outline, {})
+    expect(output).toContain('框选的主题')
+    expect(output).not.toContain('没框选的主题')
+
+    // widen 是显式动作，且跨出来的每一条都带来源标注（与检索工具同一口径）
+    const widened = await run(scoped.get_tree_outline, { widen: true })
+    expect(widened).toContain('没框选的主题')
+    expect(widened).toContain('"scope":"other"')
+  })
+
+  it('reports an out-of-range parentId as data rather than dumping the whole tree', async () => {
+    const wide = buildReadOnlyTools({
+      nodes: week(),
+      messagesByNode: new Map(),
+      notes: [],
+      approvalPolicy: 'open',
+      permission: 'prompt',
+    })
+
+    const missing = await run(wide.get_tree_outline, { parentId: 'nope' })
+    expect(missing).toContain('不存在')
+  })
+
+  it('never hands back half a JSON, even for greedy arguments', async () => {
+    const bulky = Array.from({ length: 30 }, (_, index) =>
+      makeNode({
+        id: `n${index}`,
+        title: `第${index + 1}个挺长的标题学学学学`,
+        summary: '学'.repeat(200),
+      }),
+    )
+    const bulkyNotes: Note[] = bulky.map((item, index) => ({
+      ...notes[0],
+      id: `note-${index}`,
+      nodeId: item.id,
+      quote: '错'.repeat(200),
+      body: '备注'.repeat(40),
+      createdAt: index,
+      updatedAt: index,
+    }))
+    const hostile = buildReadOnlyTools({
+      nodes: bulky,
+      messagesByNode: new Map(
+        bulky.map((item) => [
+          item.id,
+          [
+            makeMessage({
+              id: `m-${item.id}`,
+              nodeId: item.id,
+              parts: [{ type: 'text', text: '学'.repeat(500) }],
+            }),
+          ],
+        ]),
+      ),
+      notes: bulkyNotes,
+      currentNodeId: 'n0',
+      approvalPolicy: 'open',
+      permission: 'prompt',
+    })
+
+    const outputs = [
+      await run(hostile.search_nodes, { query: '学', limit: 20 }),
+      await run(hostile.search_notes, { labels: ['mistake'], limit: 20 }),
+      await run(hostile.get_node, {}),
+      await run(hostile.get_tree_outline, {}),
+      await run(hostile.list_note_labels, {}),
+    ]
+
+    for (const output of outputs) {
+      expect(output.length).toBeLessThanOrEqual(TOOL_RESULT_LIMIT)
+      expect(() => payload(output)).not.toThrow()
+    }
   })
 
   it('reports an empty label list as data rather than an error', async () => {

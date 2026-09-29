@@ -26,8 +26,12 @@ function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
       return query ? t('tool.searchNodes', { query }) : t('tool.searchNodesPlain')
     case 'get_node':
       return t('tool.getNode')
-    case 'get_tree_outline':
-      return t('tool.getOutline')
+    case 'get_tree_outline': {
+      // 下钻与看全貌是两种动作，卡片上要分得开（用户看的就是这张卡在干什么）
+      return typeof args.parentId === 'string'
+        ? t('tool.getSubtreeOutline')
+        : t('tool.getOutline')
+    }
     case 'list_note_labels':
       return t('tool.listLabels')
     case 'search_notes': {

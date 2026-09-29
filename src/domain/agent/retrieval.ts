@@ -2,7 +2,7 @@ import { messageSource } from '@/domain/messages'
 import type { Id, Message, Node, Note, NoteOrigin, Role } from '@/domain/models'
 import { formatNoteLabels, labeledNotes, noteLabelName, noteOrigin } from '@/domain/notes'
 import { resolveThread } from '@/domain/thread/resolve'
-import { buildTreeIndex, depthOf } from '@/domain/tree/tree'
+import { buildTreeIndex, depthOf, pathTo } from '@/domain/tree/tree'
 import { treeOrder } from '@/domain/review/digest'
 import { normalizeWhitespace, truncate } from '@/lib/text'
 
@@ -198,18 +198,100 @@ export function getNodeDetail(
 export interface OutlineEntry {
   nodeId: Id
   title: string
+  /** 相对查询根的层级；不给 parentId 时等于整棵树里的层级 */
   depth: number
   parentId: Id | null
+  /** 仅在绑定作用域且显式 widen 时出现：这条在框选内（selected）还是框选外（other） */
+  scope?: ScopeMark
 }
 
-/** 树大纲：标题 + 层级。系统提示里只有祖先链，没有旁支，这份大纲补的正是旁支。 */
-export function treeOutline(snapshot: ProjectSnapshot): OutlineEntry[] {
-  return treeOrder(visibleNodes(snapshot.nodes)).map(({ node, depth }) => ({
-    nodeId: node.id,
-    title: node.title,
-    depth,
-    parentId: node.parentId,
-  }))
+export interface OutlineOptions {
+  /** 只看这个节点（含其子孙）的子树；省略 = 各棵树的根 */
+  parentId?: Id
+  /** 相对层级上限（0 = 只有这一层）；省略 = 不限 */
+  depth?: number
+  /** 检索作用域（复习绑定）；缺省全项目 */
+  scope?: RetrievalScope
+  /** 显式跨出作用域：越界节点带 `scope: 'other'` 标注 */
+  widen?: boolean
+}
+
+export interface TreeOutline {
+  /** 查询目标本身（子树模式下用于定位「这是谁的子树」）；目标不可见时为 null */
+  root: { nodeId: Id; title: string; path: string[] } | null
+  /** 查询范围内的节点总数，含被 `depth` 挡住的深层节点 */
+  total: number
+  entries: OutlineEntry[]
+  /** 有更深的层级没给出 —— 模型据此决定要不要下钻 */
+  hasDeeper: boolean
+}
+
+/**
+ * 树大纲：标题 + 层级。系统提示里只有祖先链，没有旁支，这份大纲补的正是旁支。
+ *
+ * 两个参数是给**增长**准备的：树会随学习天数长大，而一条工具结果的长度上限是固定的
+ * （见 tools/result.ts），所以「整棵树一次性倒出去」不是可选项。`parentId` 把它从
+ * dump 变成**钻取**（配合 `search_nodes` 先找目标，再看它的子树），`depth` 给骨干层。
+ * 两个都不给 = 尽量给全 —— 调用方（工具层）负责在装不下时降级重试。
+ *
+ * `total` 与 `entries.length` 的差就是「范围内没给出多少条」：调用方如实报出去，
+ * 不让模型把「没看到」读成「不存在」。
+ */
+export function treeOutline(
+  snapshot: ProjectSnapshot,
+  options: OutlineOptions = {},
+): TreeOutline {
+  // 只在**可见且可读**的节点里建索引：归档 / 复习中心照旧不出现，作用域外的节点
+  // 不仅不进结果，也不会成为父子关系的桥（框选集是「节点 + 祖先路径」，结构不断）
+  const scoped = visibleNodes(snapshot.nodes).filter(
+    (node) => options.widen === true || inScope(node.id, options.scope),
+  )
+  const index = buildTreeIndex(scoped)
+  const rootId = options.parentId
+  const rootNode = rootId ? (index.byId.get(rootId) ?? null) : null
+  const mark = (node: Node): Pick<OutlineEntry, 'scope'> =>
+    options.scope && options.widen
+      ? { scope: inScope(node.id, options.scope) ? 'selected' : 'other' }
+      : {}
+
+  // 遍历口径与学习快照 / 自由问答清单共用同一份 treeOrder：同一份上下文里两处
+  // 层级读法必须一致（父 → 子，同级按创建时间），否则模型会看到两种结构。
+  // 它也自带孤儿与断链的兜底（父节点被归档时挂到根桶）。
+  const ordered = treeOrder(scoped)
+  const base =
+    rootId && rootNode ? (ordered.find((item) => item.node.id === rootId)?.depth ?? 0) : 0
+
+  const entries: OutlineEntry[] = ordered
+    // 子树模式：按祖先链判定，两个节点不在同一条链上就不会混进去。
+    // 目标不在可见集里（不存在 / 已归档 / 在作用域外）时为空，由调用方翻成人话。
+    .filter(({ node }) => !rootId || pathTo(index, node.id).some((item) => item.id === rootId))
+    .map(({ node, depth }) => ({
+      nodeId: node.id,
+      title: node.title,
+      // 子树模式下层数从查询根重新起算，缩进才读得通
+      depth: depth - base,
+      parentId: node.parentId,
+      ...mark(node),
+    }))
+
+  const total = entries.length
+  const maxDepth = options.depth === undefined ? Number.POSITIVE_INFINITY : Math.max(0, options.depth)
+  const shown = entries.filter((entry) => entry.depth <= maxDepth)
+
+  return {
+    // 路径取**全量节点**的祖先链（含归档祖先），模型才能说清子树挂在哪一章下面
+    root:
+      rootId && rootNode
+        ? {
+            nodeId: rootNode.id,
+            title: rootNode.title,
+            path: pathTo(buildTreeIndex(snapshot.nodes), rootId).map((node) => node.title),
+          }
+        : null,
+    total,
+    entries: shown,
+    hasDeeper: shown.length < total,
+  }
 }
 
 export interface LabelStat {

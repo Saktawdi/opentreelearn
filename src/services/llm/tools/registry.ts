@@ -9,6 +9,7 @@ import {
   treeOutline,
   type ProjectSnapshot,
   type RetrievalScope,
+  type TreeOutline,
 } from '@/domain/agent/retrieval'
 import { withinOpenZone, type GateContext, type ToolPermissionMode } from '@/domain/agent/permissions'
 import { reviewHistoryForNode } from '@/domain/review/history'
@@ -17,7 +18,7 @@ import { messageSource } from '@/domain/messages'
 import { NOTE_LABEL_MAX } from '@/domain/notes'
 import type { Id } from '@/domain/models'
 import { withToolApproval } from './gate'
-import { asData, failure } from './result'
+import { asData, failure, fitsData } from './result'
 
 /**
  * 工具集（P-A/P-C）：定义、组装、以及**授权闸门**。
@@ -92,6 +93,27 @@ function gateContext(runtime: ToolRuntime): GateContext {
     },
     withinOpenZone: (nodeId) => withinOpenZone(nodeId, runtime.nodes),
     permission: runtime.permission,
+  }
+}
+
+/**
+ * 大纲超出结果预算时的降级阶梯：先给两层，再给一层。
+ *
+ * 与自由问答的清单阶梯（`domain/context/free-ask` 的 INVENTORY_LADDER）同一取向：
+ * 超预算时按**结构**退让并如实说明，而不是把内容切一半。
+ */
+const OUTLINE_DEPTH_LADDER = [2, 1] as const
+
+/** 大纲的对外形状：`total` 与 `shown` 的差 = 范围内没给出的条数（模型据此判断要不要下钻）。 */
+function outlinePayload(outline: TreeOutline) {
+  const omitted = outline.total - outline.entries.length
+  return {
+    ...(outline.root ? { root: outline.root } : {}),
+    total: outline.total,
+    shown: outline.entries.length,
+    ...(omitted > 0 ? { omitted } : {}),
+    ...(outline.hasDeeper ? { hint: '还有更深的层级未列出，用 parentId 下钻查看' } : {}),
+    outline: outline.entries,
   }
 }
 
@@ -176,11 +198,59 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
 
     get_tree_outline: tool({
       description:
-        '当前项目的树结构大纲（标题 + 层级 + 父子关系）。想看全局、或判断某个主题该挂在哪儿时用它。',
-      inputSchema: z.object({}),
-      execute: async () => {
-        const entries = treeOutline(snapshot)
-        return asData({ count: entries.length, outline: entries })
+        '当前项目的树结构大纲（标题 + 层级 + 父子关系）。想看全局、或判断某个主题该挂在哪儿时用它。' +
+        '默认尽量给全；树太大装不下时会只给骨干层并如实说明省略了多少（看 omitted），' +
+        '这时先用 search_nodes 找到目标节点，再用 parentId 看它那一支的细节。',
+      inputSchema: z.object({
+        parentId: z
+          .string()
+          .optional()
+          .describe('只看这个节点及其子孙的子树；省略则给整棵树'),
+        depth: z
+          .number()
+          .int()
+          .min(0)
+          .max(5)
+          .optional()
+          .describe('相对层数上限：0 = 只看这一层，1 = 带上直接子节点；省略则尽量给全'),
+        ...(runtime.retrievalScope
+          ? {
+              widen: z
+                .boolean()
+                .optional()
+                .describe(
+                  '跨出本次复习范围看整棵树的骨架。返回的外部节点仅可作为参照（必须点名来源节点），不得作为出题或判分的对象。',
+                ),
+            }
+          : {}),
+      }),
+      execute: async ({ parentId, depth, widen }) => {
+        const query = {
+          ...(parentId ? { parentId } : {}),
+          scope: runtime.retrievalScope,
+          widen: widen === true,
+        }
+        // 自适应：能全给就全给（树还小的时候一次看全最省事）；装不下才降级。
+        // 降级也不切字符：一层层退到骨干层，把省略的条数交给 asData 的 omitted
+        // 一起如实报出（见 result.ts 第 1、2 条纪律）。
+        const full = treeOutline(snapshot, { ...query, ...(depth !== undefined ? { depth } : {}) })
+        if (parentId && !full.root) {
+          return failure(
+            runtime.retrievalScope
+              ? '这个节点不存在、已归档，或不在本次复习范围内；须参照时用 widen 跨出'
+              : '这个节点不存在或已归档',
+          )
+        }
+        const payload = outlinePayload(full)
+        if (fitsData(payload)) return asData(payload)
+
+        const ladder = OUTLINE_DEPTH_LADDER.filter((step) => depth === undefined || step < depth)
+        for (const step of ladder) {
+          const skeleton = outlinePayload(treeOutline(snapshot, { ...query, depth: step }))
+          if (fitsData(skeleton)) return asData(skeleton)
+        }
+        // 连一层都装不下（根节点特别多）：交给 asData 按整条裁，仍带 omitted
+        return asData(outlinePayload(treeOutline(snapshot, { ...query, depth: 0 })))
       },
     }),
 

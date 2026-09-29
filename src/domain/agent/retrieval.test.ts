@@ -100,16 +100,67 @@ describe('getNodeDetail', () => {
 })
 
 describe('treeOutline', () => {
-  it('lists active nodes with depth and drops archived / review centers', () => {
-    const root = makeNode({ id: 'n1', title: '根' })
-    const child = makeNode({ id: 'n2', parentId: 'n1', title: '子' })
-    const archived: Node = { ...makeNode({ id: 'n3', title: '归档' }), status: 'archived' }
-    const outline = treeOutline(snapshot([child, archived, root], []))
+  // n1 → n2 → n3 一条支链，n4 是另一棵独立的树（创建顺序即同级顺序）
+  const root = makeNode({ id: 'n1', title: '根' })
+  const child = makeNode({ id: 'n2', parentId: 'n1', title: '子' })
+  const grandchild = makeNode({ id: 'n3', parentId: 'n2', title: '孙' })
+  const other = makeNode({ id: 'n4', title: '另一棵树' })
+  const tree = snapshot([grandchild, other, child, root], [])
 
-    expect(outline.map((entry) => [entry.nodeId, entry.depth])).toEqual([
+  it('lists active nodes with depth and drops archived / review centers', () => {
+    const archived: Node = { ...makeNode({ id: 'n9', title: '归档' }), status: 'archived' }
+    const center: Node = { ...makeNode({ id: 'n8', title: '复习中心' }), kind: 'review' }
+    const outline = treeOutline(snapshot([child, archived, root, center], []))
+
+    expect(outline.entries.map((entry) => [entry.nodeId, entry.depth])).toEqual([
       ['n1', 0],
       ['n2', 1],
     ])
+  })
+
+  it('keeps the whole tree by default and reports depth in tree order', () => {
+    const outline = treeOutline(tree)
+
+    expect(outline.entries.map((entry) => [entry.nodeId, entry.depth])).toEqual([
+      ['n1', 0],
+      ['n2', 1],
+      ['n3', 2],
+      ['n4', 0],
+    ])
+    expect(outline.total).toBe(4)
+    expect(outline.hasDeeper).toBe(false)
+    expect(outline.root).toBeNull()
+  })
+
+  it('limits layers by depth while still reporting the full total', () => {
+    const outline = treeOutline(tree, { depth: 1 })
+
+    expect(outline.entries.map((entry) => entry.nodeId)).toEqual(['n1', 'n2', 'n4'])
+    // total 是范围内的总量：模型据此知道「还有东西没看到」，不会把省略读成不存在
+    expect(outline.total).toBe(4)
+    expect(outline.hasDeeper).toBe(true)
+  })
+
+  it('scopes to one subtree by parentId, with depth counted from that root', () => {
+    const outline = treeOutline(tree, { parentId: 'n2' })
+
+    expect(outline.entries.map((entry) => [entry.nodeId, entry.depth])).toEqual([
+      ['n2', 0],
+      ['n3', 1],
+    ])
+    expect(outline.root).toEqual({ nodeId: 'n2', title: '子', path: ['根', '子'] })
+  })
+
+  it('answers an invisible parentId with nothing rather than a neighbouring tree', () => {
+    const archived: Node = { ...makeNode({ id: 'n7', title: '归档' }), status: 'archived' }
+    const snap = snapshot([root, archived], [])
+
+    expect(treeOutline(snap, { parentId: 'n7' })).toMatchObject({
+      root: null,
+      total: 0,
+      entries: [],
+    })
+    expect(treeOutline(snap, { parentId: 'nope' }).root).toBeNull()
   })
 })
 
