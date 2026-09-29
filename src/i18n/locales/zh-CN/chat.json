@@ -8,10 +8,14 @@
     "stop": "停止生成",
     "sending": "发送中…",
     "send": "发送",
-    "busyElsewhere": "另一个节点正在生成，等它结束"
+    "busyElsewhere": "另一个节点正在生成，等它结束",
+    "quotedDraft_other": "已引用 {{count}} 段内容…",
+    "promptTitle": "探讨与提问"
   },
   "action": {
     "cancel": "取消",
+    "collapse": "收起",
+    "openTree": "知识树谱",
     "send": "发送",
     "edit": "编辑",
     "editHint": "编辑这条提问，从它开始整段换一版",
@@ -27,7 +31,10 @@
     "divergeFromAnswer": "以这条回答为起点，横向新建继承上下文的节点",
     "jumpToBottom": "回到底部",
     "undo": "撤销",
-    "delete": "删除"
+    "delete": "删除",
+    "copy": "复制正文",
+    "copySuccess": "已复制到剪贴板",
+    "more": "更多操作"
   },
   "message": {
     "aborted": "生成中断：{{message}}",

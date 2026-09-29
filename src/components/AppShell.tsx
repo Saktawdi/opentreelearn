@@ -122,9 +122,21 @@ export function AppShell() {
     }
   }, [isCanvasRoute, cancelClose, scheduleClose])
 
+  useEffect(() => {
+    if (!pinned) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target?.closest('#global-nav') && !target?.closest('[aria-controls="global-nav"]')) {
+        setPinned(false)
+      }
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    return () => window.removeEventListener('pointerdown', handlePointerDown)
+  }, [pinned])
+
   return (
     <TooltipProvider>
-      <div className="relative flex h-screen flex-col overflow-hidden bg-canvas">
+      <div className="relative flex h-dvh flex-col overflow-hidden bg-canvas">
         {/* 非工作区页面（/ 、/me 与 /settings）保留顶部通透全宽 Header */}
         {!isCanvasRoute ? (
           /* 从工作区返回时页头淡入接住飞回的图标；进场淡入不挡图标飞行。 */
@@ -132,36 +144,31 @@ export function AppShell() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.25, ease: EASE_OUT_EXPO }}
-            className="z-30 flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-6"
+            className="z-30 flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-4 sm:px-6 pt-safe"
           >
             <NavLink to="/" className="flex items-center gap-2 text-ink transition-opacity hover:opacity-85">
               <span className="text-muted">
                 <TreeMark />
               </span>
-              <span className="text-base font-semibold tracking-tight">OpenTreeLearn</span>
+              <span className="text-sm sm:text-base font-semibold tracking-tight">OpenTreeLearn</span>
             </NavLink>
 
-            <nav className="flex items-center gap-1">
+            {/* 顶部居中/右侧胶囊 Tab 导航菜单 */}
+            <nav className="flex items-center gap-1 rounded-full border border-line/60 bg-surface/90 p-1 shadow-panel backdrop-blur-md">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 return (
                   <Tooltip key={item.to} label={t(item.labelKey)}>
-                    {/* className 必须是字符串常量：Tooltip 用 radix Slot 克隆子元素，
-                        而 Slot 合并 className 时走的是 `[a, b].filter(Boolean).join(' ')`，
-                        函数式 className 会被拼成它的源码文本 —— `relative` 随之失效，
-                        绝对定位的激活指示层就会改以整页为定位基准铺满视口（页面空白、
-                        点击被吞）。激活态配色因此下移到图标层，用 render prop 的 isActive
-                        决定，并靠 group-hover 保留整块链接的悬停反馈。 */}
                     <NavLink
                       to={item.to}
                       end={item.end}
                       aria-label={t(item.labelKey)}
-                      className="group relative flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150"
+                      className="group relative flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full transition-colors duration-150"
                     >
                       {({ isActive }) => (
                         <>
                           {isActive ? (
-                            <span className="absolute inset-0 rounded-md bg-elevated" />
+                            <span className="absolute inset-0 rounded-full bg-elevated" />
                           ) : null}
                           <motion.span
                             layoutId={`global-nav-icon-${item.to}`}
@@ -170,7 +177,7 @@ export function AppShell() {
                           >
                             <Icon
                               className={cn(
-                                'h-4 w-4 transition-colors duration-150',
+                                'h-3.5 w-3.5 sm:h-4 sm:w-4 transition-colors duration-150',
                                 isActive ? 'text-accent' : 'text-muted group-hover:text-ink',
                               )}
                             />
@@ -189,7 +196,7 @@ export function AppShell() {
              中央顶部只有一枚隐形热点（聚焦/点按时才以 focus ring 现形），
              鼠标靠近时胶囊滑出 + 琥珀脉冲，动效即引导。 */
           <div
-            className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-start justify-center pt-2"
+            className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-14 items-start justify-center pt-2 pt-safe"
             onFocus={() => {
               cancelClose()
               setFocused(true)
@@ -207,7 +214,7 @@ export function AppShell() {
                 setHovered(true)
               }}
               onMouseLeave={scheduleClose}
-              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              className="pointer-events-auto flex h-8 w-8 sm:h-7 sm:w-7 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
             >
               {/* 常驻的克制动效提示：三枚小圆点缓缓呼吸，示意「这里可以唤出点什么」。
                   胶囊展开后淡出让位；reduced-motion 下静置不呼吸。 */}

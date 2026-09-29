@@ -1,4 +1,4 @@
-import { ImagePlus, Loader2, MessageSquareQuote, SendHorizontal, Square, X } from 'lucide-react'
+import { ChevronDown, ImagePlus, Loader2, MessageSquareQuote, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
@@ -8,6 +8,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import type { Id } from '@/domain/models'
 import { ENTER_FAST } from '@/lib/motion'
 import { normalizeWhitespace } from '@/lib/text'
+import { useIsMobile } from '@/lib/use-is-mobile'
 import { cn } from '@/lib/utils'
 import { imagesFromDataTransfer } from '@/services/images'
 import type { PendingImage } from './useComposerDraft'
@@ -19,6 +20,8 @@ export type { PendingImage }
 export interface ComposerShellHandle {
   /** `preventScroll` 对复习练习很关键：聚焦若把输入区滚进视野，会把刚展示的题目拽出视口 */
   focus: (options?: FocusOptions) => void
+  expand?: () => void
+  collapse?: () => void
 }
 
 /**
@@ -60,6 +63,8 @@ export interface ComposerShellProps {
   textareaId?: string
   className?: string
   ref?: Ref<ComposerShellHandle>
+  /** 移动端折叠沉浸式：窄屏下默认折叠为底部极简胶囊条，点按才向上展开 */
+  collapsibleOnMobile?: boolean
 }
 
 const EMPTY_QUOTES: string[] = []
@@ -90,8 +95,11 @@ export function ComposerShell({
   toolbar,
   textareaId,
   className,
+  collapsibleOnMobile = true,
 }: ComposerShellProps) {
   const { t } = useTranslation('chat')
+  const isMobile = useIsMobile()
+  const [mobileExpanded, setMobileExpanded] = useState(false)
   const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -99,7 +107,27 @@ export function ComposerShell({
   const pending = draft.pending ?? EMPTY_PENDING
   const canAttach = Boolean(draft.attachFiles)
 
-  useImperativeHandle(ref, () => ({ focus: (options) => textareaRef.current?.focus(options) }), [])
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: (options) => {
+        if (isMobile && collapsibleOnMobile) {
+          setMobileExpanded(true)
+        }
+        window.setTimeout(() => textareaRef.current?.focus(options), 50)
+      },
+      expand: () => setMobileExpanded(true),
+      collapse: () => setMobileExpanded(false),
+    }),
+    [isMobile, collapsibleOnMobile],
+  )
+
+  const handleFormSubmit = async () => {
+    await onSubmit()
+    if (isMobile && collapsibleOnMobile) {
+      setMobileExpanded(false)
+    }
+  }
 
   // 正文一变就把高度收拢再撑开：草稿回填和发送后清空都不会留下旧高度
   useEffect(() => {
@@ -108,6 +136,66 @@ export function ComposerShell({
     element.style.height = 'auto'
     element.style.height = `${Math.min(element.scrollHeight, MAX_HEIGHT)}px`
   }, [draft.text, draft.loading])
+
+  // 移动端折叠沉浸式：未展开时仅呈现底部极简追问胶囊
+  if (isMobile && collapsibleOnMobile && !mobileExpanded) {
+    return (
+      <div
+        className={cn(
+          'shrink-0 border-t border-line/60 p-2.5 pb-safe bg-surface/90 backdrop-blur-md transition-colors',
+          className,
+        )}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            setMobileExpanded(true)
+            window.setTimeout(() => textareaRef.current?.focus(), 80)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setMobileExpanded(true)
+              window.setTimeout(() => textareaRef.current?.focus(), 80)
+            }
+          }}
+          className="flex h-10 w-full items-center justify-between rounded-full border border-line bg-elevated/80 px-3.5 shadow-panel transition-all active:scale-[0.99] cursor-pointer"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="truncate">
+              {draft.text.trim()
+                ? draft.text
+                : quotes.length > 0
+                  ? t('composer.quotedDraft', { count: quotes.length })
+                  : placeholder}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+            {streaming && onStop ? (
+              <Button
+                variant="subtle"
+                size="icon-sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onStop()
+                }}
+                className="h-7 w-7 rounded-full text-accent"
+              >
+                <Square className="h-3 w-3" />
+              </Button>
+            ) : (
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-surface text-muted">
+                <SendHorizontal className="h-3 w-3" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -126,11 +214,29 @@ export function ComposerShell({
         void draft.attachFiles?.(imagesFromDataTransfer(event.dataTransfer))
       }}
       className={cn(
-        'shrink-0 border-t border-line/60 p-3 transition-colors',
+        'shrink-0 border-t border-line/60 p-3 pb-safe transition-colors',
         dragging ? 'bg-accent-soft/40' : 'bg-transparent',
         className,
       )}
     >
+      {/* 移动端展开模式下的顶部小栏：提示当前在输入，并提供收起按钮 */}
+      {isMobile && collapsibleOnMobile ? (
+        <div className="flex items-center justify-between pb-2 px-1">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-ink-soft">
+            <Sparkles className="h-3.5 w-3.5 text-accent" />
+            {t('composer.promptTitle')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobileExpanded(false)}
+            className="flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted hover:text-ink active:bg-elevated transition-colors"
+          >
+            <span>{t('action.collapse')}</span>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
       {/* 容器常驻（empty:hidden 兜住空态），最后一枚图片退场时才有地方淡出 */}
       <div className="mb-2 flex flex-wrap gap-2 empty:hidden">
         <AnimatePresence initial={false}>
@@ -201,9 +307,14 @@ export function ComposerShell({
             onChange={(event) => draft.setText(event.target.value)}
             onPaste={onPaste}
             onKeyDown={(event) => {
+              if (event.key === 'Escape' && isMobile && collapsibleOnMobile) {
+                event.preventDefault()
+                setMobileExpanded(false)
+                return
+              }
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault()
-                if (canSubmit) void onSubmit()
+                if (canSubmit) void handleFormSubmit()
               }
             }}
             placeholder={placeholder}
@@ -261,7 +372,7 @@ export function ComposerShell({
               <Button
                 variant="primary"
                 size="icon-sm"
-                onClick={() => void onSubmit()}
+                onClick={() => void handleFormSubmit()}
                 disabled={!canSubmit}
                 aria-label={t('composer.send')}
                 className="rounded-full"

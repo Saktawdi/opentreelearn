@@ -1,5 +1,5 @@
 import { // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态图标（评估中 / 已评估）
-  Brain, Archive, ChevronRight, GitBranch, MoreHorizontal, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Trash2, Waypoints, X } from 'lucide-react'
+  Brain, Archive, ChevronRight, GitBranch, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Trash2, Waypoints, X } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -46,10 +46,14 @@ export function FocusChatView({
   nodeId,
   isMapCollapsed = false,
   onToggleMap,
+  isMobile = false,
+  onOpenTreeDrawer,
 }: {
   nodeId: Id
   isMapCollapsed?: boolean
   onToggleMap: () => void
+  isMobile?: boolean
+  onOpenTreeDrawer?: () => void
 }) {
   // 词表键（hint.* / band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
   const { t } = useTranslation(['chat', 'common'])
@@ -134,16 +138,29 @@ export function FocusChatView({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-canvas">
       {/* 顶部主导航栏（无边框、透明背景） */}
-      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-5">
-        {/* 左侧：面包屑上下文导航 */}
-        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden py-1">
+      <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-3 sm:px-5 pt-safe">
+        {/* 左侧：移动端知识树按钮 + 面包屑上下文导航 */}
+        <div className="flex min-w-0 items-center gap-1 sm:gap-1.5 overflow-hidden py-1">
+          {isMobile ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onOpenTreeDrawer ?? onToggleMap}
+              className="mr-0.5 h-8 w-8 shrink-0 text-accent hover:bg-accent-soft"
+              aria-label={t('action.openTree')}
+              title={t('action.openTree')}
+            >
+              <Network className="h-4 w-4" />
+            </Button>
+          ) : null}
+
           <div className="flex min-w-0 items-center gap-1 overflow-hidden text-xs text-muted">
             {breadcrumbs.slice(0, -1).map((ancestor) => (
               <div key={ancestor.id} className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   onClick={() => selectNode(ancestor.id)}
-                  className="max-w-[140px] truncate transition-colors hover:text-ink"
+                  className="max-w-[70px] sm:max-w-[140px] truncate transition-colors hover:text-ink"
                   title={ancestor.title}
                 >
                   {ancestor.title}
@@ -163,7 +180,7 @@ export function FocusChatView({
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) void commitRename()
                 if (event.key === 'Escape') setRenaming(false)
               }}
-              className="min-w-[140px] max-w-[320px] rounded-md border border-accent/50 bg-elevated px-2 py-0.5 text-base font-medium text-ink outline-none"
+              className="min-w-[100px] max-w-[200px] sm:max-w-[320px] rounded-md border border-accent/50 bg-elevated px-2 py-0.5 text-sm sm:text-base font-medium text-ink outline-none"
             />
           ) : (
             <button
@@ -173,7 +190,7 @@ export function FocusChatView({
                 setRenaming(true)
               }}
               title={t('focus.renameHint')}
-              className="max-w-[320px] truncate text-left text-base font-medium text-ink transition-colors hover:text-accent sm:max-w-[420px]"
+              className="max-w-[120px] xs:max-w-[180px] sm:max-w-[320px] truncate text-left text-sm sm:text-base font-medium text-ink transition-colors hover:text-accent"
             >
               {node.title}
             </button>
@@ -190,7 +207,7 @@ export function FocusChatView({
         </div>
 
         {/* 右侧：操作区与画布入口 */}
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" className="text-muted hover:text-ink">
@@ -243,24 +260,28 @@ export function FocusChatView({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <span className="mx-0.5 h-4 w-px bg-line/40" />
+          {!isMobile ? (
+            <>
+              <span className="mx-0.5 h-4 w-px bg-line/40" />
 
-          {/* 切换/展开折叠右侧知识树地图 */}
-          <Tooltip label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}
-              onClick={onToggleMap}
-              className="text-muted hover:text-ink"
-            >
-              {isMapCollapsed ? (
-                <PanelRightOpen className="h-4 w-4 text-accent" />
-              ) : (
-                <PanelRightClose className="h-4 w-4" />
-              )}
-            </Button>
-          </Tooltip>
+              {/* 切换/展开折叠右侧知识树地图 */}
+              <Tooltip label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={isMapCollapsed ? t('focus.expandMap') : t('focus.collapseMap')}
+                  onClick={onToggleMap}
+                  className="text-muted hover:text-ink"
+                >
+                  {isMapCollapsed ? (
+                    <PanelRightOpen className="h-4 w-4 text-accent" />
+                  ) : (
+                    <PanelRightClose className="h-4 w-4" />
+                  )}
+                </Button>
+              </Tooltip>
+            </>
+          ) : null}
         </div>
       </header>
 

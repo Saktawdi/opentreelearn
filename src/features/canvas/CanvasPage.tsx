@@ -33,6 +33,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { EASE_OUT_EXPO, ENTER_SOFT, EXIT_FAST } from '@/lib/motion'
 import { FocusChatView } from '@/features/chat/FocusChatView'
 import { isBlankCanvasOpen } from '@/lib/blank-canvas'
+import { useIsMobile } from '@/lib/use-is-mobile'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { CanvasContextMenu, type CanvasContextMenuTarget } from './CanvasContextMenu'
@@ -40,6 +41,7 @@ import { CanvasSkeleton } from './CanvasSkeleton'
 import { buildGraph, type GraphResult, type LearnFlowNode } from './graph'
 import { LearnNodeCard } from './LearnNodeCard'
 import { LearnNodeDot } from './LearnNodeDot'
+import { MobileTreeDrawer } from './MobileTreeDrawer'
 import { StarterPanel } from './StarterPanel'
 import { useArchiveNodeWithUndo } from './use-archive-node'
 import { useDecayClock } from '@/features/chat/useDecayClock'
@@ -141,7 +143,9 @@ function CanvasWorkspace() {
   // 视图投影：旧复习中心在常规学习树中隐藏，但它的普通后代继续可见
   const visibleNodes = useMemo(() => projectVisibleNodes(nodes), [nodes])
 
-  // 布局状态：右侧地图宽度与折叠状态
+  // 布局状态：移动端探测、抽屉状态、右侧地图宽度与折叠状态
+  const isMobile = useIsMobile()
+  const [mobileTreeOpen, setMobileTreeOpen] = useState(false)
   const [mapWidth, setMapWidth] = useState<number>(320)
   const [isMapCollapsed, setIsMapCollapsed] = useState<boolean>(false)
   const resizeState = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -176,7 +180,16 @@ function CanvasWorkspace() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault()
-        setIsMapCollapsed((v) => !v)
+        if (isMobile) {
+          setMobileTreeOpen((v) => !v)
+        } else {
+          setIsMapCollapsed((v) => !v)
+        }
+        return
+      }
+      // 移动端树抽屉打开时，Esc 键收起抽屉
+      if (e.key === 'Escape' && mobileTreeOpen) {
+        setMobileTreeOpen(false)
         return
       }
       // 对话框与右键菜单各自响应 Esc（关闭自己），此时不要再把整层画布一起收掉
@@ -188,7 +201,7 @@ function CanvasWorkspace() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [contextMenu, createRootDialog.open, nodeToDelete, projectId])
+  }, [contextMenu, createRootDialog.open, nodeToDelete, projectId, isMobile, mobileTreeOpen])
 
   /**
    * 首页「今日复习」带 openReviewCenter 进来时，一次性转换为新复习模式：
@@ -336,6 +349,9 @@ function CanvasWorkspace() {
   const handleNodeClick = (_: ReactMouseEvent, node: { id: string }) => {
     setContextMenu(null)
     selectNode(node.id)
+    if (isMobile) {
+      setMobileTreeOpen(false)
+    }
   }
 
   /**
@@ -442,7 +458,15 @@ function CanvasWorkspace() {
           <FocusChatView
             nodeId={selectedNodeId}
             isMapCollapsed={isMapCollapsed}
-            onToggleMap={() => setIsMapCollapsed((v) => !v)}
+            onToggleMap={() => {
+              if (isMobile) {
+                setMobileTreeOpen((v) => !v)
+              } else {
+                setIsMapCollapsed((v) => !v)
+              }
+            }}
+            isMobile={isMobile}
+            onOpenTreeDrawer={() => setMobileTreeOpen(true)}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -467,8 +491,43 @@ function CanvasWorkspace() {
         )}
       </div>
 
-      {/* 左右两栏之间的拖拽调宽手柄 */}
-      {!isMapCollapsed ? (
+      {/* 手机端左侧滑出式知识树抽屉 */}
+      {isMobile ? (
+        <MobileTreeDrawer
+          open={mobileTreeOpen}
+          onClose={() => setMobileTreeOpen(false)}
+          projectName={project?.name}
+          activeCount={activeCount}
+          dueCount={dueSummary.due}
+          onOpenReview={openReview}
+          onRecenter={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
+        >
+          <ReactFlow
+            nodes={flowNodes}
+            edges={miniGraph.edges}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={handleNodeDragStop}
+            nodeTypes={nodeTypes}
+            onNodeClick={handleNodeClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneContextMenu={handlePaneContextMenu}
+            onPaneClick={() => {
+              setContextMenu(null)
+            }}
+            fitView
+            fitViewOptions={{ padding: 0.28, maxZoom: 1.4 }}
+            minZoom={0.2}
+            maxZoom={2.4}
+            nodesConnectable={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-grid)" />
+          </ReactFlow>
+        </MobileTreeDrawer>
+      ) : null}
+
+      {/* 左右两栏之间的拖拽调宽手柄（仅桌面端） */}
+      {!isMobile && !isMapCollapsed ? (
         <div
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId)
@@ -490,102 +549,105 @@ function CanvasWorkspace() {
         />
       ) : null}
 
-      {/* 右侧：知识树微缩导航地图 */}
-      <div
-        style={{ width: isMapCollapsed ? 0 : mapWidth }}
-        className={cn(
-          'relative flex h-full flex-col overflow-hidden bg-canvas transition-[width] duration-200 ease-in-out',
-          isMapCollapsed && 'pointer-events-none opacity-0',
-        )}
-      >
-        <ReactFlow
-          nodes={flowNodes}
-          edges={miniGraph.edges}
-          onNodesChange={onNodesChange}
-          onNodeDragStop={handleNodeDragStop}
-          nodeTypes={nodeTypes}
-          onNodeClick={handleNodeClick}
-          onNodeContextMenu={handleNodeContextMenu}
-          onPaneContextMenu={handlePaneContextMenu}
-          onPaneClick={() => {
-            setContextMenu(null)
-          }}
-          fitView
-          fitViewOptions={{ padding: 0.28, maxZoom: 1.4 }}
-          minZoom={0.2}
-          maxZoom={2.4}
-          nodesConnectable={false}
-          proOptions={{ hideAttribution: true }}
+      {/* 右侧：知识树微缩导航地图（仅桌面端） */}
+      {!isMobile ? (
+        <div
+          style={{ width: isMapCollapsed ? 0 : mapWidth }}
+          className={cn(
+            'relative flex h-full flex-col overflow-hidden bg-canvas transition-[width] duration-200 ease-in-out',
+            isMapCollapsed && 'pointer-events-none opacity-0',
+          )}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-grid)" />
-        </ReactFlow>
+          <ReactFlow
+            nodes={flowNodes}
+            edges={miniGraph.edges}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={handleNodeDragStop}
+            nodeTypes={nodeTypes}
+            onNodeClick={handleNodeClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneContextMenu={handlePaneContextMenu}
+            onPaneClick={() => {
+              setContextMenu(null)
+            }}
+            fitView
+            fitViewOptions={{ padding: 0.28, maxZoom: 1.4 }}
+            minZoom={0.2}
+            maxZoom={2.4}
+            nodesConnectable={false}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-grid)" />
+          </ReactFlow>
 
-        {/* 顶部极简信息标与操作 */}
-        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
-            {/* 常驻文字复习入口，带到期数 */}
-            <Tooltip label={t('map.reviewTooltip')}>
-              <button
-                type="button"
-                onClick={openReview}
-                className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:text-accent font-medium"
-              >
-                <Brain className="h-3 w-3 text-accent" />
-                <span>{t('map.review')}</span>
-                {dueSummary.due > 0 ? (
-                  <span className="rounded bg-accent-soft px-1 text-accent tabular-nums">
-                    {dueSummary.due}
-                  </span>
-                ) : null}
-              </button>
-            </Tooltip>
+          {/* 顶部极简信息标与操作 */}
+          <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-line bg-surface/90 px-2 py-1 backdrop-blur">
+              {/* 常驻文字复习入口，带到期数 */}
+              <Tooltip label={t('map.reviewTooltip')}>
+                <button
+                  type="button"
+                  onClick={openReview}
+                  className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs text-muted transition-colors hover:text-accent font-medium"
+                >
+                  <Brain className="h-3 w-3 text-accent" />
+                  <span>{t('map.review')}</span>
+                  {dueSummary.due > 0 ? (
+                    <span className="rounded bg-accent-soft px-1 text-accent tabular-nums">
+                      {dueSummary.due}
+                    </span>
+                  ) : null}
+                </button>
+              </Tooltip>
 
-            <span className="h-3 w-px bg-line/60 mx-0.5" />
+              <span className="h-3 w-px bg-line/60 mx-0.5" />
 
-            {/* 按需开启的保持率热力图 */}
-            <Tooltip label={showHeatMap ? t('map.hideHeatMap') : t('map.showHeatMap')}>
-              <button
-                type="button"
-                aria-label={t('map.toggleHeatMap')}
-                onClick={() => setShowHeatMap((v) => !v)}
-                className={cn(
-                  'rounded-sm p-0.5 transition-colors',
-                  showHeatMap ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink',
-                )}
-              >
-                <Flame className="h-3 w-3" />
-              </button>
-            </Tooltip>
+              {/* 按需开启的保持率热力图 */}
+              <Tooltip label={showHeatMap ? t('map.hideHeatMap') : t('map.showHeatMap')}>
+                <button
+                  type="button"
+                  aria-label={t('map.toggleHeatMap')}
+                  onClick={() => setShowHeatMap((v) => !v)}
+                  className={cn(
+                    'rounded-sm p-0.5 transition-colors',
+                    showHeatMap ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink',
+                  )}
+                >
+                  <Flame className="h-3 w-3" />
+                </button>
+              </Tooltip>
 
-            <span className="text-2xs text-muted">{t('counts.nodes', { count: activeCount })}</span>
-            <Tooltip label={t('actions.recenter')}>
-              <button
-                type="button"
-                aria-label={t('actions.recenter')}
-                onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
-                className="ml-1 rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
-              >
-                <LayoutGrid className="h-3 w-3" />
-              </button>
-            </Tooltip>
-            <Tooltip label={t('actions.openCanvas')}>
-              <button
-                type="button"
-                aria-label={t('actions.openCanvas')}
-                onClick={openDetailCanvas}
-                className="rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
-              >
-                <Network className="h-3 w-3" />
-              </button>
-            </Tooltip>
+              <span className="text-2xs text-muted">{t('counts.nodes', { count: activeCount })}</span>
+              <Tooltip label={t('actions.recenter')}>
+                <button
+                  type="button"
+                  aria-label={t('actions.recenter')}
+                  onClick={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
+                  className="ml-1 rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
+                >
+                  <LayoutGrid className="h-3 w-3" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t('actions.openCanvas')}>
+                <button
+                  type="button"
+                  aria-label={t('actions.openCanvas')}
+                  onClick={openDetailCanvas}
+                  className="rounded-sm p-0.5 text-muted transition-colors hover:text-ink"
+                >
+                  <Network className="h-3 w-3" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
+
+          {loading ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted" />
+            </div>
+          ) : null}
         </div>
-
-        {loading ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted" />
-          </div>
-        ) : null}
+      ) : null}
 
       <AnimatePresence initial={false}>
         {contextMenu ? (
@@ -686,7 +748,6 @@ function CanvasWorkspace() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
 
       {/*
         空白项目的第一个问题入口：展开画布在时由画布正中间那份负责（见下面的弹层），

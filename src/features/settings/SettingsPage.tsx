@@ -135,7 +135,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-7">
+      <div className="mx-auto w-full max-w-2xl space-y-6 px-4 sm:px-6 py-5 sm:py-7 pb-safe">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
           <p className="mt-1 text-xs text-muted">{t('page.subtitle')}</p>

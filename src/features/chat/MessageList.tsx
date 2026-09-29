@@ -2,7 +2,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   GitBranch,
+  MoreHorizontal,
   Pencil,
   RotateCcw,
   Waypoints,
@@ -24,6 +26,12 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import i18n from '@/i18n'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -499,7 +507,8 @@ const MessageBubble = memo(function MessageBubble({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-1.5 px-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/message:opacity-100">
+      {/* 桌面端：Hover 浮现完整操作条 */}
+      <div className="hidden sm:flex items-center gap-1.5 px-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/message:opacity-100">
         <span className="text-2xs text-faint">{formatClock(message.createdAt)}</span>
         {isUser ? (
           <MessageAction
@@ -540,6 +549,53 @@ const MessageBubble = memo(function MessageBubble({
             {t('action.regenerate')}
           </MessageAction>
         ) : null}
+      </div>
+
+      {/* 移动触屏端：常驻时间戳与轻量「…」菜单，点按呼出全部操作（无 Hover 依赖） */}
+      <div className="flex sm:hidden items-center gap-1.5 px-1 text-2xs text-faint">
+        <span>{formatClock(message.createdAt)}</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t('action.more')}
+              className="flex h-5 w-5 items-center justify-center rounded-sm text-faint transition-colors hover:text-ink active:text-accent"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={isUser ? 'end' : 'start'} className="w-36">
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigator.clipboard.writeText(source)
+                toast.success(t('action.copySuccess'))
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {t('action.copy')}
+            </DropdownMenuItem>
+            {isUser && canEdit ? (
+              <DropdownMenuItem onSelect={onStartEdit}>
+                <Pencil className="h-3.5 w-3.5" />
+                {t('action.edit')}
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem onSelect={() => onAction('branch', message.id)}>
+              <GitBranch className="h-3.5 w-3.5" />
+              {t('action.branch')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onAction('diverge', message.id)}>
+              <Waypoints className="h-3.5 w-3.5" />
+              {t('action.diverge')}
+            </DropdownMenuItem>
+            {!isUser && isLast && canRegenerate ? (
+              <DropdownMenuItem onSelect={onRegenerate}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t('action.regenerate')}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )

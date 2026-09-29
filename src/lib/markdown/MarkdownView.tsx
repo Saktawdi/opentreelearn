@@ -55,7 +55,7 @@ function CodeBlock({
       <button
         type="button"
         onClick={copy}
-        className="absolute right-2 top-1.5 rounded-md border border-line/70 bg-canvas/70 p-1 text-muted opacity-0 transition-opacity duration-150 hover:text-ink focus-visible:opacity-100 group-hover/code:opacity-100"
+        className="absolute right-2 top-1.5 rounded-md border border-line/70 bg-canvas/70 p-1 text-muted opacity-80 transition-opacity duration-150 hover:text-ink focus-visible:opacity-100 sm:opacity-0 sm:group-hover/code:opacity-100"
         aria-label={t('copyCode')}
       >
         {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}

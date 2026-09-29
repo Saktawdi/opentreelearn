@@ -8,10 +8,15 @@
     "stop": "Stop generating",
     "sending": "Sending…",
     "send": "Send",
-    "busyElsewhere": "Another node is generating; wait for it to finish"
+    "busyElsewhere": "Another node is generating; wait for it to finish",
+    "quotedDraft_one": "{{count}} quote attached…",
+    "quotedDraft_other": "{{count}} quotes attached…",
+    "promptTitle": "Discuss & Ask"
   },
   "action": {
     "cancel": "Cancel",
+    "collapse": "Collapse",
+    "openTree": "Knowledge Tree",
     "send": "Send",
     "edit": "Edit",
     "editHint": "Edit this question and rewrite the whole round from it",
@@ -27,7 +32,10 @@
     "divergeFromAnswer": "Create a sibling node, inheriting context from this answer",
     "jumpToBottom": "Back to bottom",
     "undo": "Undo",
-    "delete": "Delete"
+    "delete": "Delete",
+    "copy": "Copy content",
+    "copySuccess": "Copied to clipboard",
+    "more": "More actions"
   },
   "message": {
     "aborted": "Generation interrupted: {{message}}",

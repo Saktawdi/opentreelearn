@@ -6,7 +6,8 @@
     "relayout": "Relayout",
     "center": "Center",
     "resetView": "Reset view",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "close": "Close"
   },
   "counts": {
     "nodes_one": "{{count}} node",
@@ -25,7 +26,8 @@
     "review": "Review",
     "showHeatMap": "Show memory heatmap",
     "hideHeatMap": "Hide memory heatmap",
-    "toggleHeatMap": "Toggle memory heatmap"
+    "toggleHeatMap": "Toggle memory heatmap",
+    "drawerAria": "Knowledge tree navigation"
   },
   "createRoot": {
     "title": "New root node",

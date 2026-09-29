@@ -6,7 +6,8 @@
     "relayout": "重新布局",
     "center": "居中",
     "resetView": "重置视图",
-    "cancel": "取消"
+    "cancel": "取消",
+    "close": "关闭"
   },
   "counts": {
     "nodes_other": "{{count}} 个节点"
@@ -24,7 +25,8 @@
     "review": "复习",
     "showHeatMap": "开启记忆热力图",
     "hideHeatMap": "关闭记忆热力图",
-    "toggleHeatMap": "切换记忆热力图"
+    "toggleHeatMap": "切换记忆热力图",
+    "drawerAria": "知识树谱导航"
   },
   "createRoot": {
     "title": "新建根节点",

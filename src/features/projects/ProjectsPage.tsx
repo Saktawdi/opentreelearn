@@ -108,7 +108,7 @@ export function ProjectsPage() {
         </div>
       ) : null}
 
-      <div className="mx-auto w-full max-w-5xl px-6 py-7">
+      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-5 sm:py-7 pb-safe">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
           {projects.length > 0 ? (
@@ -118,17 +118,17 @@ export function ProjectsPage() {
 
         {projects.length > 0 ? <TodayReviewPanel projects={projects} /> : null}
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
             {projects.length > 0 ? (
               <>
-                <div className="relative">
+                <div className="relative w-full sm:w-56">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={t('search.placeholder')}
-                    className="w-56 pl-8"
+                    className="w-full sm:w-56 pl-8"
                   />
                 </div>
 
@@ -152,7 +152,7 @@ export function ProjectsPage() {
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-end sm:justify-start">
             <Button
               variant="secondary"
               disabled={importing}

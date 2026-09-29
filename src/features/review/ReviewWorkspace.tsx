@@ -188,39 +188,39 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
       {/* 主舞台区 */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部常驻导航条 */}
-        <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-5 bg-surface/40 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
+        <header className="flex h-13 shrink-0 items-center justify-between border-b border-line/60 px-3 sm:px-5 pt-safe bg-surface/40 backdrop-blur-sm">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {isPracticing ? (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handlePauseAndExit}
-                className="text-xs text-muted hover:text-ink gap-1.5"
+                className="text-xs text-muted hover:text-ink gap-1 sm:gap-1.5 shrink-0"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                {t('workspace.later')}
+                <span className="hidden xs:inline">{t('workspace.later')}</span>
               </Button>
             ) : (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onLeave(session?.returnTo)}
-                className="text-xs text-muted hover:text-ink gap-1.5"
+                className="text-xs text-muted hover:text-ink gap-1 sm:gap-1.5 shrink-0"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                {t('workspace.backToLearning')}
+                <span className="hidden xs:inline">{t('workspace.backToLearning')}</span>
               </Button>
             )}
 
-            <span className="h-4 w-px bg-line/60" />
+            <span className="h-4 w-px bg-line/60 shrink-0" />
 
             {/* 当前主题标题与进度 */}
             {isPracticing && current ? (
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-xs text-ink truncate max-w-[240px]">
+              <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                <span className="font-semibold text-xs text-ink truncate max-w-[120px] xs:max-w-[180px] sm:max-w-[240px]">
                   {current.title}
                 </span>
-                <span className="rounded-full bg-elevated px-2 py-0.5 text-2xs font-medium text-muted border border-line/60">
+                <span className="shrink-0 rounded-full bg-elevated px-1.5 sm:px-2 py-0.5 text-2xs font-medium text-muted border border-line/60">
                   {t('workspace.topicsProgress', {
                     current: session.cursor + 1,
                     count: session.items.length,
@@ -228,7 +228,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
                 </span>
               </div>
             ) : (
-              <span className="text-xs font-medium text-ink">
+              <span className="truncate text-xs font-medium text-ink">
                 {t('workspace.headerTitle', {
                   name: project?.name ?? t('workspace.untitledProject'),
                 })}
@@ -237,38 +237,40 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
           </div>
 
           {/* 右侧动作 */}
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {isPracticing && (
               <>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={toggleSource}
-                  className={`text-2xs gap-1.5 ${
+                  className={`text-2xs gap-1 sm:gap-1.5 ${
                     sourceOpen ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink'
                   }`}
+                  title={t('workspace.learningMaterials')}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
-                  {t('workspace.learningMaterials')}
+                  <span className="hidden sm:inline">{t('workspace.learningMaterials')}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={toggleNoteHistory}
-                  className={`text-2xs gap-1.5 ${
+                  className={`text-2xs gap-1 sm:gap-1.5 ${
                     noteHistoryOpen ? 'text-accent bg-accent-soft' : 'text-muted hover:text-ink'
                   }`}
+                  title={t('workspace.noteHistory')}
                 >
                   <NotebookText className="h-3.5 w-3.5" />
-                  {t('workspace.noteHistory')}
+                  <span className="hidden sm:inline">{t('workspace.noteHistory')}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => void endSession()}
-                  className="text-2xs text-faint hover:text-ink"
+                  className="text-2xs text-faint hover:text-ink px-1.5 sm:px-2"
                 >
-                  {t('workspace.endSession')}
+                  <span className="hidden xs:inline">{t('workspace.endSession')}</span>
                 </Button>
               </>
             )}
@@ -353,7 +355,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
 
       {/* 右侧按需展开的资料抽屉 */}
       {sourceOpen && targetInspectNodeId && (
-        <div className="relative w-80 lg:w-96 shrink-0 h-full z-20 shadow-panel">
+        <div className="fixed inset-0 sm:relative sm:inset-auto z-40 sm:z-20 w-full sm:w-80 lg:w-96 shrink-0 h-full shadow-panel bg-surface pt-safe pb-safe">
           <ReviewSourcePanel
             nodeId={targetInspectNodeId}
             nodes={nodes}
@@ -368,7 +370,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
 
       {/* 笔记历史抽屉：与资料面板互斥（store 层开关互相收起对方） */}
       {noteHistoryOpen && (
-        <div className="relative w-80 lg:w-96 shrink-0 h-full z-20 shadow-panel">
+        <div className="fixed inset-0 sm:relative sm:inset-auto z-40 sm:z-20 w-full sm:w-80 lg:w-96 shrink-0 h-full shadow-panel bg-surface pt-safe pb-safe">
           <ReviewNoteHistoryPanel
             session={session}
             currentNodeId={current?.nodeId}
