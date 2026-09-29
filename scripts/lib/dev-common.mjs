@@ -43,7 +43,9 @@ export function runOnce(label, args, cwd = serverDir) {
 
 /** Prisma Client 是否已生成（生成物落在 node_modules 里，卸载依赖后会消失）。 */
 function prismaClientReady() {
-  return existsSync(join(serverDir, 'node_modules', '.prisma', 'client', 'index.js'))
+  // pnpm 安装后 node_modules/.prisma/client/ 下可能会有未生成的空存根（index.js），
+  // 只有 prisma generate 真正执行后才会把 schema.prisma 复制进生成目录。
+  return existsSync(join(serverDir, 'node_modules', '.prisma', 'client', 'schema.prisma'))
 }
 
 /**
