@@ -117,6 +117,17 @@ function restoreProviderKeys(
 }
 
 /**
+ * 载荷与本机行是否逐字段一致（同一个 JSON 序列化口径）。
+ *
+ * 用来识别**自身回声**：push 后紧跟的 pull 会把自己刚推上去的记录原样带回来，
+ * 内容一致就直接跳过，纯推送因此不会触发各页面的重载。键序差异只影响「能不能
+ * 省掉一次写入」，判错方向是多写一次同样的内容，不会丢数据。
+ */
+function isSamePayload(local: Record<string, unknown>, incoming: Record<string, unknown>): boolean {
+  return JSON.stringify(local) === JSON.stringify(incoming)
+}
+
+/**
  * 把 `source` 库里的记录搬进 `target` 库 —— 首次登录选「合并本机数据」时用。
  *
  * 为什么需要搬：数据按账号分库，登录后活动库变成了新的账号库（空的），
@@ -307,6 +318,19 @@ export function createSyncLocal(db: AppDatabase) {
     })
   }
 
+  /**
+   * 这条记录上还没推出去的最新记账时间戳（没有待推变更则 null）。
+   *
+   * 记账时间戳就是 push 会发给服务端、供 LWW 比较的那个数，所以拿它和远端记录的
+   * `updatedAt` 比较，等于替服务端预演一次裁决 —— 本机这份更新更大的话，它上行后
+   * 会赢，此刻就不该被远端版本覆盖。
+   */
+  async function newestPendingStamp(entity: SyncEntity, localId: Id): Promise<number | null> {
+    const entries = await db.outbox.where('[entity+localId]').equals([entity, localId]).toArray()
+    if (entries.length === 0) return null
+    return entries.reduce((newest, entry) => Math.max(newest, entry.updatedAt), 0)
+  }
+
   return {
     /** 记一次本地变更。 */
     async recordChange(entity: SyncEntity, localId: Id, op: OutboxRecord['op']): Promise<void> {
@@ -354,12 +378,29 @@ export function createSyncLocal(db: AppDatabase) {
     /**
      * 应用一条远端记录。**不记账**：把远端变更再推回去会形成回环。
      * `asset` 等没有适配器的实体直接跳过，避免把图片二进制当 JSON 处理。
+     *
+     * 回声按**载荷内容**识别，不按时间戳：push 的应答游标不回写，推送后紧跟的 pull
+     * 会把自己刚推上去的记录原样带回来（内容与本机行逐字段一致，跳过即可，纯推送
+     * 因此不会触发重载）。拿时间戳判是错的 —— 位置、thread 结构、lastStudiedAt
+     * 这些写入刻意不 bump 记录自身的 updatedAt，按时间戳比会把它们当成回声丢掉；
+     * 而记账时间戳（max(现在, 本机+1)）又刻意比记录本体新，报文级 `updatedAt`
+     * 比出来永远"更新"，照样识别不出回声。
+     *
+     * 本机还有**未推出去的**更新（outbox 里的记账时间戳更大）时一律不动：那份内容
+     * 即将带着更大的时间戳上行、按 LWW 会赢，此刻用远端版本覆盖本机只会把它换成
+     * 旧内容再推上去。墓碑同守这一条：更新的本地改动会把它「复活」，由服务端裁决。
      */
     async applyRemote(change: WireChange): Promise<ApplyOutcome> {
       const adapter = adapters[change.entity]
       if (!adapter) return 'skipped'
 
+      const stored = await adapter.load(change.id)
+
       if (change.deletedAt) {
+        // 本机没有这行（已删过/从未同步过）时删除无事发生
+        if (!stored) return 'skipped'
+        const pending = await newestPendingStamp(change.entity, change.id)
+        if (pending !== null && pending > change.updatedAt) return 'skipped'
         await adapter.remove(change.id)
         if (change.entity === 'project') await purgeProjectRows(db, change.id)
         return 'deleted'
@@ -370,6 +411,11 @@ export function createSyncLocal(db: AppDatabase) {
         return 'skipped'
       }
 
+      if (stored) {
+        if (isSamePayload(stored.data, change.data as Record<string, unknown>)) return 'skipped'
+        const pending = await newestPendingStamp(change.entity, change.id)
+        if (pending !== null && pending > change.updatedAt) return 'skipped'
+      }
       await adapter.save(change)
       return 'written'
     },

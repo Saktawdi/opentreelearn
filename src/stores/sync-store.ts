@@ -87,10 +87,17 @@ async function withToken<T>(run: (token: string) => Promise<T>): Promise<T> {
   }
 }
 
-/** 推送 outbox：逐条读当前记录内容，服务端判旧时用它的版本覆盖本地。 */
-async function pushOutbox(): Promise<number> {
+/**
+ * 推送 outbox：逐条读当前记录内容，服务端判旧时用它的版本覆盖本地。
+ *
+ * 返回两个数：`pushed` 是向上补账成功的条数；`remoteOverwrites` 是推送被判旧、
+ * 远端版本覆盖了本机的条数 —— 后者本质是「远端内容落到了本库」，调用方要和
+ * pull 增量一样对待（见 `syncNow` 的重载条件）。
+ */
+async function pushOutbox(): Promise<{ pushed: number; remoteOverwrites: number }> {
   const local = getSyncLocal()
   let pushed = 0
+  let remoteOverwrites = 0
 
   for (let batch = 0; batch < MAX_PUSH_BATCHES; batch += 1) {
     const entries = await local.readOutbox(PUSH_BATCH_SIZE)
@@ -147,8 +154,11 @@ async function pushOutbox(): Promise<number> {
       if (!plan) continue
       settled.push(plan.entry.seq as number)
       if (applied.status === 'stale' && applied.record) {
-        // 服务端版本更新：用它覆盖本地，否则下一次 push 还会被同样判旧
-        await local.applyRemote(applied.record)
+        // 服务端版本更新：用它覆盖本地，否则下一次 push 还会被同样判旧。
+        // `applyRemote` 自己会跳过两种「不必落地」的情形：内容与本机一致（回声），
+        // 以及本机还压着更大记账时间戳的未推送更新（那份更新上行后会赢）。
+        const outcome = await local.applyRemote(applied.record)
+        if (outcome !== 'skipped') remoteOverwrites += 1
       }
     }
     await local.clearOutbox(settled)
@@ -157,7 +167,7 @@ async function pushOutbox(): Promise<number> {
     if (entries.length < PUSH_BATCH_SIZE) break
   }
 
-  return pushed
+  return { pushed, remoteOverwrites }
 }
 
 /** 拉取远端增量并写入本地（不记账，避免把远端变更再推回去）。 */
@@ -238,7 +248,7 @@ export const useSyncStore = create<SyncState>()(
       })
 
       try {
-        const pushed = await pushOutbox()
+        const { pushed, remoteOverwrites } = await pushOutbox()
         const pulled = await pullRemote()
         const local = getSyncLocal()
         await local.writeState({ lastSyncedAt: Date.now() })
@@ -251,7 +261,11 @@ export const useSyncStore = create<SyncState>()(
           draft.pending = pending
         })
 
-        if (pushed > 0 || pulled > 0) await reloadStores()
+        // 重载只看「远端是否把内容写进了本库」：拉到增量，或推送被判旧时服务端版本
+        // 覆盖了本机。纯推送是把本机已发生的事实向上补账 —— 库和内存本来就一致，
+        // 这时重载只会让空闲中的页面整页闪一次骨架屏（用户看到的就是"突然刷新"），
+        // 必须静默完成。
+        if (pulled > 0 || remoteOverwrites > 0) await reloadStores()
         return { ok: true, pushed, pulled }
       } catch (error) {
         const message = errorMessage(error)

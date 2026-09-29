@@ -1,9 +1,10 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Node, Project } from '@/domain/models'
+import type { Message, Node, Project } from '@/domain/models'
 import { createDefaultSettings } from '@/domain/defaults'
 import { createReviewSession, type ReviewSessionRecord } from '@/domain/review/session'
 import type { WireChange } from '@/domain/sync'
+import { resolveThread } from '@/domain/thread/resolve'
 import { AppDatabase } from './dexie/db'
 import { createDexieRepositories } from './dexie/repos'
 import { createSyncLocal, importRecordsInto, type SyncLocal } from './sync-local'
@@ -138,9 +139,11 @@ describe('applyRemote', () => {
   it('tombstone 删除本地记录，项目还会级联清掉子记录', async () => {
     await repositories.projects.create(makeProject('p1'))
     await repositories.nodes.create(makeNode('n1', 'p1'))
+    // 本机变更都推完了（台账清空）才是「墓碑说了算」的状态
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
 
     const outcome = await sync.applyRemote(
-      remote({ entity: 'project', id: 'p1', deletedAt: 200, data: {} }),
+      remote({ entity: 'project', id: 'p1', updatedAt: 200, deletedAt: 200, data: {} }),
     )
 
     expect(outcome).toBe('deleted')
@@ -158,6 +161,120 @@ describe('applyRemote', () => {
     expect((await db.projects.get('p1'))?.name).toBe('项目 p1')
   })
 
+  it('内容一致才算自身回声：推送后 pull 带回的同一条记录跳过，不重写本机', async () => {
+    await repositories.projects.create(makeProject('p1', 100))
+    const local = (await db.projects.get('p1'))!
+    // 台账清空：跳过只可能来自内容比对（本机无待推更新，时间戳也不参与判定）
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
+
+    // 回声 = 服务端原样带回本机刚推上去的载荷（内容逐字段一致）；报文时间戳刻意
+    // 比记录本体「新」（记账戳），也照样识别得出来
+    expect(
+      await sync.applyRemote(remote({ entity: 'project', id: 'p1', updatedAt: 101, data: local })),
+    ).toBe('skipped')
+    expect((await db.projects.get('p1'))?.name).toBe('项目 p1')
+  })
+
+  it('同一记录只要内容不同就落地，不看载荷时间戳是否前进', async () => {
+    await repositories.projects.create(makeProject('p1', 100))
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
+
+    // 位置 / thread 结构 / lastStudiedAt 这些写入刻意不 bump 记录自身的 updatedAt：
+    // 远端改了它们（载荷 updatedAt 仍是 100），必须照样写进来
+    const outcome = await sync.applyRemote(
+      remote({
+        entity: 'project',
+        id: 'p1',
+        updatedAt: 500,
+        data: { ...makeProject('p1', 100), name: '远端改的名字' },
+      }),
+    )
+
+    expect(outcome).toBe('written')
+    expect((await db.projects.get('p1'))?.name).toBe('远端改的名字')
+  })
+
+  it('远端只改 thread 结构（载荷 updatedAt 未前进）也落地：对端新消息照常出现在显示路径里', async () => {
+    const node: Node = {
+      ...makeNode('n1', 'p1'),
+      updatedAt: 100,
+      thread: { entries: ['m1'], slots: {} },
+    }
+    const messages: Message[] = [
+      { id: 'm1', nodeId: 'n1', projectId: 'p1', role: 'user', parts: [{ type: 'text', text: '你好' }], createdAt: 1, updatedAt: 1 },
+      { id: 'm2', nodeId: 'n1', projectId: 'p1', role: 'assistant', parts: [{ type: 'text', text: '回答' }], createdAt: 2, updatedAt: 2 },
+    ]
+    await repositories.nodes.create(node)
+    await repositories.messages.createMany(messages)
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
+
+    // 对端把 m2 追加进 entries：thread 变了，但记录自身的 updatedAt 仍是 100
+    const outcome = await sync.applyRemote(
+      remote({
+        entity: 'node',
+        id: 'n1',
+        updatedAt: 500,
+        data: { ...node, thread: { entries: ['m1', 'm2'], slots: {} } },
+      }),
+    )
+
+    expect(outcome).toBe('written')
+    const stored = (await db.nodes.get('n1'))!
+    expect(resolveThread(stored, messages).path.map((message) => message.id)).toEqual(['m1', 'm2'])
+  })
+
+  it('本机压着未推送的更新时不覆盖：那份更新带着更大的时间戳，上行后会赢', async () => {
+    await repositories.projects.create(makeProject('p1', 100))
+    const pendingStamp = (await sync.readOutbox())[0].updatedAt as number
+
+    const outcome = await sync.applyRemote(
+      remote({
+        entity: 'project',
+        id: 'p1',
+        updatedAt: pendingStamp - 1,
+        data: { ...makeProject('p1', 50), name: '远端旧版本' },
+      }),
+    )
+
+    expect(outcome).toBe('skipped')
+    expect((await db.projects.get('p1'))?.name).toBe('项目 p1')
+  })
+
+  it('远端更新比本机待推变更新时照常落地（谁赢交给服务端 LWW 裁决）', async () => {
+    await repositories.projects.create(makeProject('p1', 100))
+    const pendingStamp = (await sync.readOutbox())[0].updatedAt as number
+
+    const outcome = await sync.applyRemote(
+      remote({
+        entity: 'project',
+        id: 'p1',
+        updatedAt: pendingStamp + 1,
+        data: { ...makeProject('p1', pendingStamp + 1), name: '别的设备的版本' },
+      }),
+    )
+
+    expect(outcome).toBe('written')
+    expect((await db.projects.get('p1'))?.name).toBe('别的设备的版本')
+  })
+
+  it('本机已无此行时墓碑无事发生；本机压着更大时间戳的待推更新时也不删', async () => {
+    // 从未同步过 / 已删过：无事发生
+    expect(
+      await sync.applyRemote(remote({ entity: 'project', id: 'p404', updatedAt: 100, deletedAt: 100 })),
+    ).toBe('skipped')
+
+    await repositories.projects.create(makeProject('p1', 100))
+    const pendingStamp = (await sync.readOutbox())[0].updatedAt as number
+
+    // 待推更新带着更大的时间戳：上行后会把它「复活」，此刻不删，交给服务端裁决
+    expect(
+      await sync.applyRemote(
+        remote({ entity: 'project', id: 'p1', updatedAt: pendingStamp - 1, deletedAt: pendingStamp - 1 }),
+      ),
+    ).toBe('skipped')
+    expect(await db.projects.get('p1')).toBeDefined()
+  })
+
   it('全局设置按 provider id 保留本机 API Key（密钥从来不上云）', async () => {
     await repositories.settings.save({
       ...createDefaultSettings(),
@@ -166,6 +283,8 @@ describe('applyRemote', () => {
         { id: 'prov-1', label: '本机配置', kind: 'openai', apiKey: 'sk-local-secret', models: ['gpt-4o'] },
       ],
     })
+    // 本机设置已经推完（无待推变更），云端这一版才该落地
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
 
     await sync.applyRemote(
       remote({
@@ -344,6 +463,7 @@ describe('复习会话（本机数据）', () => {
     await repositories.projects.create(makeProject('p1'))
     await repositories.reviewSessions.save(makeSession('p1', 'n1', 1))
     await repositories.reviewSessions.save(makeSession('p2', 'n2', 1))
+    await sync.clearOutbox((await sync.readOutbox()).map((entry) => entry.seq as number))
 
     await sync.applyRemote(
       remote({ entity: 'project', id: 'p1', updatedAt: 200, deletedAt: 200, data: {} }),

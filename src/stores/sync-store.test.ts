@@ -1,9 +1,18 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getRepositories, getSyncLocal } from '@/data'
-import type { Project } from '@/domain/models'
+import type { Node, Project } from '@/domain/models'
+import { reloadStores } from './data-session'
 import { useAccountStore } from './account-store'
 import { useSyncStore } from './sync-store'
+
+// reloadStores 是「远端内容落库后要不要重载各 store」的开关：mock 掉，重载策略
+//（见「同步后的重载策略」一组用例）按调用与否断言，同步测试本身不真去重载。
+vi.mock('./data-session', () => ({
+  bindAccountDatabase: vi.fn(),
+  bindStoredAccountDatabase: vi.fn(),
+  reloadStores: vi.fn(),
+}))
 
 /**
  * 服务端替身：只实现协议语义（rev 游标、逐条 LWW、tombstone），
@@ -98,6 +107,7 @@ beforeEach(async () => {
   server = createFakeServer()
   useAccountStore.setState({ status: 'authenticated', token: 'token-1', user: { loginName: 'tester' } })
   useSyncStore.getState().reset()
+  vi.mocked(reloadStores).mockClear()
   await getSyncLocal().clearLocalData()
   // clearLocalData 会落「已决策」（它服务于「以云端为准」），测试里要回到「本机没决策过」
   await getSyncLocal().writeState({ cursor: 0, initialized: false })
@@ -312,5 +322,71 @@ describe('自动同步', () => {
     useAccountStore.setState({ token: null })
     expect(await useSyncStore.getState().autoSync('focus')).toBeNull()
     expect(server.calls).toHaveLength(0)
+  })
+})
+
+describe('同步后的重载策略', () => {
+  it('纯推送静默完成：推上去的记录被 pull 带回时是回声，不触发重载', async () => {
+    await getRepositories().projects.create(makeProject('p1', '本机项目'))
+
+    const result = await useSyncStore.getState().syncNow()
+
+    expect(result).toMatchObject({ ok: true, pushed: 1, pulled: 0 })
+    expect(vi.mocked(reloadStores)).not.toHaveBeenCalled()
+  })
+
+  it('拉到远端增量才重载一次', async () => {
+    server.push([
+      { entity: 'project', id: 'p9', updatedAt: 500, deletedAt: null, data: makeProject('p9', '云端项目') } as never,
+    ])
+
+    await useSyncStore.getState().syncNow()
+
+    expect(vi.mocked(reloadStores)).toHaveBeenCalledTimes(1)
+  })
+
+  it('远端节点只改位置（载荷时间戳未前进）也算落库，要重载', async () => {
+    const node: Node = {
+      id: 'n1',
+      projectId: 'p1',
+      parentId: null,
+      forkFrom: null,
+      title: 'n1',
+      position: null,
+      status: 'active',
+      createdAt: 1,
+      updatedAt: 100,
+    }
+    await getRepositories().nodes.create(node)
+    // 本机这份已经推完（无待推变更），否则远端旧版本会被「未推送更新」闸门挡掉
+    await getSyncLocal().clearOutbox(
+      (await getSyncLocal().readOutbox()).map((entry) => entry.seq as number),
+    )
+
+    server.push([
+      {
+        entity: 'node',
+        id: 'n1',
+        updatedAt: Date.now(),
+        deletedAt: null,
+        data: { ...node, position: { x: 12, y: 34 } },
+      } as never,
+    ])
+
+    await useSyncStore.getState().syncNow()
+
+    expect((await getRepositories().nodes.get('n1'))?.position).toEqual({ x: 12, y: 34 })
+    expect(vi.mocked(reloadStores)).toHaveBeenCalledTimes(1)
+  })
+
+  it('推送被判旧（服务端版本覆盖本机）也视为远端落库，要重载', async () => {
+    await getRepositories().projects.create(makeProject('p1', '本机旧版本'))
+    server.push([
+      { entity: 'project', id: 'p1', updatedAt: Date.now() + 10_000, deletedAt: null, data: makeProject('p1', '云端新版本') } as never,
+    ])
+
+    await useSyncStore.getState().syncNow()
+
+    expect(vi.mocked(reloadStores)).toHaveBeenCalledTimes(1)
   })
 })
