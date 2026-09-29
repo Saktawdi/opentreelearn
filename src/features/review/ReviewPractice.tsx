@@ -4,13 +4,11 @@ import {
   BookOpen,
   ChevronRight,
   HelpCircle,
-  ImagePlus,
   Lightbulb,
   Loader2,
   RefreshCw,
   RotateCcw,
   SkipForward,
-  X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -33,6 +31,7 @@ import type { SelectionAction } from '@/features/chat/SelectionMenu'
 import { SelectionMenu } from '@/features/chat/SelectionMenu'
 import { MessageNotes } from '@/features/chat/MessageNotes'
 import { useAssetUrls } from '@/features/chat/useAssetUrls'
+import { ComposerShell, type ComposerShellHandle } from '@/features/chat/ComposerShell'
 import { ReviewAnnotatableText } from './ReviewAnnotatable'
 import { useReviewMessageNotes } from './use-review-notes'
 import { ReviewFeedback } from './ReviewFeedback'
@@ -118,8 +117,7 @@ export function ReviewPractice({
   const { t } = useTranslation('review')
   const [draft, setDraft] = useState(item.draft ?? '')
   const [prevItemId, setPrevItemId] = useState(item.itemId)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const isComposingRef = useRef(false)
+  const composerRef = useRef<ComposerShellHandle>(null)
   /** 划选「就这段追问」拉起的追问输入（quote 是框选到的原文，随文本一起提交） */
   const [followup, setFollowup] = useState<{ quote: string; text: string } | null>(null)
   const followupRef = useRef<HTMLTextAreaElement>(null)
@@ -127,7 +125,6 @@ export function ReviewPractice({
   /** 待提交的作答图片：粘贴 / 上传进来，提交时才落 assets（与聊天输入框同一套时序） */
   const [pendingImages, setPendingImages] = useState<Array<{ asset: Asset; url: string }>>([])
   const pendingImagesRef = useRef<Array<{ asset: Asset; url: string }>>([])
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 状态根据 item.itemId 切换而在 render 期间校准，避免在 effect 内部调用 setState
   if (item.itemId !== prevItemId) {
@@ -154,7 +151,7 @@ export function ReviewPractice({
   // 会把刚要展示的题目又拽出视口，正是「复述题闪到顶上后题目不见了」的帮凶。
   useEffect(() => {
     if (item.phase === 'answering' && !streamingText) {
-      textareaRef.current?.focus({ preventScroll: true })
+      composerRef.current?.focus({ preventScroll: true })
     }
   }, [item.phase, streamingText])
 
@@ -163,21 +160,12 @@ export function ReviewPractice({
     onSaveDraft(val)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isComposingRef.current) {
-      e.preventDefault()
-      if ((draft.trim() || pendingImages.length > 0) && item.phase === 'answering') {
-        void submitAnswer()
-      }
-    }
-  }
-
   /** 划选「引用到对话」在复习里的落点：并进回答草稿（与学习对话的引用同构） */
   const quoteToDraft = (text: string) => {
     const next = draft.trim() ? `${draft.trimEnd()}\n${text}` : text
     setDraft(next)
     onSaveDraft(next)
-    textareaRef.current?.focus()
+    composerRef.current?.focus()
   }
 
   const submitFollowup = () => {
@@ -478,41 +466,24 @@ export function ReviewPractice({
         </div>
       )}
 
-      {/* 回忆作答输入区：复述题在途时先不出现，题目落成后随自动聚焦一起就位 */}
+      {/* 回忆作答输入区：复述题在途时先不出现，题目落成后随自动聚焦一起就位。
+          输入框复用会话页的 ComposerShell：图片粘贴/拖放/上传、自适应高度与发送按钮同一套；
+          发送键在此是「提交回答」，提示/换问法/放弃/跳过等复习动作放在框内工具条。 */}
       {isAnswering && !isRelearnAwaitingQuestion && (
         <div className="mt-5 rounded-xl border border-line/70 bg-surface p-4 shadow-sm">
-          <label htmlFor="review-answer-input" className="block mb-2 text-xs font-medium text-ink">
+          <label htmlFor="review-answer-input" className="mb-2 block text-xs font-medium text-ink">
             {t('practice.labelMyAnswer')}
           </label>
-
-          {/* 待提交图片预览：与聊天输入框同款胶囊 */}
-          <div className="mb-2 flex flex-wrap gap-2 empty:hidden">
-            {pendingImages.map((pending) => (
-              <div key={pending.asset.id} className="group/img relative">
-                <img
-                  src={pending.url}
-                  alt={pending.asset.name ?? t('practice.imagePendingAlt')}
-                  className="h-16 w-16 rounded-md border border-line object-cover"
-                />
-                <button
-                  type="button"
-                  aria-label={t('practice.removeImage')}
-                  onClick={() => removePendingImage(pending.asset.id)}
-                  className="absolute -right-1.5 -top-1.5 rounded-full border border-line bg-canvas p-0.5 text-muted transition-colors hover:text-ink"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <Textarea
-            id="review-answer-input"
-            ref={textareaRef}
-            rows={4}
-            value={draft}
-            disabled={isEvaluating}
-            onChange={(e) => handleDraftChange(e.target.value)}
+          <ComposerShell
+            ref={composerRef}
+            textareaId="review-answer-input"
+            draft={{
+              text: draft,
+              setText: handleDraftChange,
+              pending: pendingImages,
+              removePending: removePendingImage,
+              attachFiles: attachImages,
+            }}
             onPaste={(e) => {
               const files = imagesFromClipboard(e.nativeEvent)
               if (files.length > 0) {
@@ -520,93 +491,59 @@ export function ReviewPractice({
                 void attachImages(files)
               }
             }}
-            onCompositionStart={() => {
-              isComposingRef.current = true
-            }}
-            onCompositionEnd={() => {
-              isComposingRef.current = false
-            }}
-            onKeyDown={handleKeyDown}
+            onSubmit={() => void submitAnswer()}
+            canSubmit={(draft.trim().length > 0 || pendingImages.length > 0) && !isEvaluating}
+            busy={false}
+            streaming={false}
             placeholder={t('practice.answerPlaceholder')}
-            className="w-full text-xs leading-relaxed"
+            className="rounded-lg border border-line/60 p-0 [&>div:last-child]:rounded-lg"
+            toolbar={
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isAssistStreaming}
+                  onClick={onRequestHint}
+                  title={t('practice.hintTitle')}
+                  className="text-2xs text-muted hover:text-ink disabled:opacity-50"
+                >
+                  <Lightbulb className="mr-1 h-3.5 w-3.5" />
+                  {t('practice.hintButton')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isAssistStreaming}
+                  onClick={onRequestRephrase}
+                  title={t('practice.rephraseTitle')}
+                  className="text-2xs text-muted hover:text-ink disabled:opacity-50"
+                >
+                  <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                  {t('practice.rephraseButton')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRequestGiveUp}
+                  title={t('practice.giveUpTitle')}
+                  className="text-2xs text-muted hover:text-ink"
+                >
+                  <HelpCircle className="mr-1 h-3.5 w-3.5" />
+                  {t('practice.giveUpButton')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onSkip}
+                  className="text-2xs text-faint hover:text-ink"
+                >
+                  <SkipForward className="mr-1 h-3.5 w-3.5" />
+                  {t('practice.skip')}
+                </Button>
+                <span className="px-1 text-2xs text-faint">{t('practice.submitHint')}</span>
+              </>
+            }
           />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              void attachImages(Array.from(e.target.files ?? []))
-              e.target.value = ''
-            }}
-          />
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={isEvaluating}
-                onClick={() => fileInputRef.current?.click()}
-                title={t('practice.insertImageTitle')}
-                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
-              >
-                <ImagePlus className="mr-1 h-3.5 w-3.5" />
-                {t('practice.insertImage')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={isAssistStreaming}
-                onClick={onRequestHint}
-                title={t('practice.hintTitle')}
-                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
-              >
-                <Lightbulb className="mr-1 h-3.5 w-3.5" />
-                {t('practice.hintButton')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={isAssistStreaming}
-                onClick={onRequestRephrase}
-                title={t('practice.rephraseTitle')}
-                className="text-2xs text-muted hover:text-ink disabled:opacity-50"
-              >
-                <RefreshCw className="mr-1 h-3.5 w-3.5" />
-                {t('practice.rephraseButton')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onRequestGiveUp}
-                title={t('practice.giveUpTitle')}
-                className="text-2xs text-muted hover:text-ink"
-              >
-                <HelpCircle className="mr-1 h-3.5 w-3.5" />
-                {t('practice.giveUpButton')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onSkip}
-                className="text-2xs text-faint hover:text-ink"
-              >
-                <SkipForward className="mr-1 h-3.5 w-3.5" />
-                {t('practice.skip')}
-              </Button>
-            </div>
-
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={(!draft.trim() && pendingImages.length === 0) || isEvaluating}
-              onClick={() => void submitAnswer()}
-            >
-              {t('practice.submitAnswer')}
-            </Button>
-          </div>
         </div>
       )}
 

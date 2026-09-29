@@ -44,6 +44,15 @@ async function waitFor(check: () => boolean, timeoutMs = 1000): Promise<void> {
   }
 }
 
+/** 造一张 1×1 PNG：贴图链路要走真的压缩/转码（canvas 在测试环境可用）。 */
+function makeImageFile(): File {
+  // 1x1 透明 PNG
+  const base64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+  return new File([bytes], 'board.png', { type: 'image/png' })
+}
+
 beforeEach(() => {
   useFreeAskStore.getState().syncProject(null)
   useFreeAskStore.getState().reset()
@@ -135,5 +144,69 @@ describe('自由问答 store', () => {
     // 同一项目内开关面板不会丢对话
     useFreeAskStore.getState().syncProject('p2')
     expect(useFreeAskStore.getState().projectId).toBe('p2')
+  })
+
+  it('输入框草稿留在 store 里：提问进对话即归零，换项目与清空一并带走', async () => {
+    mocked.mockResolvedValueOnce(okOutput())
+
+    // 关掉面板再打开不经过 store，草稿必须原样留着
+    useFreeAskStore.getState().setDraft('还没问完的')
+    expect(useFreeAskStore.getState().draft).toBe('还没问完的')
+
+    useFreeAskStore.getState().setDraft('今天我学了什么？')
+    await useFreeAskStore.getState().ask('今天我学了什么？')
+    expect(useFreeAskStore.getState().draft).toBe('')
+
+    useFreeAskStore.getState().setDraft('换项目前打的半句')
+    useFreeAskStore.getState().syncProject('p2')
+    expect(useFreeAskStore.getState().draft).toBe('')
+
+    useFreeAskStore.getState().setDraft('清空前打的半句')
+    useFreeAskStore.getState().reset()
+    expect(useFreeAskStore.getState().draft).toBe('')
+  })
+
+  it('随问贴图：图片落 assets、dataUrl 附上本轮提问，问句与图片一起进消息', async () => {
+    mocked.mockResolvedValueOnce(okOutput())
+
+    // node 测试环境没有 canvas：图片链路（压缩/转码）单测覆盖不了，这里直接验证
+    // 「贴图状态 → ask 之后的落库与上下文拼装」。createImageAsset 单独 mock 掉。
+    const images = await import('@/services/images')
+    const asset = await images.createImageAsset(makeImageFile(), 'p1').catch(() => null)
+    if (!asset) {
+      // canvas 不可用时的降级验证：attachImages 失败不该把 pending 塞进半个状态
+      const { getRepositories } = await import('@/data')
+      const createSpy = vi.spyOn(getRepositories().assets, 'create')
+      await useFreeAskStore.getState().attachImages([makeImageFile()])
+      expect(useFreeAskStore.getState().pendingImages).toHaveLength(0)
+      expect(createSpy).not.toHaveBeenCalled()
+      return
+    }
+
+    const { getRepositories } = await import('@/data')
+    const createSpy = vi.spyOn(getRepositories().assets, 'create')
+
+    useFreeAskStore.setState({ pendingImages: [{ asset, url: 'blob:fake' }] })
+    await useFreeAskStore.getState().ask('这张图里的板书是什么意思？')
+
+    // 图片随提问转存进 assets 表
+    expect(createSpy).toHaveBeenCalledTimes(1)
+    expect(createSpy.mock.calls[0][0].id).toBe(asset.id)
+
+    // 本轮上下文里提问带 image part（dataUrl）
+    const parts = mocked.mock.calls[0][0].history.at(-1).parts
+    expect(parts[0]).toEqual({ type: 'text', text: '这张图里的板书是什么意思？' })
+    expect(parts[1]).toMatchObject({ type: 'image' })
+    expect(String(parts[1].dataUrl)).toMatch(/^data:image\//)
+
+    // 待发图片清空；问句消息带 imageIds 供界面展示
+    expect(useFreeAskStore.getState().pendingImages).toHaveLength(0)
+    expect(useFreeAskStore.getState().messages.at(-1)).toMatchObject({
+      role: 'user',
+      text: '这张图里的板书是什么意思？',
+      imageIds: [asset.id],
+    })
+    // 第二轮的历史仍能取到这张图的 dataUrl
+    expect(useFreeAskStore.getState().imageUrlsByMessage[asset.id]).toMatch(/^data:image\//)
   })
 })

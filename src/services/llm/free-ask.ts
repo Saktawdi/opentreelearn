@@ -39,6 +39,8 @@ export interface FreeAskRequestInput {
   messagesByNode?: Map<Id, Message[]>
   /** 已经发生的问答，按时间顺序（不含本轮提问） */
   history: ContextMessage[]
+  /** 本轮随问附上的图片（dataUrl，调用方已转存 assets 后现取现传） */
+  imageDataUrls?: string[]
   /** 本轮提问 */
   text: string
   signal: AbortSignal
@@ -96,7 +98,14 @@ export async function runFreeAskRequest(
   const question = input.text.trim()
   const history: ContextMessage[] = [
     ...input.history,
-    { role: 'user', parts: [{ type: 'text', text: question }] },
+    {
+      role: 'user',
+      parts: [
+        { type: 'text', text: question },
+        // 贴图随提问附上（与学习对话同一套 image part 通道，toModelMessages 会展开成 vision 内容）
+        ...(input.imageDataUrls ?? []).map((dataUrl) => ({ type: 'image' as const, dataUrl })),
+      ],
+    },
   ]
 
   const context = assembleFreeAskContext({

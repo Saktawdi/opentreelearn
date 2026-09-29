@@ -1,15 +1,17 @@
-import { CornerDownLeft, Loader2, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { CornerDownLeft, Loader2, Sparkles, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import type { Id } from '@/domain/models'
 import { stripStreamingReviewRating } from '@/domain/review/protocol'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatRelativeTime } from '@/lib/time'
+import { imagesFromClipboard } from '@/services/images'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { ComposerShell } from '@/features/chat/ComposerShell'
 import { ToolActivities } from '@/features/chat/ToolActivities'
 import { useFreeAskStore } from '@/stores/free-ask-store'
+import { useAssetUrls } from '@/features/chat/useAssetUrls'
 
 interface FreeAskPanelProps {
   open: boolean
@@ -26,6 +28,27 @@ const STARTER_KEYS = [
   'freeAsk.starterNext',
 ] as const
 
+/** 一条用户问句里的图片：走资产表解析 dataUrl（与聊天消息同一套解析）。 */
+function MessageImages({ imageIds }: { imageIds: Id[] }) {
+  const { t } = useTranslation('review')
+  const imageUrls = useAssetUrls(imageIds.join(','))
+  if (imageIds.length === 0) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {imageIds.map((id) => {
+        const url = imageUrls[id]
+        return url ? (
+          <img
+            key={id}
+            src={url}
+            alt={t('freeAsk.pendingImageAlt')}
+            className="max-h-48 rounded-md border border-line/60"
+          />
+        ) : null      })}
+    </div>
+  )
+}
+
 /**
  * 复习工作区的「自由问答」面板。
  *
@@ -35,6 +58,9 @@ const STARTER_KEYS = [
  *
  * 三条纪律写在界面上，不只是写在代码里：不写入任何节点、不影响复习排期、问答不落库。
  * 用户需要知道随口问一句不会改变他的学习数据。
+ *
+ * 输入框复用对话页的 `ComposerShell`（同一套 Enter 发送、自适应高度与发送/停止按钮）；
+ * 草稿跟着对话留在 store 内存里，关掉面板再回来还在，与「刷新即清空」的会话同进退。
  */
 export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: FreeAskPanelProps) {
   const { t } = useTranslation('review')
@@ -46,10 +72,13 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
   const cancel = useFreeAskStore((state) => state.cancel)
   const reset = useFreeAskStore((state) => state.reset)
   const syncProject = useFreeAskStore((state) => state.syncProject)
+  const draft = useFreeAskStore((state) => state.draft)
+  const setDraft = useFreeAskStore((state) => state.setDraft)
+  const pendingImages = useFreeAskStore((state) => state.pendingImages)
+  const attachImages = useFreeAskStore((state) => state.attachImages)
+  const removePendingImage = useFreeAskStore((state) => state.removePendingImage)
 
-  const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
-  const isComposingRef = useRef(false)
 
   // 换项目即丢弃上一段对话：回答里全是上个项目的主题标题，留着比丢掉更糟
   useEffect(() => {
@@ -79,12 +108,15 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
   if (!open) return null
 
   const isStreaming = Boolean(streaming)
-  const canSend = hasChatModel && draft.trim().length > 0 && !isStreaming
+  // 纯图片提问合法（贴张板书拍照问一句）：正文与图片至少有一头
+  const canSend =
+    hasChatModel && (draft.trim().length > 0 || pendingImages.length > 0) && !isStreaming
 
   const submit = (question: string) => {
     if (!hasChatModel || isStreaming) return
-    if (!question.trim()) return
-    setDraft('')
+    // 纯图片提问合法：正文为空但有待发图片也放行（ask 里会守住「两头都空」）
+    if (!question.trim() && pendingImages.length === 0) return
+    // 输入框归零由 store 在收下提问时完成（发送失败也该让提问留在对话里）
     void ask(question)
   }
 
@@ -167,9 +199,12 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
               {message.role === 'assistant' ? (
                 <MarkdownView content={message.text} />
               ) : (
-                <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink">
-                  {message.text}
-                </p>
+                <>
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink">
+                    {message.text}
+                  </p>
+                  {(message.imageIds?.length ?? 0) > 0 ? <MessageImages imageIds={message.imageIds!} /> : null}
+                </>
               )}
               {message.incomplete ? (
                 <p className="mt-2 text-2xs text-faint">{t('freeAsk.incomplete')}</p>
@@ -212,66 +247,45 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
           <div ref={bottomRef} />
         </div>
 
-        {/* 输入区 */}
-        <div className="border-t border-line/60 p-4">
+        {/* 输入区：与对话页同一只框（ComposerShell），Enter 发送、Shift+Enter 换行、图片粘贴/拖放 */}
+        <div>
           {hasChatModel ? (
-            <>
-              <Textarea
-                rows={3}
-                value={draft}
-                disabled={isStreaming}
-                onChange={(e) => setDraft(e.target.value)}
-                onCompositionStart={() => {
-                  isComposingRef.current = true
-                }}
-                onCompositionEnd={() => {
-                  isComposingRef.current = false
-                }}
-                onKeyDown={(e) => {
-                  // 聊天框的惯例：Enter 发送、Shift+Enter 换行（与主对话一致）
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault()
-                    if (canSend) submit(draft)
-                  }
-                }}
-                placeholder={t('freeAsk.placeholder')}
-                className="text-xs"
-              />
-              <div className="mt-2.5 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-2xs text-faint">
-                  <span className="flex items-center gap-1">
+            <ComposerShell
+              draft={{
+                text: draft,
+                setText: setDraft,
+                pending: pendingImages,
+                removePending: removePendingImage,
+                attachFiles: attachImages,
+              }}
+              onPaste={(event) => {
+                const files = imagesFromClipboard(event.nativeEvent as ClipboardEvent)
+                if (files.length > 0) {
+                  event.preventDefault()
+                  void attachImages(files)
+                }
+              }}
+              onSubmit={() => submit(draft)}
+              canSubmit={canSend}
+              streaming={isStreaming}
+              onStop={cancel}
+              placeholder={t('freeAsk.placeholder')}
+              toolbar={
+                <span className="flex min-w-0 items-center gap-2 px-1 text-2xs text-faint">
+                  <span className="flex shrink-0 items-center gap-1">
                     <CornerDownLeft className="h-3 w-3" />
                     {t('freeAsk.enterHint')}
                   </span>
-                  {contextNote ? <span className="text-muted">{contextNote}</span> : null}
+                  {contextNote ? (
+                    <span className="truncate text-muted" title={contextNote}>
+                      {contextNote}
+                    </span>
+                  ) : null}
                 </span>
-
-                {isStreaming ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={cancel}
-                    className="gap-1.5 text-2xs"
-                  >
-                    <Square className="h-3 w-3" />
-                    {t('freeAsk.stop')}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    disabled={!canSend}
-                    onClick={() => submit(draft)}
-                    className="gap-1.5 text-2xs"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {t('freeAsk.send')}
-                  </Button>
-                )}
-              </div>
-            </>
+              }
+            />
           ) : (
-            <p className="text-xs text-muted">
+            <p className="border-t border-line/60 p-4 text-xs text-muted">
               {t('freeAsk.noModelBefore')}{' '}
               <Link to="/settings" className="text-accent underline underline-offset-4">
                 {t('freeAsk.noModelLink')}

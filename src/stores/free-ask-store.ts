@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import i18n from '@/i18n'
+import { getRepositories } from '@/data'
 import type { ContextMessage } from '@/domain/context/assemble'
-import type { Id } from '@/domain/models'
+import type { Asset, Id } from '@/domain/models'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
+import { createImageAsset, assetToDataUrl } from '@/services/images'
 import { runFreeAskRequest } from '@/services/llm/free-ask'
 import { useSettingsStore } from './settings-store'
 import { useWorkspaceStore, type StreamingToolActivity } from './workspace-store'
@@ -17,6 +19,10 @@ import { useWorkspaceStore, type StreamingToolActivity } from './workspace-store
  *
  * 项目切走时必须清空（`syncProject`）：答疑内容带着上一个项目的主题标题，
  * 留在面板里比丢掉更糟。
+ *
+ * 输入框草稿（`draft`）也放在这里，与对话同一份生命周期：输入框本体复用对话页的
+ * `ComposerShell`，但草稿不落 IndexedDB —— 会话页的对话是落库的，草稿才跟着落库；
+ * 这里的问答刷新即清空，草稿随会话走内存才不会出现「问句还在、对话没了」的错位。
  */
 
 export interface FreeAskMessage {
@@ -27,6 +33,14 @@ export interface FreeAskMessage {
   createdAt: number
   /** 正文不完整（用户中断 / 请求失败后留下的部分内容） */
   incomplete?: boolean
+  /** 随问附上的图片资产 id：展示用，模型侧走 dataUrl（见 historyParts） */
+  imageIds?: Id[]
+}
+
+/** 待发图片：asset 已压缩登记（发送时才写进 assets 表），url 仅供预览。 */
+export interface FreeAskPendingImage {
+  asset: Asset
+  url: string
 }
 
 interface FreeAskState {
@@ -37,6 +51,15 @@ interface FreeAskState {
   error: string | null
   /** 如实说明本次参考了多少个主题：清单会按上下文预算裁剪，用户有权知道 */
   contextNote: string | null
+  /** 已发出问句的图片 dataUrl 缓存（assetId → dataUrl）：拼历史上下文时用，免得每轮重读 blob */
+  imageUrlsByMessage: Record<Id, string>
+  /** 输入框草稿：关掉面板再回来还在，随对话一起被项目切换/清空带走 */
+  draft: string
+  setDraft: (value: string) => void
+  /** 待发图片：粘贴/拖放/选择进来，随下一次提问发出 */
+  pendingImages: FreeAskPendingImage[]
+  attachImages: (files: File[]) => Promise<void>
+  removePendingImage: (assetId: Id) => void
   ask: (question: string) => Promise<void>
   cancel: () => void
   reset: () => void
@@ -56,10 +79,42 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
   streaming: null,
   error: null,
   contextNote: null,
+  imageUrlsByMessage: {},
+  draft: '',
+  pendingImages: [],
+
+  setDraft: (value) => set({ draft: value }),
+
+  attachImages: async (files) => {
+    if (files.length === 0) return
+    const projectId = useWorkspaceStore.getState().projectId
+    if (!projectId) return
+    try {
+      const created = await Promise.all(
+        files.map(async (file) => {
+          const asset = await createImageAsset(file, projectId)
+          return { asset, url: URL.createObjectURL(asset.blob) }
+        }),
+      )
+      set((state) => ({ pendingImages: [...state.pendingImages, ...created] }))
+    } catch {
+      // 压缩/解码失败不打断输入：图片是补充，不是提问的载体
+      set({ error: i18n.t('review:freeAsk.imageReadFailed') })
+    }
+  },
+
+  removePendingImage: (assetId) => {    set((state) => {
+      const target = state.pendingImages.find((item) => item.asset.id === assetId)
+      if (target) URL.revokeObjectURL(target.url)
+      return { pendingImages: state.pendingImages.filter((item) => item.asset.id !== assetId) }
+    })
+  },
 
   ask: async (question) => {
     const trimmed = question.trim()
-    if (!trimmed) return
+    const images = get().pendingImages
+    // 纯图片提问合法（贴张板书拍照问一句）：正文与图片至少有一头
+    if (!trimmed && images.length === 0) return
 
     const workspace = useWorkspaceStore.getState()
     const settings = useSettingsStore.getState().settings
@@ -70,15 +125,35 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
     const controller = new AbortController()
     freeAskAbort = controller
 
+    // 图片转存进 assets 表（发送时序与聊天一致：发出后才成为资产），模型侧吃 dataUrl。
+    // 转存失败就当这张图没贴过：问句还在，不该被一张图整个挡住。
+    const savedIds: Id[] = []
+    for (const pending of images) {
+      try {
+        await getRepositories().assets.create(pending.asset)
+        savedIds.push(pending.asset.id)
+      } catch {
+        URL.revokeObjectURL(pending.url)
+      }
+    }
+    const imageDataUrls = await Promise.all(
+      savedIds.map(async (id) => {
+        const asset = images.find((item) => item.asset.id === id)?.asset
+        return asset ? await assetToDataUrl(asset) : null
+      }),
+    ).then((list) => list.filter((item): item is string => item !== null))
+
+    // 历史里的图片按「上一条用户问句带的图」补 dataUrl：模型每轮都能看到贴过的图
     const history: ContextMessage[] = get().messages.map((message) => ({
       role: message.role,
-      parts: [{ type: 'text', text: message.text }],
+      parts: historyParts(message, get().imageUrlsByMessage),
     }))
     const asked: FreeAskMessage = {
       id: newId(),
       role: 'user',
       text: trimmed,
       createdAt: Date.now(),
+      ...(savedIds.length > 0 ? { imageIds: savedIds } : {}),
     }
     set((state) => ({
       projectId: state.projectId ?? workspace.projectId,
@@ -86,6 +161,15 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
       streaming: { text: '', tools: [] },
       error: null,
       contextNote: null,
+      // 问句已经进了对话，输入框与待发图片一并归零（与对话页发送后清草稿同一动作）
+      draft: '',
+      pendingImages: [],
+      imageUrlsByMessage: {
+        ...state.imageUrlsByMessage,
+        ...Object.fromEntries(
+          savedIds.map((id, index) => [id, imageDataUrls[index]] as const),
+        ),
+      },
     }))
 
     const result = await runFreeAskRequest({
@@ -97,6 +181,8 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
       // 标注带标签的那些会随上下文一起给模型（「我有哪些还没搞懂的」全靠它）
       notes: Object.values(workspace.notesByMessage).flat(),
       history,
+      // 本轮贴的图以 dataUrl 附在提问上，与聊天同构
+      imageDataUrls,
       text: trimmed,
       signal: controller.signal,
       onToolCall: (activity) => {
@@ -213,12 +299,41 @@ export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
 
   reset: () => {
     stopStreaming()
-    set({ messages: [], streaming: null, error: null, contextNote: null })
+    set((state) => {
+      for (const pending of state.pendingImages) URL.revokeObjectURL(pending.url)
+      return { messages: [], streaming: null, error: null, contextNote: null, draft: '', pendingImages: [] }
+    })
   },
 
   syncProject: (projectId) => {
     if (get().projectId === projectId) return
     stopStreaming()
-    set({ projectId, messages: [], streaming: null, error: null, contextNote: null })
+    set((state) => {
+      for (const pending of state.pendingImages) URL.revokeObjectURL(pending.url)
+      return {
+        projectId,
+        messages: [],
+        streaming: null,
+        error: null,
+        contextNote: null,
+        draft: '',
+        pendingImages: [],
+        imageUrlsByMessage: {},
+      }
+    })
   },
 }))
+
+/** 历史消息 → 上下文 parts：文本必带，图片按资产 id 查现成的 dataUrl（没有就降级为文字占位）。 */
+function historyParts(
+  message: FreeAskMessage,
+  urls: Record<Id, string>,
+): ContextMessage['parts'] {
+  const parts: ContextMessage['parts'] = [{ type: 'text', text: message.text }]
+  for (const id of message.imageIds ?? []) {
+    const dataUrl = urls[id]
+    if (dataUrl) parts.push({ type: 'image', dataUrl })
+    else parts.push({ type: 'text', text: '［图片］' })
+  }
+  return parts
+}
