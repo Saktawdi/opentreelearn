@@ -1119,6 +1119,10 @@ async function executeModelTurn(
     // 能力未探测 + 工具路径请求异常 ⇒ 降级重试一次散文路径（与学习对话同一模式）；
     // 用户主动中断不算失败，不重试。
     if (failure.capabilityUnknown && delivery !== null && !failure.aborted && !options.forceLegacy) {
+      // 先清掉本次的在途标记：executeModelTurn 开头的「同一用途已在途」守卫只该拦
+      // 用户的重复点击，不能把这次降级重试也拦掉 —— 不清的话守卫看到同 item 同
+      // purpose 的旧标记直接 return，散文重试静默失效，界面永远停在转圈。
+      store.setState({ streaming: null })
       await executeModelTurn(purpose, text, { forceLegacy: true })
       return
     }
