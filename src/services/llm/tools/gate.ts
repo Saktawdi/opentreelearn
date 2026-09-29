@@ -6,7 +6,7 @@ import { failure } from './result'
  *
  * 为什么包在 execute 而不是用 AI SDK 的 `needsApproval`：
  * 那套要重建流、把批准结果作为新的一次调用发回去，三条链路（对话 / 自由答 /
- * 复习）各要改一遍状态机。而我们需要的只是「停在这���，用户点了再走」——
+ * 复习）各要改一遍状态机。而我们需要的只是「停在这里，用户点了再走」——
  * execute 里 await 一个 Promise 天然就是这个语义，且不打断已经流出去的正文。
  *
  * 判定规则全在 `domain/agent/permissions`，这里只负责执行：放行就跑，拒绝就
