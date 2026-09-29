@@ -20,6 +20,12 @@ RUN pnpm build
 
 # ---------- runtime：nginx 托管 ----------
 FROM nginx:1.27-alpine AS runtime
+# TrustAsia TLS ECC Root CA（2025 新根，经 Certum Trusted Network CA 交叉签名）还没进
+# Alpine/Mozilla 信任库；不装它，/api-proxy 对用这批新根签发证书的上游（如自建中转站
+# newapi.sakta.top）会在 TLS 握手校验阶段失败，nginx 回 502。取自中间证书的 AIA：
+# http://ica.litessl.com/TrustAsiaTLSECCRootCA.crt
+COPY docker/trustasia-tls-ecc-root-ca-cross.crt /usr/local/share/ca-certificates/
+RUN apk add --no-cache ca-certificates && update-ca-certificates
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
