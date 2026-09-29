@@ -122,7 +122,7 @@ export function createLlmProxyFetch(): typeof fetch {
     const headers = new Headers(request.headers)
     headers.set(LLM_PROXY_TARGET_HEADER, request.url)
 
-    return fetch(proxyUrl, {
+    const response = await fetch(proxyUrl, {
       method: request.method,
       headers,
       // 保留 SDK 原始的 JSON body；request.body 是一次性流，不能作为可靠的中转源。
@@ -131,5 +131,15 @@ export function createLlmProxyFetch(): typeof fetch {
       duplex: body ? 'half' : undefined,
       signal: request.signal,
     } as RequestInit & { duplex: 'half' })
+
+    // 排障留痕：Network 面板虽能看到状态码，但控制台这行能直接带上「目标上游是谁」，
+    // 用户贴日志时不用再翻请求头。400/403 是 nginx 拒了目标（空/非法/私网地址），
+    // 502 大概率是上游或其 DNS/TLS 出了问题。
+    if (!response.ok) {
+      console.warn(
+        `[llm-proxy] 上游响应 ${response.status} ${response.statusText || ''}：目标 ${request.url}`,
+      )
+    }
+    return response
   }
 }

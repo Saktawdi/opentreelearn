@@ -1,4 +1,9 @@
-import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/common'
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 import https from 'node:https'
@@ -26,6 +31,7 @@ export const DEV_TOKEN_PREFIX = 'dev-'
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name)
   private readonly http: AxiosInstance
   /**
    * token → 用户信息缓存。同步是批量请求且会连续发生（push 完立刻 pull），
@@ -38,6 +44,9 @@ export class AuthService {
     if (!baseURL) {
       throw new Error('缺少 RUIYI_API_URL：服务端需要它校验客户端 token')
     }
+
+    // 启动时留档上游地址：云端 502 排查时先确认这一行是不是预期的账号系统
+    this.logger.log(`账号系统校验地址：${baseURL}`)
 
     this.http = axios.create({
       baseURL,
@@ -71,13 +80,21 @@ export class AuthService {
     if (cached && cached.expireAt > Date.now()) return cached.user
 
     let envelope: RuoYiEnvelope
+    const startedAt = Date.now()
     try {
       const response = await this.http.get<RuoYiEnvelope>('/v1/user/pri/getInfo', {
         headers: { token },
       })
       envelope = response.data
+      this.logger.verbose(
+        `账号系统 getInfo 成功：HTTP ${response.status}，耗时 ${Date.now() - startedAt}ms`,
+      )
     } catch (error) {
-      // 401 与网络类失败都由守卫统一翻成 401，这里不做区分
+      // 401 与网络类失败都由守卫统一翻成 401，这里不做区分；
+      // 但真实原因（HTTP 状态 / 网络错误码 / 耗时）必须落在自己的日志里
+      this.logger.warn(
+        `账号系统 getInfo 失败（${describeUpstreamError(error)}），耗时 ${Date.now() - startedAt}ms`,
+      )
       throw new UnauthorizedException(describeUpstreamError(error))
     }
 
@@ -121,7 +138,11 @@ function describeUpstreamError(error: unknown): string {
   const axiosError = error as AxiosError | undefined
   const status = axiosError?.response?.status
   const upstreamMsg = (axiosError?.response?.data as RuoYiEnvelope | undefined)?.msg
-  if (upstreamMsg) return upstreamMsg
+  if (upstreamMsg) return `${upstreamMsg}（HTTP ${status}）`
   if (status) return `账号系统返回 HTTP ${status}`
-  return '无法连接账号系统'
+  // 没有响应 = 连接层失败：带上 axios 错误码（ENOTFOUND / ECONNREFUSED / ECONNABORTED /
+  // CERT_HAS_EXPIRED…）与底层 message，云端排查时才能区分 DNS、防火墙和超时
+  const code = axiosError?.code
+  const detail = axiosError?.message ? `：${axiosError.message}` : ''
+  return `无法连接账号系统${code ? `（错误码 ${code}）` : ''}${detail}`
 }

@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common'
-import type { Response } from 'express'
+import type { Request, Response } from 'express'
 
 /**
  * 全局异常过滤器：把所有异常改写为 `{ code, msg, data: null }`，HTTP 状态码保持不变。
@@ -20,7 +20,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter')
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<Response>()
+    const http = host.switchToHttp()
+    const response = http.getResponse<Response>()
+    const request = http.getRequest<Request>()
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR
     let msg = '服务器内部错误'
@@ -40,6 +42,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       } else {
         msg = exception.message || msg
       }
+      // HttpException 之前完全不落日志：账号系统不可用时抛的 BadGatewayException（502）
+      // 在服务端无迹可查。5xx 是上游/自身故障，error；4xx 是客户端侧问题（token 失效、
+      // 参数错），warn 留痕即可。
+      const line = `${request.method} ${request.url} -> ${status}：${msg}`
+      if (status >= 500) this.logger.error(line)
+      else this.logger.warn(line)
     } else if (exception instanceof Error) {
       msg = exception.message || msg
       this.logger.error(exception.message, exception.stack)
