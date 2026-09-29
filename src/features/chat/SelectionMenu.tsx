@@ -7,7 +7,7 @@ import {
   MessageCircleQuestion,
   MessageSquareQuote,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Tooltip } from '@/components/ui/tooltip'
@@ -45,6 +45,12 @@ interface MenuState extends SelectionTarget {
 }
 
 const EDGE = 12
+
+/** selectionchange 到弹菜单的去抖：拖选、拖手柄都是一串连发，等选区停稳再弹。 */
+const SHOW_DELAY = 250
+
+/** 触摸点按的位移容差：挪过这个距离算滚动页面，不算点按钮。 */
+const TAP_SLOP = 10
 
 /** 夹进 [min, max]；容器比视口还大时 min 会大于 max，取 min 兜底。 */
 function clamp(value: number, min: number, max: number): number {
@@ -220,6 +226,34 @@ function ArcAction({
   busy?: boolean
   onSelect: () => void
 }) {
+  // 触屏点按不能放任合成 mouse 事件：合成 mousedown 会清掉选区，selectionchange
+  // 紧跟着把菜单收走，等 click 到达时动作已经拿不到锚点了。于是在 touchend 里
+  // 直接触发动作并拦下合成事件；挪过位置的触摸是滚动页面，不触发。
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null)
+  const touchedAt = useRef(0)
+
+  const handleTouchStart = (event: TouchEvent<HTMLButtonElement>) => {
+    const touch = event.touches[0]
+    touchOrigin.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  const handleTouchEnd = (event: TouchEvent<HTMLButtonElement>) => {
+    const origin = touchOrigin.current
+    touchOrigin.current = null
+    const touch = event.changedTouches[0]
+    if (!origin || !touch) return
+    if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > TAP_SLOP) return
+    event.preventDefault()
+    // 个别内核不遵守「touchend preventDefault 抑制合成 click」的约定，压一下防双发
+    touchedAt.current = Date.now()
+    if (!busy) onSelect()
+  }
+
+  const handleClick = () => {
+    if (Date.now() - touchedAt.current < 700) return
+    onSelect()
+  }
+
   return (
     <Tooltip label={label} side="right">
       <button
@@ -227,7 +261,10 @@ function ArcAction({
         aria-label={label}
         disabled={busy}
         onMouseDown={(event) => event.preventDefault()}
-        onClick={onSelect}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={() => (touchOrigin.current = null)}
+        onClick={handleClick}
         style={{ width: BUTTON, height: BUTTON, ...slotStyle(index, slots) }}
         className="absolute grid place-items-center rounded-full border border-line/80 bg-surface/95 text-ink-soft shadow-node ring-1 ring-white/[0.04] backdrop-blur transition-colors hover:border-accent/40 hover:bg-elevated hover:text-accent disabled:opacity-60"
       >
@@ -246,6 +283,8 @@ function ArcAction({
  * 菜单常驻挂载（隐藏态）而不是按需挂载 —— 位置要按自身实际宽高算，先量再定位，
  * 才能在视口边缘正确避让；量尺寸必须在事件里做（不能在 render/effect 里读 DOM）。
  * 定位锚点是框选到的最长那一行的末尾，见 SelectionTarget.endPoint。
+ * 弹出的两条路：桌面 mouseup 即时定位；selectionchange 去抖后兜底 —— 触屏没有
+ * mouseup（长按选中、拖手柄只发 selectionchange），桌面各家浏览器的时序也不一致。
  * 父组件用 `key={nodeId}` 重挂载，切换节点时状态自然归零。
  */
 export function SelectionMenu({
@@ -273,6 +312,9 @@ export function SelectionMenu({
 
   const menuRef = useRef<HTMLDivElement>(null)
   const copiedTimer = useRef<number | null>(null)
+  // 容器（含按钮之间的空隙）上的触摸起点：与 onMouseDown preventDefault 对齐 ——
+  // 点在菜单上不丢选区。点在按钮上的触摸由按钮自己拦下（defaultPrevented），这里只兜空隙。
+  const containerTouch = useRef<{ x: number; y: number } | null>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -288,6 +330,8 @@ export function SelectionMenu({
   const [branching, setBranching] = useState<{ quote: string; messageId: Id } | null>(null)
 
   useEffect(() => {
+    let showTimer: number | null = null
+
     const place = () => {
       const element = menuRef.current
       const target = readSelection()
@@ -329,9 +373,31 @@ export function SelectionMenu({
       place()
     }
 
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // Esc 收起后选区还在，Esc 自己的 keyup 会把刚关掉的菜单再弹回来 —— 只跳过这一枚
+      if (event.key === 'Escape') return
+      place()
+    }
+
+    // 选区变化是弹出与否的事实源：桌面拖选的时序各家浏览器不一致（Safari 双击选词
+    // 落在 mouseup 之后、窗口外松开收不到 mouseup），触屏更是压根没有 mouseup ——
+    // 长按选中、拖手柄只会发 selectionchange。折叠立即收起；非折叠去抖后弹出/重定位，
+    // 连发的中间态靠去抖跳过。桌面 mouseup 保留为即时路径，手感不变。
     const handleSelectionChange = () => {
       const selection = window.getSelection()
-      if (!selection || selection.isCollapsed) setMenu(null)
+      if (!selection || selection.isCollapsed) {
+        if (showTimer !== null) {
+          window.clearTimeout(showTimer)
+          showTimer = null
+        }
+        setMenu(null)
+        return
+      }
+      if (showTimer !== null) window.clearTimeout(showTimer)
+      showTimer = window.setTimeout(() => {
+        showTimer = null
+        place()
+      }, SHOW_DELAY)
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -339,7 +405,7 @@ export function SelectionMenu({
     }
 
     document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('keyup', place)
+    document.addEventListener('keyup', handleKeyUp)
     document.addEventListener('selectionchange', handleSelectionChange)
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('scroll', dismiss, true)
@@ -347,11 +413,12 @@ export function SelectionMenu({
 
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
-      document.removeEventListener('keyup', place)
+      document.removeEventListener('keyup', handleKeyUp)
       document.removeEventListener('selectionchange', handleSelectionChange)
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('scroll', dismiss, true)
       window.removeEventListener('resize', dismiss)
+      if (showTimer !== null) window.clearTimeout(showTimer)
       if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
     }
   }, [])
@@ -580,6 +647,19 @@ export function SelectionMenu({
           ...(menu ? { left: menu.left, top: menu.top } : {}),
         }}
         onMouseDown={(event) => event.preventDefault()}
+        onTouchStart={(event) => {
+          const touch = event.touches[0]
+          containerTouch.current = { x: touch.clientX, y: touch.clientY }
+        }}
+        onTouchEnd={(event) => {
+          const origin = containerTouch.current
+          containerTouch.current = null
+          const touch = event.changedTouches[0]
+          if (!origin || !touch) return
+          if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > TAP_SLOP) return
+          if (event.defaultPrevented) return
+          event.preventDefault()
+        }}
         className={cn(
           'menu-pop fixed z-50 -translate-x-1/2',
           menu ? '' : 'invisible pointer-events-none',
