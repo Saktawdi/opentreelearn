@@ -8,6 +8,7 @@ import {
 import type { ContextMessage, ContextPart } from '@/domain/context/assemble'
 import { isValidReasoningLevel } from './model-catalog'
 import { DEFAULT_AGENT_MAX_STEPS } from '@/domain/defaults'
+import { TOOL_WORKFLOW_SYSTEM, withToolDiscovery } from './tools/discovery'
 
 export interface ChatUsage {
   inputTokens?: number
@@ -231,13 +232,17 @@ export function buildStreamOptions(params: {
 
   return {
     model: params.model,
-    system: params.system,
+    system: hasTools ? `${params.system}\n\n${TOOL_WORKFLOW_SYSTEM}` : params.system,
     messages: params.messages,
     abortSignal: params.abortSignal,
     // maxSteps = 0 表示不限制。注意：streamText 缺省 stopWhen 是 stepCountIs(1)（一步就停），
     // 所以「不限制」必须显式传空数组（没有任何停止条件），而不是不传。
     ...(hasTools
-      ? { tools: params.tools, stopWhen: maxSteps > 0 ? stepCountIs(maxSteps) : [] }
+      ? {
+          tools: withToolDiscovery(params.tools!),
+          toolChoice: 'auto' as const,
+          stopWhen: maxSteps > 0 ? stepCountIs(maxSteps) : [],
+        }
       : {}),
     ...(reasoningEffort ? { reasoning: reasoningEffort as unknown as Parameters<typeof streamText>[0]['reasoning'] } : {}),
     // 关掉 SDK 遥测：本项目不接任何遥测，而它在浏览器里会留下一个无人处理的 promise。

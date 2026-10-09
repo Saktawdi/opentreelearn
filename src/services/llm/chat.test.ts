@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { MockLanguageModelV3 } from 'ai/test'
-import type { LanguageModel } from 'ai'
+import { simulateReadableStream, type LanguageModel } from 'ai'
 import { buildStreamOptions, streamReply } from './chat'
 import { buildReadOnlyTools } from './tools/registry'
 
@@ -129,13 +129,15 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
 
   it('带工具时同时给出 tools 与步数上限', () => {
     const options = buildStreamOptions({ ...base, tools, maxSteps: 3 })
-    expect(options.tools).toBe(tools)
+    expect(options.tools?.search_nodes).toBe(tools.search_nodes)
+    expect(options.tools?.list_tools).toBeDefined()
+    expect(options.toolChoice).toBe('auto')
     expect(options.stopWhen).toBeDefined()
   })
 
   it('maxSteps = 0 表示不限制步数：传 stopWhen: []，绝不能不传（否则 SDK 默认 stepCountIs(1) 会变 1 步截断）', () => {
     const options = buildStreamOptions({ ...base, tools, maxSteps: 0 })
-    expect(options.tools).toBe(tools)
+    expect(options.tools?.search_nodes).toBe(tools.search_nodes)
     // 必须存在且为空数组（永不满足的停止条件）
     expect(options.stopWhen).toEqual([])
   })
@@ -150,5 +152,80 @@ describe('buildStreamOptions（带不带工具的请求体差异）', () => {
     expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: 'unknown_effort' })).toBe(false)
     expect('reasoning' in buildStreamOptions({ ...base, reasoningEffort: '超强' })).toBe(false)
     expect('reasoning' in buildStreamOptions(base)).toBe(false)
+  })
+})
+
+describe('streamReply 多步工具流程', () => {
+  const tools = buildReadOnlyTools({
+    nodes: [], messagesByNode: new Map(), notes: [],
+    approvalPolicy: 'open', permission: 'prompt',
+  })
+
+  function modelForSteps() {
+    let step = 0
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        step += 1
+        return {
+          stream: simulateReadableStream({
+            chunks: [
+              { type: 'stream-start', warnings: [] },
+              { type: 'text-start', id: `t${step}` },
+              { type: 'text-delta', id: `t${step}`, delta: `步骤${step}。` },
+              { type: 'text-end', id: `t${step}` },
+              ...(step < 3 ? [{
+                type: 'tool-call' as const,
+                toolCallId: `call${step}`,
+                toolName: step === 1 ? 'list_tools' : 'search_nodes',
+                input: step === 1 ? '{}' : '{"query":"动量"}',
+              }] : []),
+              {
+                type: 'finish',
+                finishReason: { unified: step < 3 ? 'tool-calls' : 'stop', raw: undefined },
+                usage: {
+                  inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+                  outputTokens: { total: 5, text: 5, reasoning: undefined },
+                },
+              },
+            ],
+            initialDelayInMs: 0, chunkDelayInMs: 0,
+          }),
+        }
+      },
+    })
+    return model
+  }
+
+  it('正文之后与工具结果之后都能继续调用，每步都保留工具和前步结果', async () => {
+    const model = modelForSteps()
+    const calls: string[] = []
+    const outcomes: string[] = []
+    const result = await streamReply({
+      model, system: '系统提示', messages: [{ role: 'user', content: '请查询' }],
+      tools, maxSteps: 5,
+      onToolCall: (call) => calls.push(call.name),
+      onToolResult: (outcome) => outcomes.push(outcome.callId),
+    })
+    expect(result.text).toBe('步骤1。步骤2。步骤3。')
+    expect(calls).toEqual(['list_tools', 'search_nodes'])
+    expect(outcomes).toEqual(['call1', 'call2'])
+    expect(result.toolCalls).toBe(2)
+    expect(result.hitStepLimit).toBe(false)
+    expect(model.doStreamCalls).toHaveLength(3)
+    for (const call of model.doStreamCalls) {
+      expect(call.tools?.map((tool) => tool.name)).toContain('list_tools')
+      expect(call.tools?.map((tool) => tool.name)).toContain('search_nodes')
+      expect(call.toolChoice).toEqual({ type: 'auto' })
+    }
+    expect(model.doStreamCalls[2].prompt.filter((message) => message.role === 'tool')).toHaveLength(2)
+  })
+
+  it('步数上限中断后报告未完成，不再向模型发起下一步', async () => {
+    const model = modelForSteps()
+    const result = await streamReply({
+      model, system: '', messages: [{ role: 'user', content: '查询' }], tools, maxSteps: 2,
+    })
+    expect(model.doStreamCalls).toHaveLength(2)
+    expect(result.hitStepLimit).toBe(true)
   })
 })

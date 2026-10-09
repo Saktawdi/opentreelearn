@@ -150,6 +150,7 @@
     "noteWriteFailed": "未能写入标注"
   },
   "tool": {
+    "listTools": "查看可用工具",
     "searchNodes": "查询节点「{{query}}」",
     "searchNodesPlain": "查询节点",
     "getNode": "查看节点详情",

@@ -151,6 +151,7 @@
     "noteWriteFailed": "Could not write the annotation"
   },
   "tool": {
+    "listTools": "List available tools",
     "searchNodes": "Searched nodes \"{{query}}\"",
     "searchNodesPlain": "Search nodes",
     "getNode": "View node details",

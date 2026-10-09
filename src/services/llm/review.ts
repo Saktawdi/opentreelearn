@@ -22,6 +22,7 @@ import {
   type ReviewDeliveryKind,
 } from './tools/review-delivery'
 import type { GlobalSettings } from '@/domain/models'
+import { clampAgentMaxSteps } from '@/domain/defaults'
 
 /**
  * 复习专用模型服务。
@@ -142,9 +143,6 @@ export async function requireReviewModel(
   return { model, ref }
 }
 
-/** 交付阶段的步数上限：检索 1~2 步 + 交付 1 步；合并轮次在阶段 3 再评估。 */
-const REVIEW_DELIVERY_MAX_STEPS = 4
-
 /**
  * 用途 → 本轮允许的交付工具。反馈轮（answer / followup）给全集：
  * 点评 → 补讲 → 再问 的合并链路（阶段 3），其余轮次单工具绑定。
@@ -241,7 +239,7 @@ export async function runReviewRequest(
       system: context.system,
       messages: toModelMessages(context.messages),
       abortSignal: input.signal,
-      ...(toolSet ? { tools: toolSet, maxSteps: REVIEW_DELIVERY_MAX_STEPS } : {}),
+      ...(toolSet ? { tools: toolSet, maxSteps: clampAgentMaxSteps(input.settings.agentMaxSteps) } : {}),
       // 跟随提供商配置的推理强度；非法值/auto 由 chat 层过滤为不传
       reasoningEffort: findProvider(input.settings.providers, ref)?.reasoningEffort,
       onDelta: (delta) => {
