@@ -1,7 +1,9 @@
 import { generateText, Output, type LanguageModel } from 'ai'
 import { z } from 'zod'
+import i18n from '@/i18n'
 import { messageText } from '@/domain/messages'
 import type { Message } from '@/domain/models'
+import { learningAssessmentSchema, type LearningAssessment } from '@/domain/assessment'
 import { clampScore } from '@/domain/review/schedule'
 import { normalizeWhitespace, truncate } from '@/lib/text'
 
@@ -18,13 +20,11 @@ const SUMMARY_SYSTEM = [
   '3. weakPoints：最多 3 条具体薄弱点（每条不超过 20 字），没有明显薄弱点时给空数组。',
 ].join('\n')
 
-/** 不支持结构化输出的 provider 退回纯文本摘要时用。 */
-const SUMMARY_TEXT_SYSTEM = [
-  '你是学习进展评估助理，负责根据师生对话评估并总结学习者的掌握程度。',
-  '要求：',
-  '1. 必须且只能输出严格的【一句话总结】（不超过 40 个字）。',
-  '2. 核心只总结学习者对当前节点知识的【掌握/理解程度】与状态（如：已基本掌握核心概念、已理清公式推导但在边界条件上仍有疑惑、仅作了初步了解等）。',
-  '3. 不要罗列教学过程或原文，不要分点，不要换行，不要任何问候与解释。',
+/** 中转不支持结构化协议时，仍通过普通文本接口生成并校验完整评估。 */
+const SUMMARY_JSON_SYSTEM = [
+  SUMMARY_SYSTEM,
+  '只输出一个合法 JSON 对象，包含 summary、mastery、weakPoints 三个字段；不要解释或 Markdown。',
+  '格式示例：{"summary":"基本理解概念，应用条件仍需加强","mastery":65,"weakPoints":["适用条件"]}',
 ].join('\n')
 
 const summarySchema = z.object({
@@ -77,21 +77,23 @@ export async function generateTitle(
   return cleanGenerated(text, 24)
 }
 
-export interface SummaryAssessment {
-  summary: string
-  /** 掌握度（0-100）；provider 不支持结构化输出时为 null，此时只更新摘要 */
-  mastery: number | null
-  /** AI 给出的薄弱点（至多 3 条）；只做出题材料，不参与调度 */
-  weakPoints: string[]
+export type SummaryAssessment = LearningAssessment
+
+function cleanAssessment(value: unknown): SummaryAssessment {
+  const output = summarySchema.parse(value)
+  return learningAssessmentSchema.parse({
+    summary: cleanGenerated(output.summary, 60),
+    mastery: clampScore(output.mastery),
+    weakPoints: cleanWeakPoints(output.weakPoints),
+  })
 }
 
 /**
  * 一次结构化调用同时拿到 summary / mastery / weakPoints。
  *
  * 用 AI SDK 7 的 `generateText + Output.object`（`generateObject` 已被官方标为
- * deprecated，两者是同一套结构化输出机制）。结构化输出不是所有 provider 都支持
- * （自建中转尤其常见），失败时退回纯文本摘要：宁可这次没有掌握度，
- * 也不要写一个瞎编的分数进排期。
+ * deprecated，两者是同一套结构化输出机制）。中转不支持结构化协议时，改用
+ * 普通文本接口返回 JSON，仍校验完整评估；失败时不写入部分结果。
  */
 export async function generateSummary(
   model: LanguageModel,
@@ -110,18 +112,15 @@ export async function generateSummary(
       output: Output.object({ schema: summarySchema, name: 'learning_assessment' }),
     })
 
-    const summary = cleanGenerated(output.summary, 60)
-    if (!summary) return null
-
-    return {
-      summary,
-      mastery: clampScore(output.mastery),
-      weakPoints: cleanWeakPoints(output.weakPoints),
-    }
+    return cleanAssessment(output)
   } catch {
-    const { text } = await generateText({ model, system: SUMMARY_TEXT_SYSTEM, prompt })
-    const summary = cleanGenerated(text, 60)
-    return summary ? { summary, mastery: null, weakPoints: [] } : null
+    const { text } = await generateText({ model, system: SUMMARY_JSON_SYSTEM, prompt })
+    const json = text.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1')
+    try {
+      return cleanAssessment(JSON.parse(json))
+    } catch (cause) {
+      throw new Error(i18n.t('review:learning.assessmentInvalid'), { cause })
+    }
   }
 }
 

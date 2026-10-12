@@ -293,9 +293,16 @@ describe('read-only tool registry', () => {
       },
     )
 
-    const res = await run(writeTools.update_assessment, { reason: '已理解公式' })
+    const assessment = { summary: '已理解公式', mastery: 75, weakPoints: ['适用条件'], reviewEnrollment: 'enabled' }
+    const res = await run(writeTools.update_assessment, { ...assessment, reason: '已理解公式' })
     expect(res).toContain('已更新评估')
     // 理由只进授权卡，不进业务回调
-    expect(handled).toEqual({ nodeId: 'n1' })
+    expect(handled).toEqual({ nodeId: 'n1', ...assessment })
+    expect(res).toContain('75')
+
+    handled = null
+    const invalid = await run(writeTools.update_assessment, { summary: '缺失掌握度', weakPoints: [] })
+    expect(invalid).toContain('评估数据无效')
+    expect(handled).toBeNull()
   })
 })

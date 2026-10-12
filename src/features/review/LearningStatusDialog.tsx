@@ -221,6 +221,7 @@ export function LearningStatusDialog({
         </div>
 
         {/* 底部操作区 */}
+        <p className="mt-4 text-2xs text-faint">{t('learning.assessmentPlanHint')}</p>
         <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-line/60 pt-4">
           <Button
             variant="secondary"

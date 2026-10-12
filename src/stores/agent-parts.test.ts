@@ -24,6 +24,7 @@ const llm = vi.hoisted(() => ({
   },
   tools: [] as Array<{ callId: string; name: string; input: unknown; output?: string; error?: string }>,
   halfRecord: null as null | { callId: string },
+  summaryCalls: 0,
 }))
 
 vi.mock('@/services/llm/chat', async (importOriginal) => {
@@ -67,11 +68,14 @@ vi.mock('@/services/llm/chat', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/services/llm/derive')>()
     return {
       ...actual,
-      generateSummary: async () => ({
-        summary: '已掌握牛顿第二定律公式',
-        mastery: 85,
-        weakPoints: [],
-      }),
+      generateSummary: async () => {
+        llm.summaryCalls += 1
+        return {
+          summary: '已掌握牛顿第二定律公式',
+          mastery: 85,
+          weakPoints: [],
+        }
+      },
     }
   })
 
@@ -107,6 +111,7 @@ beforeEach(async () => {
   llm.calls = []
   llm.tools = []
   llm.halfRecord = null
+  llm.summaryCalls = 0
   llm.plan = { text: '答案是：动量守恒。', toolCalls: 0, hitStepLimit: false }
   useSettingsStore.setState({ settings: createDefaultSettings(), loaded: true })
   useWorkspaceStore.getState().reset()
@@ -343,7 +348,7 @@ describe('写工具（无条件注册 + 逐次授权 + 撤销）', () => {
 
     const tools = toolsOfLastCall() as { update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> } }
     const running = tools.update_assessment.execute(
-      { nodeId: root!.id, reason: '已掌握牛顿第二定律公式' },
+      { nodeId: root!.id, summary: '已掌握公式', mastery: 85, weakPoints: [], reason: '已掌握牛顿第二定律公式' },
       {},
     )
     await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
@@ -355,6 +360,10 @@ describe('写工具（无条件注册 + 逐次授权 + 撤销）', () => {
     expect(prompt.rows.find((row) => row.value.key === 'approval.value.node')?.value.params)
       .toEqual({ title: '牛顿第二定律' })
     expect(prompt.reason).toBe('已掌握牛顿第二定律公式')
+    expect(prompt.rows.find((row) => row.label.key === 'approval.field.mastery')?.value.params)
+      .toEqual({ text: '85/100' })
+    expect(prompt.rows.find((row) => row.label.key === 'approval.field.reviewEnrollment')?.value.key)
+      .toBe('approval.value.keepReview')
 
     useToolApprovalStore.getState().respond('deny')
     await running
@@ -408,8 +417,11 @@ describe('写工具（无条件注册 + 逐次授权 + 撤销）', () => {
     })
 
     const tools = toolsOfLastCall() as { update_assessment: { execute: (i: unknown, o: unknown) => Promise<string> } }
+    // agent 直接写入不依赖评估模型，也不应额外产生模型调用。
+    useSettingsStore.setState((draft) => { draft.settings.summaryModelRef = null })
+    const callsBefore = llm.calls.length
     const running = tools.update_assessment.execute(
-      { nodeId: root!.id, reason: '学习者已掌握牛顿第二定律公式' },
+      { nodeId: root!.id, summary: '已掌握牛顿第二定律公式', mastery: 85, weakPoints: ['单位换算'], reviewEnrollment: 'enabled', reason: '学习者已掌握牛顿第二定律公式' },
       {},
     )
     await vi.waitFor(() => expect(useToolApprovalStore.getState().pending).not.toBeNull())
@@ -418,11 +430,24 @@ describe('写工具（无条件注册 + 逐次授权 + 撤销）', () => {
 
     expect(useToolApprovalStore.getState().pending).toBeNull()
     expect(useWorkspaceStore.getState().nodes.find((item) => item.id === root!.id)?.mastery)
-      .toMatchObject({ score: 85 })
+      .toMatchObject({ score: 85, weakPoints: ['单位换算'] })
+    const stored = await getRepositories().nodes.get(root!.id)
+    expect(stored?.summary).toBe('已掌握牛顿第二定律公式')
+    expect(stored?.reviewEnrollment).toBe('enabled')
+    expect(stored?.review?.card).toBeDefined()
+    expect(stored?.assessmentMeta?.source).toBe('ai')
+    expect(llm.summaryCalls).toBe(0)
+    expect(llm.calls).toHaveLength(callsBefore)
 
     expect(useWorkspaceStore.getState().agentChange?.label).toContain('牛顿第二定律')
     await useWorkspaceStore.getState().undoAgentChange()
     expect(useWorkspaceStore.getState().agentChange).toBeNull()
+    const undone = await getRepositories().nodes.get(root!.id)
+    expect(undone?.summary).toBeUndefined()
+    expect(undone?.mastery).toBeUndefined()
+    expect(undone?.assessmentMeta).toBeUndefined()
+    expect(undone?.review).toBeUndefined()
+    expect(undone?.reviewEnrollment).toBeUndefined()
   })
 
   it('cancels a pending approval when the user stops the round', async () => {

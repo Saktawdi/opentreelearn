@@ -294,7 +294,29 @@ export const TOOL_GUARDS: Record<string, ToolGuard> = {
     kind: 'write',
     describe: (input, ctx) => ({
       title: { key: 'approval.askTitle.update_assessment' },
-      rows: [toolRow('update_assessment'), nodeRow(input, ctx)],
+      rows: [
+        toolRow('update_assessment'), nodeRow(input, ctx),
+        {
+          label: { key: 'approval.field.summary' },
+          value: { key: 'approval.value.text', params: { text: argString(input, 'summary') ?? '' } },
+        },
+        {
+          label: { key: 'approval.field.mastery' },
+          value: { key: 'approval.value.text', params: { text: typeof input.mastery === 'number' ? `${input.mastery}/100` : '' } },
+        },
+        {
+          label: { key: 'approval.field.weakPoints' },
+          value: argStrings(input, 'weakPoints').length > 0
+            ? { key: 'approval.value.text', params: { text: argStrings(input, 'weakPoints').join('、') } }
+            : { key: 'approval.value.noWeakPoints' },
+        },
+        {
+          label: { key: 'approval.field.reviewEnrollment' },
+          value: { key: input.reviewEnrollment === 'enabled' ? 'approval.value.enrollReview'
+            : input.reviewEnrollment === 'disabled' ? 'approval.value.unenrollReview'
+              : 'approval.value.keepReview' },
+        },
+      ],
       ...(argString(input, 'reason') ? { reason: argString(input, 'reason') } : {}),
     }),
   },

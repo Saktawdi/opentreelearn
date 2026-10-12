@@ -188,7 +188,11 @@
       "newTitle": "改为",
       "kind": "类型",
       "labels": "标签",
-      "scope": "范围"
+      "scope": "范围",
+      "summary": "学习摘要",
+      "mastery": "掌握度",
+      "weakPoints": "薄弱点",
+      "reviewEnrollment": "复习计划"
     },
     "scope": {
       "outsideProject": "当前项目之外"
@@ -198,7 +202,12 @@
       "unknownNode": "未知节点（{{id}}）",
       "nodeTitle": "「{{title}}」",
       "labels": "{{labels}}",
-      "rawName": "{{name}}"
+      "rawName": "{{name}}",
+      "text": "{{text}}",
+      "noWeakPoints": "暂无明显薄弱点",
+      "enrollReview": "加入计划（保留已有安排）",
+      "unenrollReview": "移出计划（保留复习历史）",
+      "keepReview": "保留当前计划状态"
     },
     "nodeKind": {
       "child": "子节点",

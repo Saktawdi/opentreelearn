@@ -37,6 +37,8 @@ import { sortNotes, normalizeNoteBody, normalizeNoteLabels, formatNoteLabels } f
 import { createNodeFromAction, nodeActionRequiresMessage, type NodeActionKind } from '@/domain/node-ops/actions'
 import { buildTreeIndex, descendantsOf } from '@/domain/tree/tree'
 import { seedReviewCard } from '@/domain/review/schedule'
+import { enrollmentOf } from '@/domain/review/enrollment'
+import { assessmentUpdateSchema, type AssessmentUpdate } from '@/domain/assessment'
 import { threadPathFingerprint } from '@/domain/thread/resolve'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages } from '@/services/llm/chat'
@@ -54,7 +56,6 @@ import {
   buildTranscript,
   generateSummary,
   generateTitle,
-  type SummaryAssessment,
 } from '@/services/llm/derive'
 import { describeLlmError, formatErrorMessage } from '@/services/llm/errors'
 import { requireModel, resolveModel } from '@/services/llm/providers'
@@ -217,8 +218,8 @@ interface WorkspaceState {
   /** 在历史版本间切换：只改 selection，一次节点更新 */
   setSlotVersion: (nodeId: Id, slotId: Id, version: number) => Promise<void>
   refreshSummary: (nodeId: Id) => Promise<void>
-  /** 写入一次学习评估：只写摘要与掌握度；**绝不自动种卡、不自动加入复习计划** */
-  setNodeAssessment: (nodeId: Id, assessment: SummaryAssessment) => Promise<void>
+  /** 原子写入完整评估；可显式更新复习计划，保留已有卡片和复习历史。 */
+  setNodeAssessment: (nodeId: Id, assessment: AssessmentUpdate) => Promise<void>
   /** 用户明确点击「加入复习计划」：以当前时间初始化卡片并打上 enabled 开关 */
   enrollInReview: (nodeId: Id) => Promise<void>
   /** 移出复习计划：停止到期提醒，保留历史卡片与掌握度 */
@@ -937,6 +938,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
 
     refreshSummary: async (nodeId) => {
+      if (get().summarizingNodeIds.includes(nodeId)) return
       const node = get().nodes.find((item) => item.id === nodeId)
       if (!node) return
       // 复习中心是元数据节点，没有可评估的学习内容，不给它算掌握度
@@ -944,22 +946,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       // 摘要只总结当前显示的这一版（切版本后旧摘要描述的是另一版，等用户手动刷新）
       const messages = resolveThread(node, get().messagesByNode[nodeId] ?? []).path
-      if (messages.length < 2) return
-
-      const settings = useSettingsStore.getState().settings
-      const model = await resolveModel(settings, settings.summaryModelRef)
-      if (!model) return
+      if (messages.length < 2) throw new Error(i18n.t('review:learning.assessmentNeedsConversation'))
 
       set((state) => {
         if (!state.summarizingNodeIds.includes(nodeId)) state.summarizingNodeIds.push(nodeId)
       })
       try {
+        const settings = useSettingsStore.getState().settings
+        const model = await requireModel(settings, settings.summaryModelRef, i18n.t('common:llm.summaryModelLabel'))
         const assessment = await generateSummary(model, {
           title: node.title,
           transcript: buildTranscript(messages),
-        }).catch(() => null)
+        })
 
-        if (assessment) await get().setNodeAssessment(nodeId, assessment)
+        if (!assessment) throw new Error(i18n.t('review:learning.assessmentInvalid'))
+        await get().setNodeAssessment(nodeId, { ...assessment, reviewEnrollment: 'enabled' })
       } finally {
         set((state) => {
           state.summarizingNodeIds = state.summarizingNodeIds.filter((id) => id !== nodeId)
@@ -967,33 +968,33 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       }
     },
 
-    setNodeAssessment: async (nodeId, assessment) => {
+    setNodeAssessment: async (nodeId, input) => {
       const node = get().nodes.find((item) => item.id === nodeId)
-      if (!node || node.kind === 'review') return
+      if (!node || node.kind === 'review' || node.status !== 'active') return
+      const assessment = assessmentUpdateSchema.parse(input)
 
       const now = Date.now()
-      const patch: Partial<Node> = { summary: assessment.summary, updatedAt: now }
-
-      // 结构化输出失败的 provider 只会给摘要：保留旧掌握度，只刷新摘要
-      if (assessment.mastery !== null) {
-        const mastery: MasterySnapshot = {
-          score: assessment.mastery,
-          ...(assessment.weakPoints.length > 0 ? { weakPoints: assessment.weakPoints } : {}),
-          updatedAt: now,
-        }
-        patch.mastery = mastery
-        // 记录本次评估依据的学习时间与对话路径指纹，来源标为 'ai'
-        const visible = resolveThread(node, get().messagesByNode[nodeId] ?? []).path
-        const basedOnPath = threadPathFingerprint(visible)
-        patch.assessmentMeta = {
+      const mastery: MasterySnapshot = {
+        score: assessment.mastery,
+        ...(assessment.weakPoints.length > 0 ? { weakPoints: assessment.weakPoints } : {}),
+        updatedAt: now,
+      }
+      const visible = resolveThread(node, get().messagesByNode[nodeId] ?? []).path
+      const reviewEnrollment = assessment.reviewEnrollment ?? enrollmentOf(node)
+      const patch: Partial<Node> = {
+        summary: assessment.summary,
+        mastery,
+        assessmentMeta: {
           assessedAt: now,
           basedOnStudiedAt: node.lastStudiedAt,
-          basedOnPath,
+          basedOnPath: threadPathFingerprint(visible),
           source: 'ai',
-        }
-        // D10：生成摘要与加入复习计划彻底分开！
-        // 新生成评估的主题默认保持 disabled，已有计划的节点保留其原排期。
-        // 绝不偷偷调用 seedReviewCard() 把未确认的主题加入复习池。
+        },
+        reviewEnrollment,
+        updatedAt: now,
+      }
+      if (reviewEnrollment === 'enabled') {
+        patch.review = node.review ?? seedReviewCard(mastery.score, now)
       }
 
       await getRepositories().nodes.update(nodeId, patch)
@@ -1294,30 +1295,17 @@ function createWriteHandlers(
       return { label: i18n.t('common:agent.taggedDone', { labels: label }), noteId: note.id }
     },
 
-    updateAssessment: async ({ nodeId: target }) => {
+    updateAssessment: async ({ nodeId: target, ...assessment }) => {
       const state = store.getState()
       const node = state.nodes.find((item) => item.id === target)
-      if (!node || node.kind === 'review') return null
+      if (!node || node.kind === 'review' || node.status !== 'active') return null
 
       // 执行评估前备份旧状态，用于撤销
       const previousSummary = node.summary
       const previousMastery = node.mastery
       const previousMeta = node.assessmentMeta
-
-      // 评估只总结当前显示的这一版
-      const messages = resolveThread(node, state.messagesByNode[target] ?? []).path
-      if (messages.length < 2) return null
-
-      const settings = useSettingsStore.getState().settings
-      const model = await resolveModel(settings, settings.summaryModelRef)
-      if (!model) return null
-
-      const assessment = await generateSummary(model, {
-        title: node.title,
-        transcript: buildTranscript(messages),
-      }).catch(() => null)
-
-      if (!assessment) return null
+      const previousReview = node.review
+      const previousEnrollment = node.reviewEnrollment
 
       await store.getState().setNodeAssessment(target, assessment)
 
@@ -1329,6 +1317,8 @@ function createWriteHandlers(
             summary: previousSummary,
             mastery: previousMastery,
             assessmentMeta: previousMeta,
+            review: previousReview,
+            reviewEnrollment: previousEnrollment,
             updatedAt: Date.now(),
           }
           await getRepositories().nodes.update(target, patch)

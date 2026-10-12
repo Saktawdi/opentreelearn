@@ -103,6 +103,7 @@
     "unknownProviderKind": "Unknown provider type: {{kind}}",
     "modelNotConfigured": "No {{label}} is configured yet — add a provider and model in Settings",
     "chatModelLabel": "chat model",
+    "summaryModelLabel": "learning assessment model",
     "upstreamHttp": "The upstream returned HTTP {{status}}"
   },
   "agent": {

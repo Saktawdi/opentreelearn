@@ -3,6 +3,7 @@ import { // Brain 与 RefreshCw 是本节点掌握度标记用到的两个状态
 import { useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,6 +32,7 @@ import { resolveThread, staleSelectionSlots } from '@/domain/thread/resolve'
 import { ancestorsOf, buildTreeIndex } from '@/domain/tree/tree'
 import { cn } from '@/lib/utils'
 import { hasModel } from '@/services/llm/catalog'
+import { describeLlmError, formatErrorMessage } from '@/services/llm/errors'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useToolApprovalStore } from '@/stores/tool-approval-store'
 import { useWorkspaceStore } from '@/stores/workspace-store'
@@ -56,7 +58,7 @@ export function FocusChatView({
   onOpenTreeDrawer?: () => void
 }) {
   // 词表键（hint.* / band.*）落在 common：数组形式让 t(`common:${...}`) 能过类型校验
-  const { t } = useTranslation(['chat', 'common'])
+  const { t } = useTranslation(['chat', 'common', 'review'])
   const node = useWorkspaceStore((state) => state.nodes.find((item) => item.id === nodeId))
   const nodes = useWorkspaceStore((state) => state.nodes)
   const messagesByNode = useWorkspaceStore((state) => state.messagesByNode)
@@ -91,6 +93,14 @@ export function FocusChatView({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const composerRef = useRef<ComposerHandle>(null)
+
+  const generateAssessment = async () => {
+    try {
+      await refreshSummary(nodeId)
+    } catch (error) {
+      toast.error(t('review:learning.assessmentFailed', { error: formatErrorMessage(describeLlmError(error)) }))
+    }
+  }
 
   // 祖先路径链路（面包屑）
   const breadcrumbs = useMemo(() => {
@@ -240,7 +250,7 @@ export function FocusChatView({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled={!hasSummaryModel || isSummarizing}
-                onSelect={() => void refreshSummary(node.id)}
+                onSelect={() => void generateAssessment()}
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', isSummarizing && 'animate-spin')} />
                 {isSummarizing ? t('focus.summarizing') : t('focus.summarize')}
@@ -384,7 +394,7 @@ export function FocusChatView({
         node={node}
         hasSummaryModel={hasSummaryModel}
         isSummarizing={isSummarizing}
-        onGenerateAssessment={() => refreshSummary(node.id)}
+        onGenerateAssessment={generateAssessment}
         onEnrollInReview={() => enrollInReview(node.id)}
         onUnenrollFromReview={() => unenrollFromReview(node.id)}
         onStartSingleReview={() => {

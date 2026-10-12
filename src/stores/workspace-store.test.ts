@@ -237,11 +237,11 @@ describe('summary generation', () => {
     const node = store().nodes.find((item) => item.id === root!.id)!
     expect(node.mastery?.score).toBe(90)
     expect(node.mastery?.weakPoints).toEqual(['细节'])
-    // D10 规范：生成摘要与加入计划彻底解耦，生成评估不自动种卡
-    expect(node.review).toBeUndefined()
+    expect(node.reviewEnrollment).toBe('enabled')
+    expect(node.review?.card).toBeDefined()
     expect(node.assessmentMeta?.source).toBe('ai')
 
-    // 显式加入复习计划后才种卡
+    // 再次加入计划应保留已经初始化的卡片
     await store().enrollInReview(root!.id)
     const afterEnroll = store().nodes.find((item) => item.id === root!.id)!
     expect(afterEnroll.review?.card.state).toBe('review')
@@ -276,22 +276,26 @@ describe('summary generation', () => {
     expect(node.review?.card.due).toBe(due)
   })
 
-  it('keeps the old mastery when the provider cannot produce structured output', async () => {
+  it('rejects a summary-only result without overwriting any assessment or review fields', async () => {
     await seedProject()
     await seedSummaryModel()
     const root = await useWorkspaceStore.getState().startRootNode('问题')
     await seedConversation(root!.id)
     const store = () => useWorkspaceStore.getState()
+    await store().setNodeAssessment(root!.id, {
+      summary: '旧评估', mastery: 72, weakPoints: ['边界条件'], reviewEnrollment: 'enabled',
+    })
+    const before = store().nodes.find((item) => item.id === root!.id)!
 
     const pending = store().refreshSummary(root!.id)
+    const rejected = expect(pending).rejects.toThrow()
     await waitFor(() => llm.resolveSummary !== null)
     llm.resolveSummary?.({ summary: '只有摘要', mastery: null, weakPoints: [] })
-    await pending
+    await rejected
 
     const node = store().nodes.find((item) => item.id === root!.id)!
-    expect(node.summary).toBe('只有摘要')
-    expect(node.mastery).toBeUndefined()
-    expect(node.review).toBeUndefined()
+    expect(node).toEqual(before)
+    expect(store().summarizingNodeIds).toEqual([])
   })
 
   it('clears the flag when the model call fails', async () => {
@@ -302,9 +306,10 @@ describe('summary generation', () => {
     const store = () => useWorkspaceStore.getState()
 
     const pending = store().refreshSummary(root!.id)
+    const rejected = expect(pending).rejects.toThrow(i18n.t('review:learning.assessmentInvalid'))
     await waitFor(() => llm.resolveSummary !== null)
     llm.resolveSummary?.(null)
-    await pending
+    await rejected
 
     expect(store().summarizingNodeIds).not.toContain(root!.id)
     expect(store().nodes.find((node) => node.id === root!.id)?.summary).toBeUndefined()
@@ -590,7 +595,7 @@ describe('review scheduling', () => {
     expect((await getRepositories().nodes.get(root!.id))?.lastStudiedAt).toBe(message.createdAt)
   })
 
-  it('separates assessment from review enrollment: does not seed review card automatically', async () => {
+  it('preserves enrollment when omitted and supports direct assessment with explicit enrollment', async () => {
     await seedProject()
     const root = await useWorkspaceStore.getState().startRootNode('问题')
     await useWorkspaceStore.getState().setNodeAssessment(root!.id, {
@@ -603,16 +608,20 @@ describe('review scheduling', () => {
     expect(node.review).toBeUndefined()
     expect(node.assessmentMeta?.source).toBe('ai')
 
-    // 显式加入复习计划后才种卡
-    await useWorkspaceStore.getState().enrollInReview(root!.id)
+    await useWorkspaceStore.getState().setNodeAssessment(root!.id, {
+      summary: '核心概念已掌握', mastery: 80, weakPoints: [], reviewEnrollment: 'enabled',
+    })
     const enrolled = useWorkspaceStore.getState().nodes.find((n) => n.id === root!.id)!
     expect(enrolled.reviewEnrollment).toBe('enabled')
     expect(enrolled.review?.card).toBeDefined()
 
-    // 显式移出复习计划
-    await useWorkspaceStore.getState().unenrollFromReview(root!.id)
+    await useWorkspaceStore.getState().setNodeAssessment(root!.id, {
+      summary: '核心概念已掌握', mastery: 80, weakPoints: [], reviewEnrollment: 'disabled',
+    })
     const unenrolled = useWorkspaceStore.getState().nodes.find((n) => n.id === root!.id)!
     expect(unenrolled.reviewEnrollment).toBe('disabled')
+    expect(unenrolled.review).toEqual(enrolled.review)
+    expect((await getRepositories().nodes.get(root!.id))?.reviewEnrollment).toBe('disabled')
   })
 })
 

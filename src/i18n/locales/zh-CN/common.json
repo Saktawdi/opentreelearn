@@ -99,6 +99,7 @@
     "unknownProviderKind": "未知的提供商类型：{{kind}}",
     "modelNotConfigured": "尚未配置{{label}}，请前往「配置」页添加提供商与模型",
     "chatModelLabel": "对话模型",
+    "summaryModelLabel": "学习评估模型",
     "upstreamHttp": "上游返回 HTTP {{status}}"
   },
   "agent": {

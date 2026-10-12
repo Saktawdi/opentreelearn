@@ -241,6 +241,10 @@
     "assessing": "Assessing…",
     "updateAssessment": "Update assessment",
     "generateAssessment": "Generate assessment",
+    "assessmentFailed": "Couldn't update the learning assessment: {{error}}",
+    "assessmentNeedsConversation": "Complete at least one learning exchange before generating an assessment.",
+    "assessmentInvalid": "The model didn't return a complete assessment. Try again or choose another assessment model.",
+    "assessmentPlanHint": "Updating the assessment also adds this topic to the review plan and keeps its existing schedule.",
     "removeFromPlan": "Remove from plan",
     "addToPlan": "Add to review plan",
     "reviewTopic": "Review this topic"

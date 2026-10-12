@@ -189,7 +189,11 @@
       "newTitle": "New title",
       "kind": "Kind",
       "labels": "Labels",
-      "scope": "Scope"
+      "scope": "Scope",
+      "summary": "Study summary",
+      "mastery": "Mastery",
+      "weakPoints": "Weak points",
+      "reviewEnrollment": "Review plan"
     },
     "scope": {
       "outsideProject": "Outside the current project"
@@ -199,7 +203,12 @@
       "unknownNode": "Unknown node ({{id}})",
       "nodeTitle": "“{{title}}”",
       "labels": "{{labels}}",
-      "rawName": "{{name}}"
+      "rawName": "{{name}}",
+      "text": "{{text}}",
+      "noWeakPoints": "No clear weak points",
+      "enrollReview": "Join the plan (keep the existing schedule)",
+      "unenrollReview": "Leave the plan (keep review history)",
+      "keepReview": "Keep the current plan status"
     },
     "nodeKind": {
       "child": "Child node",

@@ -17,6 +17,7 @@ import type { ReviewSessionRecord } from '@/domain/review/session'
 import { messageSource } from '@/domain/messages'
 import { NOTE_LABEL_MAX } from '@/domain/notes'
 import type { Id } from '@/domain/models'
+import { assessmentUpdateSchema, type AssessmentUpdate } from '@/domain/assessment'
 import { withToolApproval } from './gate'
 import { asData, failure, fitsData } from './result'
 
@@ -368,6 +369,7 @@ export const WRITE_TOOLS_SYSTEM = [
   '- 用户明确要求改动，或者某个学习主题有了明显的进展/掌握程度变化（如完成了核心概念推导、理解了关键例题）时，才主动调用相应工具。',
   '- **学习状态更新放在本轮收尾的最后一个工具步骤**：先完成讲解、检索、练习点评和其他必要操作，再判断是否需要调用 update_assessment；不要在学习对话一开始就更新，也不要与尚未完成的学习任务并行调用。这里的「最后」指任务完成后的收尾，不是等到步数上限。',
   '- 更新依据应来自学习者已经表现出的理解、作答或暴露的薄弱点；你刚讲完不代表用户已经掌握。没有新的评估依据就不调用。同一节点本轮通常只更新一次，调用后根据结果简短说明，再结束本轮；若本轮仅要求更新学习状态，可以直接调用。',
+  '- update_assessment 直接保存你提交的 summary、mastery、weakPoints，不会再次调用评估模型。必须自行根据对话证据填写完整数据；reviewEnrollment 仅在用户明确要求加入或移出复习计划时传入，省略会保留计划状态。',
   '- 一次别建太多：拆解最多 3~5 个节点，且标题要短（不超过 16 字）。',
   '- 改完用一句话说明你动了什么（建了哪些节点、改了什么标题、更新了评估），用户才知道去哪儿看。',
   '- 你没有删除、归档的能力：这类要求如实说明做不到，并建议用户手动处理。',
@@ -400,9 +402,9 @@ export interface WriteToolHandlers {
   }) => Promise<AgentWriteOutcome | null>
   /**
    * 更新学习评估。入参**不含 reason** —— 理由只给授权卡看（闸门从工具入参里取），
-   * 业务这一侧不需要它。评估文案由 domain 层从对话本身生成。
+   * 业务这一侧不需要它。评估数据由当前 agent 直接提供，不再发起模型请求。
    */
-  updateAssessment: (input: { nodeId: string }) => Promise<AgentWriteOutcome | null>
+  updateAssessment: (input: AssessmentUpdate & { nodeId: string }) => Promise<AgentWriteOutcome | null>
 }
 
 /** 可建的节点类型：与三种创建动作一一对应（见设计文档 §3）。 */
@@ -499,21 +501,22 @@ export function buildWriteTools(runtime: ToolRuntime, handlers: WriteToolHandler
 
     update_assessment: tool({
       description:
-        '在本轮收尾的最后一个工具步骤更新学习状态（评估与掌握度）。先完成讲解、检索、练习点评及其他必要操作，再根据学习者实际表现调用；不要在学习对话开头或与未完成任务并行调用。仅在出现新的理解、作答或薄弱点依据时更新，不能把你刚讲完当成用户已经掌握；同一节点本轮通常只更新一次。省略 nodeId 时更新当前节点。调用后根据结果简短说明并结束本轮；若本轮仅要求更新状态，可以直接调用。',
-      inputSchema: z.object({
+        '直接保存你提供的学习评估（summary 摘要、mastery 掌握分数、weakPoints 薄弱点），不会再次调用模型。reviewEnrollment 可显式加入或移出复习计划，省略则保留计划状态。在本轮收尾的最后一个工具步骤调用：先完成讲解、检索、练习点评及其他必要操作，再根据学习者实际表现评估；不能把你刚讲完当成用户已掌握。同一节点本轮通常只更新一次。省略 nodeId 时更新当前节点。调用后根据结果简短说明并结束本轮。',
+      inputSchema: assessmentUpdateSchema.extend({
         nodeId: z.string().optional().describe('节点 id；省略则更新当前节点'),
         reason: z
           .string()
           .optional()
           .describe('基于学习者本轮实际表现的更新理由，例如「例题作答正确，但仍混淆动量守恒的适用条件」；不要只写「已完成讲解」'),
       }),
-      execute: async ({ nodeId }) => {
+      execute: async ({ nodeId, reason: _reason, ...input }) => {
         const target = nodeId ?? runtime.currentNodeId
         if (!target) return failure('没有指定节点，且当前不在任何节点里')
-        const outcome = await handlers.updateAssessment({ nodeId: target })
-        // 「被拒绝」在闸门那一层就回执了；走到这里的 null 只剩「节点没了 / 没配评估模型」
-        if (!outcome) return failure('未能更新学习评估（节点可能已不存在，或当前未配置评估模型）')
-        return asData({ ok: true, ...outcome })
+        const assessment = assessmentUpdateSchema.safeParse(input)
+        if (!assessment.success) return failure('评估数据无效：需要摘要、0-100 的整数分数和最多 3 条薄弱点')
+        const outcome = await handlers.updateAssessment({ nodeId: target, ...assessment.data })
+        if (!outcome) return failure('未能更新学习评估（节点可能已不存在、已归档或不是学习主题）')
+        return asData({ ok: true, ...outcome, assessment: assessment.data })
       },
     }),
   }

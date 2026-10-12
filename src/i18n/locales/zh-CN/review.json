@@ -234,6 +234,10 @@
     "assessing": "正在评估…",
     "updateAssessment": "更新学习评估",
     "generateAssessment": "生成学习评估",
+    "assessmentFailed": "学习评估更新失败：{{error}}",
+    "assessmentNeedsConversation": "请先完成至少一轮学习对话，再生成评估。",
+    "assessmentInvalid": "模型未返回完整评估，请重试或更换评估模型。",
+    "assessmentPlanHint": "更新评估会同时加入复习计划，已有复习安排会保留。",
     "removeFromPlan": "移出计划",
     "addToPlan": "加入复习计划",
     "reviewTopic": "复习这个主题"
