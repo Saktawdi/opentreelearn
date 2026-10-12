@@ -3,6 +3,7 @@
     "openCanvas": "Expand canvas",
     "expandMap": "Expand map",
     "recenter": "Recenter",
+    "locateSelected": "Locate selected node",
     "relayout": "Relayout",
     "center": "Center",
     "resetView": "Reset view",
@@ -65,7 +66,14 @@
     "diverge": "Diverge from latest message",
     "archiveSubtree": "Archive (with subtree)",
     "deleteSubtree": "Delete (with subtree)",
-    "newRootHere": "New root node here"
+    "newRootHere": "New root node here",
+    "markColor": "Mark color",
+    "clearMarkColor": "Clear mark",
+    "markColors": {
+      "red": "Red",
+      "blue": "Blue",
+      "green": "Green"
+    }
   },
   "node": {
     "heatBadgeTooltip": "Retention around {{percent}}% — time to review",

@@ -68,6 +68,8 @@ export interface RawTreeExportCard {
   archived?: true
   /** 复习中心标记；普通学习节点不写这个字段 */
   kind?: 'review'
+  /** 用户自定义节点颜色标记 */
+  markColor?: 'red' | 'blue' | 'green'
   /** 掌握度：分数、薄弱点、快照时间与最近评分时间（排期不导出，见文件头注释） */
   mastery?: {
     score: number
@@ -203,6 +205,8 @@ export function buildTreeExportData(
     if (node.kind === 'review') {
       card.kind = 'review'
     }
+
+    if (node.markColor) card.markColor = node.markColor
 
     if (node.mastery) {
       card.mastery = {

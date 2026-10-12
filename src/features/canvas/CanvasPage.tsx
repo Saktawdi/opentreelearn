@@ -8,7 +8,17 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Square, Brain, Flame, LayoutGrid, Loader2, Maximize2, Network, X } from 'lucide-react'
+import {
+  Square,
+  Brain,
+  Flame,
+  LayoutGrid,
+  Loader2,
+  LocateFixed,
+  Maximize2,
+  Network,
+  X,
+} from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -109,6 +119,7 @@ function CanvasWorkspace() {
   const error = useWorkspaceStore((state) => state.error)
   const selectNode = useWorkspaceStore((state) => state.selectNode)
   const setNodePosition = useWorkspaceStore((state) => state.setNodePosition)
+  const setNodeMarkColor = useWorkspaceStore((state) => state.setNodeMarkColor)
   const relayout = useWorkspaceStore((state) => state.relayout)
   const applyAction = useWorkspaceStore((state) => state.applyAction)
   const startRootNode = useWorkspaceStore((state) => state.startRootNode)
@@ -158,6 +169,20 @@ function CanvasWorkspace() {
   // 当前生效的画布实例：详情画布展开时用它自己的，否则用微缩导航地图的
   const activeApi = () =>
     isCanvasOpen && detailApiRef.current ? detailApiRef.current : miniApi
+
+  /** 把当前选中的节点移动到当前画布视口中心；没有选中节点或节点不可见时不改变视口。 */
+  const locateSelectedNode = () => {
+    if (!selectedNodeId) return
+    const target = activeApi().getNode(selectedNodeId)
+    if (!target) return
+    const width = target.measured?.width ?? target.width ?? (isCanvasOpen ? 268 : 32)
+    const height = target.measured?.height ?? target.height ?? (isCanvasOpen ? 112 : 32)
+    void activeApi().setCenter(
+      target.position.x + width / 2,
+      target.position.y + height / 2,
+      { zoom: isCanvasOpen ? 1 : 1.4, duration: 400 },
+    )
+  }
 
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuTarget | null>(null)
 
@@ -501,6 +526,7 @@ function CanvasWorkspace() {
           dueCount={dueSummary.due}
           onOpenReview={openReview}
           onRecenter={() => void fitView({ padding: 0.28, duration: 0.4, maxZoom: 1.4 })}
+          onLocateSelected={selectedNodeId ? locateSelectedNode : undefined}
         >
           <ReactFlow
             nodes={flowNodes}
@@ -628,6 +654,17 @@ function CanvasWorkspace() {
                   <LayoutGrid className="h-3 w-3" />
                 </button>
               </Tooltip>
+              <Tooltip label={t('actions.locateSelected')}>
+                <button
+                  type="button"
+                  aria-label={t('actions.locateSelected')}
+                  disabled={!selectedNodeId}
+                  onClick={locateSelectedNode}
+                  className="ml-0.5 rounded-sm p-0.5 text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <LocateFixed className="h-3 w-3" />
+                </button>
+              </Tooltip>
               <Tooltip label={t('actions.openCanvas')}>
                 <button
                   type="button"
@@ -661,6 +698,7 @@ function CanvasWorkspace() {
             }}
             onArchiveNode={(nodeId) => void archiveWithUndo(nodeId)}
             onDeleteNode={(nodeId) => setNodeToDelete(nodeId)}
+            onNodeMarkColor={(nodeId, color) => void setNodeMarkColor(nodeId, color)}
             onCreateRootAt={(flowPosition) =>
               setCreateRootDialog({ open: true, flowPosition, question: '' })
             }
@@ -893,6 +931,16 @@ function CanvasWorkspace() {
                         {dueSummary.due}
                       </span>
                     ) : null}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!selectedNodeId}
+                    onClick={locateSelectedNode}
+                    className="gap-1.5 bg-surface/90 backdrop-blur"
+                  >
+                    <LocateFixed className="h-3.5 w-3.5 text-muted" />
+                    {t('actions.locateSelected')}
                   </Button>
                   <Button
                     variant="secondary"

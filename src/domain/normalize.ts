@@ -366,6 +366,9 @@ export function normalizeNode(value: unknown): Node | null {
     summary: readString(value.summary),
     contextSeed: Array.isArray(value.contextSeed) ? readStringArray(value.contextSeed) : undefined,
     position,
+    ...(value.markColor === 'red' || value.markColor === 'blue' || value.markColor === 'green'
+      ? { markColor: value.markColor }
+      : {}),
     status: value.status === 'archived' ? 'archived' : 'active',
     thread: isRecord(value.thread) ? (value.thread as unknown as Node['thread']) : undefined,
     kind: value.kind === 'review' ? 'review' : value.kind === 'topic' ? 'topic' : undefined,

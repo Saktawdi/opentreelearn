@@ -12,6 +12,7 @@ import { motion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NODE_ACTION_HINT_KEY, type NodeActionKind } from '@/domain/node-ops/actions'
+import type { NodeMarkColor } from '@/domain/models'
 import { EXIT_FAST } from '@/lib/motion'
 
 export type CanvasContextMenuTarget =
@@ -25,6 +26,7 @@ interface CanvasContextMenuProps {
   onNodeAction: (kind: NodeActionKind, nodeId: string) => void
   onArchiveNode: (nodeId: string) => void
   onDeleteNode: (nodeId: string) => void
+  onNodeMarkColor: (nodeId: string, color: NodeMarkColor | null) => void
   onCreateRootAt: (flowPosition: { x: number; y: number }) => void
   onRelayout: () => void
   onFitView: () => void
@@ -79,6 +81,7 @@ export function CanvasContextMenu({
   onNodeAction,
   onArchiveNode,
   onDeleteNode,
+  onNodeMarkColor,
   onCreateRootAt,
   onRelayout,
   onFitView,
@@ -112,7 +115,7 @@ export function CanvasContextMenu({
 
   const menuWidth = 188
   // 带第二行说明的菜单项更高：三个创建动作各多一行
-  const menuHeight = menu.type === 'node' ? 268 : 152
+  const menuHeight = menu.type === 'node' ? 324 : 152
   const padding = 12
 
   let x = menu.x
@@ -163,6 +166,42 @@ export function CanvasContextMenu({
               onClose()
             }}
           />
+          <div className="px-2 py-1.5">
+            <span className="mb-1.5 block text-2xs text-faint">{t('menu.markColor')}</span>
+            <div className="flex items-center gap-1.5">
+              {(['red', 'blue', 'green'] as const).map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={t(`menu.markColors.${color}`)}
+                  title={t(`menu.markColors.${color}`)}
+                  onClick={() => {
+                    onNodeMarkColor(menu.nodeId, color)
+                    onClose()
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-line transition-colors hover:bg-elevated"
+                >
+                  <span className={`h-3.5 w-3.5 rounded-full ${
+                    color === 'red' ? 'bg-danger' : color === 'blue' ? 'bg-info' : 'bg-success'
+                  }`} />
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-label={t('menu.clearMarkColor')}
+                title={t('menu.clearMarkColor')}
+                onClick={() => {
+                  onNodeMarkColor(menu.nodeId, null)
+                  onClose()
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-line text-muted transition-colors hover:bg-elevated hover:text-ink"
+              >
+                <span className="relative h-3.5 w-3.5 rounded-full border border-current">
+                  <span className="absolute left-1/2 top-1/2 h-px w-4 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-current" />
+                </span>
+              </button>
+            </div>
+          </div>
           <MenuSeparator />
           <MenuItem
             icon={<Archive className="h-3.5 w-3.5" />}

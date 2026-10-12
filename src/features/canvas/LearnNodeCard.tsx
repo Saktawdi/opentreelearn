@@ -107,6 +107,13 @@ export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
   const { t } = useTranslation(['canvas', 'common'])
   const hasExcerpt = Boolean(data.excerpt)
   const heat = data.reviewCard && data.showHeatMap ? HEAT_STYLES[cardHeat(data.reviewCard, data.now)].border : ''
+  const markStyles = data.markColor
+    ? {
+        red: 'bg-danger',
+        blue: 'bg-info',
+        green: 'bg-success',
+      }[data.markColor]
+    : ''
 
   return (
     <motion.div
@@ -114,12 +121,13 @@ export function LearnNodeCard({ data }: NodeProps<LearnFlowNode>) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.32, ease: EASE_OUT_EXPO }}
       className={cn(
-        'group relative flex h-full w-full cursor-pointer flex-col rounded-lg border bg-surface p-3 text-left transition-colors duration-150',
+        'group relative flex h-full w-full cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface p-3 text-left transition-colors duration-150',
         data.selected
           ? 'border-accent/60 bg-elevated'
           : cn('border-line hover:border-line-strong hover:bg-elevated', heat),
       )}
     >
+      {markStyles ? <span aria-hidden className={cn('pointer-events-none absolute inset-y-0 left-0 w-1', markStyles)} /> : null}
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
 

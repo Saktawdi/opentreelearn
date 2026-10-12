@@ -93,6 +93,7 @@ export async function importParsedProject(parsed: ParsedProject): Promise<Import
       position: card.position ?? null,
       status: card.status,
       ...(card.kind === 'review' ? { kind: 'review' as const } : {}),
+      ...(card.markColor ? { markColor: card.markColor } : {}),
       // 掌握度：分数与薄弱点是「参考数据」，快照时间用文件里的真实时间（v1 文件没有，
       // 退回按顺序合成的时间）。计划开关按文件显式值恢复；缺省（v1 / 外部文件）一律
       // 未加入 —— 「加入复习计划」是显式动作，导入不替用户打开，也不初始化卡片，

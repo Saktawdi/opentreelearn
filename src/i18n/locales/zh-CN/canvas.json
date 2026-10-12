@@ -3,6 +3,7 @@
     "openCanvas": "展开画布",
     "expandMap": "展开地图",
     "recenter": "重新居中",
+    "locateSelected": "定位当前节点",
     "relayout": "重新布局",
     "center": "居中",
     "resetView": "重置视图",
@@ -64,7 +65,14 @@
     "diverge": "从最新消息发散",
     "archiveSubtree": "归档（含子树）",
     "deleteSubtree": "删除（含子树）",
-    "newRootHere": "在此新建根节点"
+    "newRootHere": "在此新建根节点",
+    "markColor": "标记颜色",
+    "clearMarkColor": "取消标记",
+    "markColors": {
+      "red": "红色",
+      "blue": "蓝色",
+      "green": "绿色"
+    }
   },
   "node": {
     "heatBadgeTooltip": "保持率约 {{percent}}%，该复习了",

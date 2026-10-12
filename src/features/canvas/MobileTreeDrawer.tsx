@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { Brain, FolderKanban, LayoutGrid, Settings, UserRound, X } from 'lucide-react'
+import { Brain, FolderKanban, LayoutGrid, LocateFixed, Settings, UserRound, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -16,6 +16,7 @@ interface MobileTreeDrawerProps {
   dueCount?: number
   onOpenReview?: () => void
   onRecenter?: () => void
+  onLocateSelected?: () => void
   children: ReactNode
 }
 
@@ -35,6 +36,7 @@ export function MobileTreeDrawer({
   dueCount = 0,
   onOpenReview,
   onRecenter,
+  onLocateSelected,
   children,
 }: MobileTreeDrawerProps) {
   const { t } = useTranslation(['canvas', 'common'])
@@ -116,6 +118,21 @@ export function MobileTreeDrawer({
                   className="text-muted hover:text-ink"
                 >
                   <LayoutGrid className="h-4 w-4" />
+                </Button>
+              </Tooltip>
+            ) : null}
+
+            {onLocateSelected ? (
+              <Tooltip label={t('actions.locateSelected')}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onLocateSelected}
+                  disabled={!open}
+                  className="text-muted hover:text-ink disabled:opacity-35"
+                  aria-label={t('actions.locateSelected')}
+                >
+                  <LocateFixed className="h-4 w-4" />
                 </Button>
               </Tooltip>
             ) : null}

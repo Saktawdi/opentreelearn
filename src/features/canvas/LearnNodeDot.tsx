@@ -43,11 +43,17 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
                 : 'border-accent bg-accent/15'
               : isReviewCenter
                 ? 'border-info/50 bg-info/10 hover:border-info hover:bg-info/15'
-                : heat === 'hot'
-                  ? 'border-danger/60 bg-danger-soft'
-                  : heat === 'warm'
-                    ? 'border-accent/50 bg-accent-soft'
-                    : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
+                : data.markColor === 'red'
+                  ? 'border-danger/70 bg-danger-soft'
+                  : data.markColor === 'blue'
+                    ? 'border-info/70 bg-info/15'
+                    : data.markColor === 'green'
+                      ? 'border-success/70 bg-success/15'
+                      : heat === 'hot'
+                        ? 'border-danger/60 bg-danger-soft'
+                        : heat === 'warm'
+                          ? 'border-accent/50 bg-accent-soft'
+                          : 'border-line-strong bg-surface hover:border-accent/60 hover:bg-elevated',
           )}
         >
           {/* 内芯圆点：有没有子节点用「大小」编码——28px 尺寸下亮度差低于可感知阈值 */}
@@ -58,16 +64,28 @@ export const LearnNodeDot = memo(function LearnNodeDot({ data }: NodeProps<Learn
               isSelected
                 ? isReviewCenter
                   ? 'bg-info'
-                  : 'bg-accent'
+                  : data.markColor === 'red'
+                    ? 'bg-danger'
+                    : data.markColor === 'blue'
+                      ? 'bg-info'
+                      : data.markColor === 'green'
+                        ? 'bg-success'
+                        : 'bg-accent'
                 : isReviewCenter
                   ? 'bg-info'
-                  : heat === 'hot'
+                  : data.markColor === 'red'
                     ? 'bg-danger'
-                    : heat === 'warm'
-                      ? 'bg-accent'
-                      : data.childCount > 0
-                        ? 'bg-ink-soft group-hover:bg-accent'
-                        : 'bg-faint group-hover:bg-ink-soft',
+                    : data.markColor === 'blue'
+                      ? 'bg-info'
+                      : data.markColor === 'green'
+                        ? 'bg-success'
+                        : heat === 'hot'
+                          ? 'bg-danger'
+                          : heat === 'warm'
+                            ? 'bg-accent'
+                            : data.childCount > 0
+                              ? 'bg-ink-soft group-hover:bg-accent'
+                              : 'bg-faint group-hover:bg-ink-soft',
             )}
           />
         </div>

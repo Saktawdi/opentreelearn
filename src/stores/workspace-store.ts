@@ -15,6 +15,7 @@ import type {
   Message,
   MessagePart,
   Node,
+  NodeMarkColor,
   NodeStatus,
   Note,
   NoteLabel,
@@ -188,6 +189,7 @@ interface WorkspaceState {
   ) => Promise<Node | null>
   setNodeTitle: (id: Id, title: string) => Promise<void>
   setNodePosition: (id: Id, position: { x: number; y: number } | null) => Promise<void>
+  setNodeMarkColor: (id: Id, color: NodeMarkColor | null) => Promise<void>
   relayout: () => Promise<void>
   archiveNode: (id: Id) => Promise<ArchivedEntry[]>
   /** 撤销归档：按 archiveNode 返回的名单把状态原样恢复。 */
@@ -480,6 +482,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       set((state) => {
         const node = state.nodes.find((item) => item.id === id)
         if (node) node.position = position
+      })
+    },
+
+    setNodeMarkColor: async (id, color) => {
+      const patch: Partial<Node> = color ? { markColor: color } : { markColor: undefined }
+      await getRepositories().nodes.update(id, patch)
+      set((state) => {
+        const node = state.nodes.find((item) => item.id === id)
+        if (!node) return
+        if (color) node.markColor = color
+        else delete node.markColor
       })
     },
 

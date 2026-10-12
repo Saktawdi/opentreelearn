@@ -79,6 +79,9 @@ export interface NodeThread {
 
 export type NodeStatus = 'active' | 'archived'
 
+/** 用户给节点加的视觉标记；不参与学习状态或复习调度。 */
+export type NodeMarkColor = 'red' | 'blue' | 'green'
+
 /**
  * 节点类型。缺省（含老数据与导入的 `.tree`）= 普通学习节点。
  *
@@ -194,6 +197,8 @@ export interface Node {
   summary?: string
   contextSeed?: string[]
   position: { x: number; y: number } | null
+  /** 用户自定义标记颜色；缺省表示未标记。 */
+  markColor?: NodeMarkColor
   status: NodeStatus
   /** 节点内「编辑重发 + 重新生成」的历史版本；缺省 = 线性对话 */
   thread?: NodeThread

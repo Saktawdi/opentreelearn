@@ -32,6 +32,7 @@ describe('tree-export', () => {
         forkFrom: null,
         title: '泰勒公式展开',
         contextSeed: ['引用前文极限知识'],
+        markColor: 'blue',
         position: { x: 300, y: 400 },
         status: 'active',
         createdAt: 1100,
@@ -101,6 +102,7 @@ describe('tree-export', () => {
     expect(archivedCard.archived).toBe(true)
 
     expect(childCard.messages[0].context).toEqual(['引用前文极限知识'])
+    expect(childCard.markColor).toBe('blue')
 
     // Round-trip 测试：导出的 JSON 可以被 parseTreeJson 成功解析无损还原
     const jsonStr = stringifyTreeExport(exported)
@@ -113,6 +115,7 @@ describe('tree-export', () => {
     expect(reparsed.stats.contextSeeds).toBe(1)
 
     const reparsedChild = reparsed.cards.find((c) => c.sourceId === 'n-child1')!
+    expect(reparsedChild.markColor).toBe('blue')
     expect(reparsedChild.parentSourceId).toBe('n-root')
     expect(reparsedChild.contextSeed).toEqual(['引用前文极限知识'])
     expect(reparsedChild.createdAt).toBe(1100)

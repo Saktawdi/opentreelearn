@@ -1,6 +1,6 @@
 import type { Edge, Node as FlowNode } from '@xyflow/react'
 import { messagePreview } from '@/domain/messages'
-import type { Id, Message, Node, ReviewCard } from '@/domain/models'
+import type { Id, Message, Node, NodeMarkColor, ReviewCard } from '@/domain/models'
 import { isMasteryStale, masteryIndex } from '@/domain/mastery/aggregate'
 import { resolveThread } from '@/domain/thread/resolve'
 import { DEFAULT_LAYOUT_OPTIONS, computeTreeLayout } from '@/domain/tree/layout'
@@ -23,6 +23,7 @@ export interface LearnNodeData extends Record<string, unknown> {
   born?: boolean
   forkFromTitle?: string
   selected: boolean
+  markColor?: NodeMarkColor
   /** 复习中心（kind: 'review'）：卡片上有专门的标记 */
   reviewCenter: boolean
   /** 子树聚合的掌握度：均值 + 覆盖率（learned/total）；没有掌握度时 score 为 null */
@@ -116,6 +117,7 @@ export function buildGraph(
         childCount: (index.children.get(node.id) ?? []).length,
         forkFromTitle: forkSource?.title,
         selected: node.id === selectedNodeId,
+        ...(node.markColor ? { markColor: node.markColor } : {}),
         reviewCenter: node.kind === 'review',
         mastery: aggregate
           ? { score: aggregate.score, learned: aggregate.learned, total: aggregate.total }

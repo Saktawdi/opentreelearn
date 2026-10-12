@@ -42,6 +42,8 @@ const rawCardSchema = z.object({
   archived: z.boolean().optional(),
   // 掌握度与复习中心的导出字段；旧文件没有，缺省即普通节点
   kind: z.string().optional(),
+  /** 用户自定义节点颜色标记 */
+  markColor: z.enum(['red', 'blue', 'green']).optional(),
   mastery: z
     .object({
       score: z.coerce.number(),
@@ -128,6 +130,8 @@ export interface ParsedCard {
   position?: { x: number; y: number }
   /** 复习中心标记（`.tree` 里有 kind: 'review' 时） */
   kind?: 'review'
+  /** 用户自定义节点颜色标记 */
+  markColor?: 'red' | 'blue' | 'green'
   /** 携带的掌握度分数与快照时间；没有复习排期（那是设备本地状态） */
   mastery?: { score: number; weakPoints?: string[]; updatedAt?: number; gradedAt?: number }
   /** 显式计划开关；缺省（v1 / 外部文件）= 未加入，不替用户打开计划 */
@@ -425,6 +429,7 @@ export function parseTreeJson(
       ...(updatedAt !== undefined ? { updatedAt } : {}),
       ...(position ? { position } : {}),
       kind: card.kind === 'review' ? 'review' : undefined,
+      ...(card.markColor ? { markColor: card.markColor } : {}),
       mastery,
       ...(reviewEnrollment ? { reviewEnrollment } : {}),
       ...(assessmentMeta ? { assessmentMeta } : {}),
