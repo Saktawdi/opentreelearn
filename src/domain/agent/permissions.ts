@@ -17,8 +17,8 @@ import type { Id, Node } from '@/domain/models'
  *    而不是静默放行——权限代码的默认方向必须是「关」。
  */
 
-/** 工具性质：读工具不改数据，写工具会动用户的东西。 */
-export type ToolKind = 'read' | 'write'
+/** 工具性质：读取、修改项目数据，或为当前回答生成内容。 */
+export type ToolKind = 'read' | 'write' | 'generate'
 
 /** 项目级授权偏好（对应输入框工具栏的那一个胶囊）。 */
 export type ToolPermissionMode = 'prompt' | 'always_allow'
@@ -153,6 +153,14 @@ function byNodeId(input: Record<string, unknown>, ctx: GateContext): ZoneVerdict
 }
 
 export const TOOL_GUARDS: Record<string, ToolGuard> = {
+  // Pure generation becomes part of this answer; it does not edit project data.
+  create_diagram: {
+    kind: 'generate',
+    describe: () => ({
+      title: { key: 'approval.askTitle.create_diagram' },
+      rows: [toolRow('create_diagram')],
+    }),
+  },
   // ── 读工具 ──────────────────────────────────────────────────────────────
   // 开放区 = 当前项目。以下四个只遍历本项目快照，构造上不可能越界，
   // 所以不挂 scope：真要越界，先得有「读别的项目」这个能力，那天再在这里接。
@@ -353,7 +361,7 @@ export function resolveToolApproval(
   const args = (input ?? {}) as Record<string, unknown>
   const zone: ZoneVerdict = guard.scope ? guard.scope(args, ctx) : OPEN
   // 读工具在开放区内（含目标压根不存在 —— 那是工具该报的错，不是用户的授权问题）
-  if (guard.kind === 'read' && zone.zone !== 'outside') return { action: 'allow' }
+  if (guard.kind !== 'write' && zone.zone !== 'outside') return { action: 'allow' }
 
   return { action: 'ask', prompt: guard.describe(args, ctx, zone) }
 }

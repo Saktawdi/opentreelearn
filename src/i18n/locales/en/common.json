@@ -1,4 +1,15 @@
 {
+  "diagram": {
+    "title": "Diagram",
+    "source": "View source",
+    "download": "Download SVG",
+    "expand": "Expand diagram",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "reset": "Reset zoom",
+    "loading": "Rendering diagram…",
+    "failed": "This diagram could not be displayed. View its source."
+  },
   "nav": {
     "projects": "Projects",
     "me": "Me",
@@ -126,6 +137,7 @@
     "teachMessage": "**Key points**\n\n{{keyPoints}}\n\n{{explanation}}",
     "feedbackMessage": "**What you got right**\n\n{{strengths}}\n\n**What to add or fix**\n\n{{gaps}}",
     "activity": {
+      "createDiagram": "Created a diagram",
       "searchNotes": "Searched annotations",
       "searchNodes": "Searched topics",
       "getNode": "Opened topic details",

@@ -30,6 +30,7 @@ Local-first: your data lives in your own browser (IndexedDB) and never leaves yo
 
 - 🌳 **Learning-tree canvas** — node cards + orthogonal edges, drag to tidy, auto layout, memory heat map
 - 💬 **Conversation as content** — Markdown / code highlighting (Shiki) / math (KaTeX); quote blocks can be tagged as mistakes or open questions
+- 📊 **Visual explanations** — Mermaid mindmaps, DAGs, AOV/AOE, weighted graphs, and more; the Agent delivers diagrams with `create_diagram`. View source, enlarge, and download SVG; source stays with saved and exported messages.
 - 🌿 **Fork anywhere** — grow a new branch from any message; context is inherited automatically
 - 🤖 **Agent loop** — native function calling; read-only tools always on, write tools off by default, explicitly opt-in and strictly reversible
 - 🔁 **FSRS review** — spaced repetition + subtree mastery aggregation; weak points feed future review material

@@ -8,6 +8,7 @@ import { highlightCode } from './highlighter'
 import { normalizeForRender } from './render-source'
 import { REMARK_PLUGINS } from './remark-options'
 import { rehypeSourceMap } from './source-map'
+import { MermaidBlock } from './MermaidBlock'
 
 /** rehype 插件表的类型：从 react-markdown 的 Options 里取，避免直接依赖 unified 的类型。 */
 type RehypePlugins = NonNullable<Options['rehypePlugins']>
@@ -118,6 +119,9 @@ export const MarkdownView = memo(function MarkdownView({
             void node
             const extracted = extractCodeChild(children)
             if (extracted) {
+              if (extracted.language?.toLowerCase() === 'mermaid') {
+                return <MermaidBlock code={extracted.code} {...(props as SourceProps)} />
+              }
               return (
                 <CodeBlock
                   code={extracted.code}

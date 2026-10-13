@@ -336,6 +336,27 @@
     margin: 0.95em 0;
   }
 
+  .mermaid-svg > svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: 100% !important;
+  }
+
+  .mermaid-block .mermaid-svg > svg {
+    max-height: 420px;
+  }
+
+  .mermaid-expanded .mermaid-svg > svg {
+    height: 100%;
+  }
+
+  .mermaid-source {
+    margin: 0;
+    white-space: pre;
+    font-family: var(--font-mono);
+  }
+
   .md-body .shiki-host pre,
   .md-body .shiki-fallback {
     margin: 0;

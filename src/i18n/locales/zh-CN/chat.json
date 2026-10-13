@@ -150,6 +150,7 @@
     "noteWriteFailed": "未能写入标注"
   },
   "tool": {
+    "createDiagram": "生成图表《{{title}}》",
     "listTools": "查看可用工具",
     "searchNodes": "查询节点「{{query}}」",
     "searchNodesPlain": "查询节点",
@@ -215,6 +216,7 @@
       "diverge": "发散节点"
     },
     "toolName": {
+      "create_diagram": "生成图表",
       "search_nodes": "检索节点",
       "get_node": "读节点详情",
       "get_tree_outline": "看树大纲",
@@ -227,6 +229,7 @@
       "update_assessment": "更新学习评估"
     },
     "askTitle": {
+      "create_diagram": "Agent 想生成图表",
       "get_node": "Agent 想读一个节点",
       "search_notes": "Agent 想检索标注",
       "get_review_history": "Agent 想查复习历史",

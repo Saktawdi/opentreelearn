@@ -151,6 +151,7 @@
     "noteWriteFailed": "Could not write the annotation"
   },
   "tool": {
+    "createDiagram": "Create diagram “{{title}}”",
     "listTools": "List available tools",
     "searchNodes": "Searched nodes \"{{query}}\"",
     "searchNodesPlain": "Search nodes",
@@ -216,6 +217,7 @@
       "diverge": "Divergent node"
     },
     "toolName": {
+      "create_diagram": "Create diagram",
       "search_nodes": "Search nodes",
       "get_node": "Read node",
       "get_tree_outline": "View tree outline",
@@ -228,6 +230,7 @@
       "update_assessment": "Update learning assessment"
     },
     "askTitle": {
+      "create_diagram": "Agent wants to create a diagram",
       "get_node": "Agent wants to read a node",
       "search_notes": "Agent wants to search annotations",
       "get_review_history": "Agent wants to read review history",

@@ -64,6 +64,7 @@ export interface ReviewRequestInput {
   /** 工具活动回调（检索活动行；交付工具由卡片本身展示，不进活动行） */
   onToolCall?: (activity: ToolActivity) => void
   onToolResult?: (outcome: ToolOutcome) => void
+  onDiagram?: (markdown: string) => void | Promise<void>
   /** 本次是第几个主题 / 共几个，写进上下文帮模型掌握节奏 */
   progressNote?: string
   now?: number
@@ -248,6 +249,7 @@ export async function runReviewRequest(
       },
       onToolCall: input.onToolCall,
       onToolResult: input.onToolResult,
+      onDiagram: input.onDiagram,
     })
 
     return {

@@ -1,9 +1,14 @@
 import 'fake-indexeddb/auto'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { accountDatabaseName, getDatabase, getRepositories, GUEST_DATABASE_NAME, openDatabase } from '@/data'
 import { createReviewSession } from '@/domain/review/session'
 import { bindAccountDatabase, reloadStores } from './data-session'
 import { useReviewSessionStore } from './review-session-store'
+import { runReviewRequest } from '@/services/llm/review'
+import { makeNode } from '@/test/fixtures'
+import { diagramMarkdown } from '@/lib/mermaid'
+
+vi.mock('@/services/llm/review', () => ({ runReviewRequest: vi.fn() }))
 
 /**
  * 内存里的复习会话与本地库的绑定关系。
@@ -31,6 +36,34 @@ beforeEach(async () => {
   const db = getDatabase()
   await db.reviewSessions.clear()
   useReviewSessionStore.getState().reset()
+  vi.mocked(runReviewRequest).mockReset()
+})
+
+describe('复习卡片中的图表', () => {
+  it.each(['before', 'after', 'concurrent'] as const)('绘图发生在卡片交付 %s 时，源码落库且重新打开仍在', async (order) => {
+    const session = await seedSession()
+    await getDatabase().nodes.put(makeNode({ id: 'n1', projectId: 'p1' }))
+    useReviewSessionStore.setState({ session, projectId: 'p1' })
+    const markdown = diagramMarkdown('AOE', 'flowchart LR\n A((1)) -->|a1: 3| B((2))')
+    vi.mocked(runReviewRequest).mockImplementationOnce(async (input) => {
+      if (order === 'before') await input.onDiagram!(markdown)
+      const delivered = input.handlers!.deliverQuestion({ question: '求图的关键路径。' })
+      if (order === 'concurrent') await input.onDiagram!(markdown)
+      expect(await delivered).toEqual({ ok: true })
+      if (order === 'after') await input.onDiagram!(markdown)
+      return { ok: true, output: {
+        requestId: 'test', text: '', clean: '', aborted: false, usedDelivery: true,
+        materialText: '', materialVersion: 'test', materialTruncated: false,
+      } }
+    })
+
+    await useReviewSessionStore.getState().ensureCurrentItemContent()
+    const saved = await getRepositories().reviewSessions.get(session.id)
+    expect(saved?.items[0].messages[0].text).toBe('求图的关键路径。' + markdown)
+    useReviewSessionStore.getState().reset()
+    await useReviewSessionStore.getState().loadForProject('p1', session.id)
+    expect(useReviewSessionStore.getState().session?.items[0].messages[0].text).toContain(markdown)
+  })
 })
 
 afterEach(async () => {

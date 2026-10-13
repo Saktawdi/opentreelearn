@@ -9,6 +9,8 @@ import type { ContextMessage, ContextPart } from '@/domain/context/assemble'
 import { isValidReasoningLevel } from './model-catalog'
 import { DEFAULT_AGENT_MAX_STEPS } from '@/domain/defaults'
 import { TOOL_WORKFLOW_SYSTEM, withToolDiscovery } from './tools/discovery'
+import { diagramMarkdown, normalizeMermaidSource } from '@/lib/mermaid'
+import { DIAGRAM_TOOL_NAME, diagramInputSchema } from './tools/diagram'
 
 export interface ChatUsage {
   inputTokens?: number
@@ -54,6 +56,8 @@ export interface StreamReplyParams {
   reasoningEffort?: string
   onToolCall?: (activity: ToolActivity) => void
   onToolResult?: (outcome: ToolOutcome) => void
+  /** Review delivery stores diagrams with its durable card; other callers persist text. */
+  onDiagram?: (markdown: string) => void | Promise<void>
 }
 
 export interface StreamReplyResult {
@@ -265,6 +269,7 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
   let text = ''
   let aborted = false
   let toolCalls = 0
+  const diagramInputs = new Map<string, unknown>()
 
   try {
     // 必须读 fullStream 而不是 textStream：后者只吐 text-delta，
@@ -277,19 +282,34 @@ export async function streamReply(params: StreamReplyParams): Promise<StreamRepl
           break
         case 'tool-call':
           toolCalls += 1
+          if (part.toolName === DIAGRAM_TOOL_NAME) diagramInputs.set(part.toolCallId, part.input)
           params.onToolCall?.({
             callId: part.toolCallId,
             name: part.toolName,
             input: part.input,
           })
           break
-        case 'tool-result':
+        case 'tool-result': {
+          if (part.toolName === DIAGRAM_TOOL_NAME) {
+            const input = diagramInputSchema.safeParse(diagramInputs.get(part.toolCallId))
+            diagramInputs.delete(part.toolCallId)
+            const output = stringifyToolOutput(part.output)
+            let success = false
+            try { success = JSON.parse(output.slice(output.indexOf('\n') + 1)).ok === true } catch { /* Failed tools never produce diagrams. */ }
+            if (success && input.success) {
+              const markdown = diagramMarkdown(input.data.title, normalizeMermaidSource(input.data.source))
+              await params.onDiagram?.(markdown)
+              text += markdown
+              params.onDelta?.(markdown)
+            }
+          }
           params.onToolResult?.({
             callId: part.toolCallId,
             name: part.toolName,
             output: stringifyToolOutput(part.output),
           })
           break
+        }
         case 'tool-error':
           params.onToolResult?.({
             callId: part.toolCallId,

@@ -64,7 +64,7 @@ export interface ReviewStreamingState {
   startedAt: number
   /** 本轮产物已通过交付工具落库：旁白可以停了，卡片已经就位 */
   delivered?: boolean
-  /** 本轮发生过的只读检索（活动行）；交付工具不计入 —— 卡片本身就是它的展示 */
+  /** 本轮发生过的检索或绘图（活动行）；交付工具由卡片本身展示 */
   activities?: Array<{ name: string; label: string }>
 }
 
@@ -639,9 +639,12 @@ function createDeliveryHandlers(
   purpose: ReviewRequestPurpose,
   item: ReviewSessionItem,
   requestId: Id,
-): { handlers: ReviewDeliveryHandlers; state: { delivered: boolean } } {
+): { handlers: ReviewDeliveryHandlers; state: { delivered: boolean }; deliverDiagram: (markdown: string) => Promise<void> } {
   const store = useReviewSessionStore
   const state = { delivered: false }
+  const diagrams: string[] = []
+  let deliveredMessageId: Id | undefined
+  let pendingCommit: Promise<{ ok: boolean; error?: string }> | undefined
 
   // 反馈轮（answer / followup）允许点评中的补讲（阶段 3 的合并轮次）
   const afterFeedback = purpose === 'answer' || purpose === 'followup'
@@ -659,7 +662,7 @@ function createDeliveryHandlers(
     }
   }
 
-  const commit = async (patch: Parameters<typeof patchItem>[2]) => {
+  const persistDelivery = async (patch: Parameters<typeof patchItem>[2]) => {
     // 每轮限交付一次：第二个交付调用只会造成两张卡打架（多开放题守卫在
     // domain 层管跨轮，这里管同轮）—— 模型要在一条交付里表达多小问
     if (state.delivered) {
@@ -667,10 +670,21 @@ function createDeliveryHandlers(
     }
     const live = store.getState().session
     if (!live) return { ok: false, error: '会话已不可用' }
+    const message = patch.messages?.at(-1)
+    if (message && diagrams.length > 0) {
+      message.text += diagrams.filter((diagram) => !message.text.includes(diagram.trim())).join('')
+    }
     patchItem(live, item.itemId, patch, Date.now())
     await getRepositories().reviewSessions.save(live)
+    diagrams.length = 0
+    deliveredMessageId = message?.id
     markDelivered()
     return { ok: true }
+  }
+
+  const commit = (patch: Parameters<typeof patchItem>[2]) => {
+    pendingCommit = persistDelivery(patch)
+    return pendingCommit
   }
 
   const append = (message: ReviewSessionMessage) => {
@@ -758,7 +772,26 @@ function createDeliveryHandlers(
     },
   }
 
-  return { handlers, state }
+  const deliverDiagram = async (markdown: string) => {
+    // A diagram result can arrive while a parallel delivery tool is saving its card.
+    // Attach it after that save rather than clearing it with the pre-delivery queue.
+    await pendingCommit
+    if (store.getState().streaming?.requestId !== requestId) return
+    if (!state.delivered) {
+      diagrams.push(markdown)
+      return
+    }
+    const live = store.getState().session
+    const target = liveItem()
+    if (!live || !target) return
+    const messages = target.messages.map((message) => message.id === deliveredMessageId
+      ? { ...message, text: message.text.includes(markdown.trim()) ? message.text : message.text + markdown }
+      : message)
+    patchItem(live, item.itemId, { messages }, Date.now())
+    await getRepositories().reviewSessions.save(live)
+    store.setState({ session: cloneForPublish(live)! })
+  }
+  return { handlers, state, deliverDiagram }
 }
 
 /**
@@ -805,6 +838,7 @@ const REVIEW_DELIVERY_TOOL_NAMES = new Set([
  * 存键不存译文 —— 模块加载时还没有语言可用，取值时（onToolCall）才解析。
  */
 const TOOL_ACTIVITY_LABEL_KEY: Record<string, `common:${ParseKeys<'common'>}`> = {
+  create_diagram: 'common:session.activity.createDiagram',
   search_notes: 'common:session.activity.searchNotes',
   search_nodes: 'common:session.activity.searchNodes',
   get_node: 'common:session.activity.getNode',
@@ -994,6 +1028,7 @@ async function executeModelTurn(
     progressNote,
     handlers: delivery?.handlers,
     readOnlyTools,
+    onDiagram: delivery?.deliverDiagram,
     onToolCall: (activity) => {
       if (REVIEW_DELIVERY_TOOL_NAMES.has(activity.name)) return
       const cur = store.getState().streaming

@@ -22,6 +22,8 @@ function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>
   const query = typeof args.query === 'string' ? args.query : ''
   switch (name) {
+    case 'create_diagram':
+      return t('tool.createDiagram', { title: typeof args.title === 'string' ? args.title : '' })
     case 'list_tools':
       return t('tool.listTools')
     case 'search_nodes':
