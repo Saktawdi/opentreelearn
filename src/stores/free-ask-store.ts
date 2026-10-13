@@ -1,341 +1,355 @@
 import { create } from 'zustand'
 import i18n from '@/i18n'
-import { getRepositories } from '@/data'
+import { currentDatabaseName, getRepositories } from '@/data'
+import type { Repositories } from '@/data/repository'
 import type { ContextMessage } from '@/domain/context/assemble'
 import type { Asset, Id } from '@/domain/models'
+import type { FreeAskConversation, FreeAskMessage } from '@/domain/review/free-ask'
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
-import { createImageAsset, assetToDataUrl } from '@/services/images'
+import { createImageAsset, assetToDataUrl, loadAssetUrls } from '@/services/images'
 import { runFreeAskRequest } from '@/services/llm/free-ask'
 import { useSettingsStore } from './settings-store'
 import { useWorkspaceStore, type StreamingToolActivity } from './workspace-store'
 
-/**
- * 复习工作区「自由问答」的会话状态。
- *
- * **只在内存里**：问答是「睡前问一句进度」的临时内容，既不写节点对话（会污染
- * 可见路径、分支继承与版本结构），也不进复习会话（那里记的是评分与草稿）。
- * 代价是刷新即清空，换来的是零迁移、零同步语义 —— 这份内容的生命周期就该只是一次对话。
- *
- * 项目切走时必须清空（`syncProject`）：答疑内容带着上一个项目的主题标题，
- * 留在面板里比丢掉更糟。
- *
- * 输入框草稿（`draft`）也放在这里，与对话同一份生命周期：输入框本体复用对话页的
- * `ComposerShell`，但草稿不落 IndexedDB —— 会话页的对话是落库的，草稿才跟着落库；
- * 这里的问答刷新即清空，草稿随会话走内存才不会出现「问句还在、对话没了」的错位。
- */
-
-export interface FreeAskMessage {
-  id: Id
-  role: 'user' | 'assistant'
-  /** 展示文本：评分标记已剥掉（本项目约定：标记既不出现在正文，也不出现在预览里） */
-  text: string
-  createdAt: number
-  /** 正文不完整（用户中断 / 请求失败后留下的部分内容） */
-  incomplete?: boolean
-  /** 随问附上的图片资产 id：展示用，模型侧走 dataUrl（见 historyParts） */
-  imageIds?: Id[]
-}
-
-/** 待发图片：asset 已压缩登记（发送时才写进 assets 表），url 仅供预览。 */
-export interface FreeAskPendingImage {
-  asset: Asset
-  url: string
-}
+export type { FreeAskMessage } from '@/domain/review/free-ask'
+export interface FreeAskPendingImage { asset: Asset; url: string }
 
 interface FreeAskState {
-  /** 当前对话所属项目；与传入项目不一致时整段丢弃 */
   projectId: Id | null
+  conversationId: Id | null
+  conversations: FreeAskConversation[]
   messages: FreeAskMessage[]
+  loading: boolean
   streaming: { text: string; tools: StreamingToolActivity[] } | null
   error: string | null
-  /** 如实说明本次参考了多少个主题：清单会按上下文预算裁剪，用户有权知道 */
   contextNote: string | null
-  /** 已发出问句的图片 dataUrl 缓存（assetId → dataUrl）：拼历史上下文时用，免得每轮重读 blob */
   imageUrlsByMessage: Record<Id, string>
-  /** 输入框草稿：关掉面板再回来还在，随对话一起被项目切换/清空带走 */
   draft: string
-  setDraft: (value: string) => void
-  /** 待发图片：粘贴/拖放/选择进来，随下一次提问发出 */
   pendingImages: FreeAskPendingImage[]
+  setDraft: (value: string) => void
   attachImages: (files: File[]) => Promise<void>
   removePendingImage: (assetId: Id) => void
   ask: (question: string) => Promise<void>
-  cancel: () => void
+  cancel: () => Promise<void>
+  /** Reset memory on account changes, preserving saved history. */
   reset: () => void
-  syncProject: (projectId: Id | null) => void
+  syncProject: (projectId: Id | null) => Promise<void>
+  reload: () => Promise<void>
+  newConversation: () => Promise<void>
+  selectConversation: (id: Id) => Promise<void>
 }
 
-let freeAskAbort: AbortController | null = null
+let epoch = 0
+let boundDatabase: string | null = null
+let loadingTask: Promise<void> | null = null
+let draftQueue: Promise<void> = Promise.resolve()
 
-function stopStreaming(): void {
-  freeAskAbort?.abort()
-  freeAskAbort = null
+interface ActiveRequest {
+  controller: AbortController
+  repositories: Repositories
+  answer: FreeAskMessage
+  text: string
+  writes: Promise<void>
+  timer?: ReturnType<typeof setTimeout>
+}
+let activeRequest: ActiveRequest | null = null
+const projectLocalId = (id: Id) => 'project:' + id
+
+function releaseImages(images: FreeAskPendingImage[]) {
+  for (const image of images) URL.revokeObjectURL(image.url)
+}
+
+function persistDraft() {
+  const state = useFreeAskStore.getState()
+  if (!state.projectId || state.loading) return draftQueue
+  const repositories = getRepositories()
+  const id = state.conversationId ?? projectLocalId(state.projectId)
+  const snapshot = { id, projectId: state.projectId, draft: state.draft, pendingImages: state.pendingImages.map((image) => image.asset) }
+  const owner = epoch
+  draftQueue = draftQueue.then(async () => {
+    const previous = await repositories.freeAsk.getLocal(id)
+    await repositories.freeAsk.saveLocal({ ...previous, ...snapshot })
+  }).catch(() => {
+    if (epoch === owner) useFreeAskStore.setState({ error: i18n.t('review:freeAsk.saveFailed') })
+  })
+  return draftQueue
+}
+
+/** Serialize partial and final replies so an older chunk cannot replace a completed answer. */
+function persistAnswer(request: ActiveRequest, final = false) {
+  if (request.timer) clearTimeout(request.timer)
+  request.timer = undefined
+  const snapshot = { ...request.answer, text: stripReviewRating(request.text), incomplete: !final }
+  request.writes = request.writes.catch(() => undefined).then(() => request.repositories.freeAsk.saveMessage(snapshot))
+  return request.writes
+}
+
+function initialView() {
+  return { conversationId: null, conversations: [], messages: [], loading: false, streaming: null, error: null, contextNote: null, imageUrlsByMessage: {}, draft: '', pendingImages: [] }
+}
+
+async function loadConversation(id: Id | null, projectId: Id, repositories: Repositories, owner: number) {
+  const [messages, local] = await Promise.all([
+    id ? repositories.freeAsk.listMessages(id) : Promise.resolve([]),
+    repositories.freeAsk.getLocal(id ?? projectLocalId(projectId)),
+  ])
+  const urls = await loadAssetUrls(repositories.assets, messages.flatMap((message) => message.imageIds ?? []))
+  if (epoch !== owner) return
+  releaseImages(useFreeAskStore.getState().pendingImages)
+  useFreeAskStore.setState({
+    conversationId: id, messages: messages.filter((message) => message.text.trim() || message.imageIds?.length),
+    draft: local?.draft ?? '', pendingImages: (local?.pendingImages ?? []).map((asset) => ({ asset, url: URL.createObjectURL(asset.blob) })),
+    imageUrlsByMessage: Object.fromEntries(urls), loading: false, error: null, contextNote: null,
+  })
+}
+
+async function loadProject(projectId: Id, force = false) {
+  const state = useFreeAskStore.getState()
+  if (!force && state.projectId === projectId && boundDatabase === currentDatabaseName()) {
+    await loadingTask
+    return
+  }
+  const owner = ++epoch
+  const repositories = getRepositories()
+  const cancellation = useFreeAskStore.getState().cancel()
+  const draft = persistDraft()
+  boundDatabase = currentDatabaseName()
+  useFreeAskStore.setState({ loading: true })
+  const task = (async () => {
+    await Promise.all([cancellation, draft])
+    if (epoch !== owner) return
+    releaseImages(state.pendingImages)
+    useFreeAskStore.setState({ ...initialView(), projectId, loading: true })
+    const [conversations, local] = await Promise.all([
+      repositories.freeAsk.listByProject(projectId), repositories.freeAsk.getLocal(projectLocalId(projectId)),
+    ])
+    if (epoch !== owner) return
+    const selected = conversations.find((entry) => entry.id === local?.activeConversationId) ?? conversations[0]
+    useFreeAskStore.setState({ conversations })
+    await loadConversation(selected?.id ?? null, projectId, repositories, owner)
+  })().catch(() => {
+    if (epoch === owner) {
+      boundDatabase = null
+      useFreeAskStore.setState({ loading: false, error: i18n.t('review:freeAsk.loadFailed') })
+    }
+  })
+  loadingTask = task
+  await task
+  if (loadingTask === task) loadingTask = null
+}
+
+async function refreshHistory(repositories: Repositories, owner: number) {
+  const projectId = useFreeAskStore.getState().projectId
+  if (!projectId) return
+  const conversations = await repositories.freeAsk.listByProject(projectId)
+  if (epoch === owner) useFreeAskStore.setState({ conversations })
 }
 
 export const useFreeAskStore = create<FreeAskState>()((set, get) => ({
-  projectId: null,
-  messages: [],
-  streaming: null,
-  error: null,
-  contextNote: null,
-  imageUrlsByMessage: {},
-  draft: '',
-  pendingImages: [],
-
-  setDraft: (value) => set({ draft: value }),
-
+  projectId: null, ...initialView(),
+  setDraft: (draft) => { set({ draft }); void persistDraft() },
   attachImages: async (files) => {
-    if (files.length === 0) return
-    const projectId = useWorkspaceStore.getState().projectId
-    if (!projectId) return
+    const projectId = get().projectId
+    if (!projectId || files.length === 0 || get().loading) return
+    const owner = epoch
     try {
-      const created = await Promise.all(
-        files.map(async (file) => {
-          const asset = await createImageAsset(file, projectId)
-          return { asset, url: URL.createObjectURL(asset.blob) }
-        }),
-      )
-      set((state) => ({ pendingImages: [...state.pendingImages, ...created] }))
-    } catch {
-      // 压缩/解码失败不打断输入：图片是补充，不是提问的载体
-      set({ error: i18n.t('review:freeAsk.imageReadFailed') })
+      const assets = await Promise.all(files.map((file) => createImageAsset(file, projectId)))
+      if (owner !== epoch) return
+      set((state) => ({ pendingImages: [...state.pendingImages, ...assets.map((asset) => ({ asset, url: URL.createObjectURL(asset.blob) }))] }))
+      await persistDraft()
+    } catch { if (owner === epoch) set({ error: i18n.t('review:freeAsk.imageReadFailed') }) }
+  },
+  removePendingImage: (assetId) => {
+    releaseImages(get().pendingImages.filter((image) => image.asset.id === assetId))
+    set((state) => ({ pendingImages: state.pendingImages.filter((image) => image.asset.id !== assetId) }))
+    void persistDraft()
+  },
+  syncProject: async (projectId) => {
+    if (projectId) await loadProject(projectId)
+    else {
+      const owner = ++epoch
+      const cancellation = get().cancel()
+      const draft = persistDraft()
+      set({ loading: true })
+      await Promise.all([cancellation, draft])
+      if (epoch === owner) get().reset()
     }
   },
-
-  removePendingImage: (assetId) => {    set((state) => {
-      const target = state.pendingImages.find((item) => item.asset.id === assetId)
-      if (target) URL.revokeObjectURL(target.url)
-      return { pendingImages: state.pendingImages.filter((item) => item.asset.id !== assetId) }
-    })
-  },
-
-  ask: async (question) => {
-    const trimmed = question.trim()
-    const images = get().pendingImages
-    // 纯图片提问合法（贴张板书拍照问一句）：正文与图片至少有一头
-    if (!trimmed && images.length === 0) return
-
-    const workspace = useWorkspaceStore.getState()
-    const settings = useSettingsStore.getState().settings
-    if (!workspace.projectId) return
-
-    // 上一次还没回来就又问：旧请求作废，避免两段回答交叉着往同一条消息上追加
-    stopStreaming()
-    const controller = new AbortController()
-    freeAskAbort = controller
-
-    // 图片转存进 assets 表（发送时序与聊天一致：发出后才成为资产），模型侧吃 dataUrl。
-    // 转存失败就当这张图没贴过：问句还在，不该被一张图整个挡住。
-    // 待发预览使用的 objectURL 在此统一释放（无论成败预览均已退场，避免内存泄漏）。
-    const savedIds: Id[] = []
-    for (const pending of images) {
-      try {
-        await getRepositories().assets.create(pending.asset)
-        savedIds.push(pending.asset.id)
-      } catch {
-        // 转存失败跳过该图
-      }
-    }
-    for (const pending of images) URL.revokeObjectURL(pending.url)
-    const imageDataUrls = await Promise.all(
-      savedIds.map(async (id) => {
-        const asset = images.find((item) => item.asset.id === id)?.asset
-        return asset ? await assetToDataUrl(asset) : null
-      }),
-    ).then((list) => list.filter((item): item is string => item !== null))
-
-    // 历史里的图片按「上一条用户问句带的图」补 dataUrl：模型每轮都能看到贴过的图
-    const history: ContextMessage[] = get().messages.map((message) => ({
-      role: message.role,
-      parts: historyParts(message, get().imageUrlsByMessage),
-    }))
-    const asked: FreeAskMessage = {
-      id: newId(),
-      role: 'user',
-      text: trimmed,
-      createdAt: Date.now(),
-      ...(savedIds.length > 0 ? { imageIds: savedIds } : {}),
-    }
-    set((state) => ({
-      projectId: state.projectId ?? workspace.projectId,
-      messages: [...state.messages, asked],
-      streaming: { text: '', tools: [] },
-      error: null,
-      contextNote: null,
-      // 问句已经进了对话，输入框与待发图片一并归零（与对话页发送后清草稿同一动作）
-      draft: '',
-      pendingImages: [],
-      imageUrlsByMessage: {
-        ...state.imageUrlsByMessage,
-        ...Object.fromEntries(
-          savedIds.map((id, index) => [id, imageDataUrls[index]] as const),
-        ),
-      },
-    }))
-
-    const result = await runFreeAskRequest({
-      settings,
-      projectSettings: workspace.projectSettings,
-      projectName: workspace.project?.name,
-      projectDescription: workspace.project?.description,
-      nodes: workspace.nodes,
-      // 标注带标签的那些会随上下文一起给模型（「我有哪些还没搞懂的」全靠它）
-      notes: Object.values(workspace.notesByMessage).flat(),
-      history,
-      // 本轮贴的图以 dataUrl 附在提问上，与聊天同构
-      imageDataUrls,
-      text: trimmed,
-      signal: controller.signal,
-      onToolCall: (activity) => {
-        if (freeAskAbort !== controller) return
-        const current = get().streaming
-        if (!current) return
-        set({
-          streaming: {
-            ...current,
-            tools: [
-              ...current.tools,
-              {
-                callId: activity.callId,
-                name: activity.name,
-                input: activity.input,
-                status: 'running' as const,
-              },
-            ],
-          },
-        })
-      },
-      onToolResult: (outcome) => {
-        if (freeAskAbort !== controller) return
-        const current = get().streaming
-        if (!current) return
-        set({
-          streaming: {
-            ...current,
-            tools: current.tools.map((tool) =>
-              tool.callId !== outcome.callId
-                ? tool
-                : outcome.error !== undefined
-                  ? { ...tool, status: 'error' as const, error: outcome.error }
-                  : { ...tool, status: 'done' as const, output: outcome.output },
-            ),
-          },
-        })
-      },
-      onDelta: (delta) => {
-        // 迟到的回调（已被取消 / 已被新请求替换）直接丢弃
-        if (freeAskAbort !== controller) return
-        const current = get().streaming
-        if (current) set({ streaming: { ...current, text: current.text + delta } })
-      },
-    })
-
-    if (freeAskAbort !== controller) return
-    freeAskAbort = null
-
-    if (result.ok) {
-      const output = result.output
-      const answer: FreeAskMessage = {
-        id: newId(),
-        role: 'assistant',
-        text: output.clean || i18n.t('common:ask.emptyAnswer'),
-        createdAt: Date.now(),
-        incomplete: output.aborted ? true : undefined,
-      }
-      set((state) => ({
-        messages: [...state.messages, answer],
-        streaming: null,
-        error: output.aborted ? i18n.t('common:ask.abortedError') : null,
-        contextNote: i18n.t('common:ask.contextNote', {
-          listed: output.listed,
-          total: output.total,
-          notes:
-            output.notes > 0
-              ? i18n.t('common:ask.contextNoteNotes', { count: output.notes })
-              : '',
-        }),
-      }))
+  reload: async () => {
+    if (!get().projectId) return
+    if (activeRequest || get().loading) {
+      await refreshHistory(getRepositories(), epoch)
       return
     }
-
-    // 失败：保住已经生成的部分（那是用户看得见的内容），错误另置一处，可再问一次
-    const partial = stripReviewRating(result.failure.partial)
-    set((state) => ({
-      messages: partial.trim()
-        ? [
-            ...state.messages,
-            {
-              id: newId(),
-              role: 'assistant' as const,
-              text: partial,
-              createdAt: Date.now(),
-              incomplete: true,
-            },
-          ]
-        : state.messages,
-      streaming: null,
-      error: result.failure.message,
-    }))
+    await loadProject(get().projectId!, true)
   },
-
-  cancel: () => {
-    const partial = get().streaming?.text ?? ''
-    stopStreaming()
+  newConversation: async () => {
+    const projectId = get().projectId
+    if (!projectId || get().loading) return
+    const started = epoch
+    await get().cancel()
+    await persistDraft()
+    if (epoch !== started) return
+    const owner = ++epoch
+    const repositories = getRepositories()
+    set({ loading: true })
+    try {
+      const now = Date.now()
+      const conversation: FreeAskConversation = { id: newId(), projectId, title: '', createdAt: now, updatedAt: now }
+      await repositories.freeAsk.create(conversation)
+      const local = await repositories.freeAsk.getLocal(projectLocalId(projectId))
+      await repositories.freeAsk.saveLocal({ ...local, id: projectLocalId(projectId), projectId, activeConversationId: conversation.id })
+      if (epoch !== owner) return
+      await refreshHistory(repositories, owner)
+      await loadConversation(conversation.id, projectId, repositories, owner)
+    } catch { if (epoch === owner) set({ loading: false, error: i18n.t('review:freeAsk.saveFailed') }) }
+  },
+  selectConversation: async (id) => {
+    const projectId = get().projectId
+    if (!projectId || get().loading || id === get().conversationId) return
+    const started = epoch
+    await get().cancel()
+    await persistDraft()
+    if (epoch !== started) return
+    const owner = ++epoch
+    const repositories = getRepositories()
+    set({ loading: true })
+    try {
+      const conversation = await repositories.freeAsk.get(id)
+      if (epoch !== owner) return
+      if (!conversation || conversation.projectId !== projectId) { set({ loading: false }); return }
+      const local = await repositories.freeAsk.getLocal(projectLocalId(projectId))
+      await repositories.freeAsk.saveLocal({ ...local, id: projectLocalId(projectId), projectId, activeConversationId: id })
+      await loadConversation(id, projectId, repositories, owner)
+    } catch { if (epoch === owner) set({ loading: false, error: i18n.t('review:freeAsk.loadFailed') }) }
+  },
+  cancel: async () => {
+    const request = activeRequest
+    if (!request) return
+    const owner = epoch
+    activeRequest = null
+    request.controller.abort()
+    const partial = stripReviewRating(request.text)
     set((state) => ({
-      messages: partial.trim()
-        ? [
-            ...state.messages,
-            {
-              id: newId(),
-              role: 'assistant' as const,
-              text: stripReviewRating(partial),
-              createdAt: Date.now(),
-              incomplete: true,
-            },
-          ]
-        : state.messages,
+      messages: partial.trim() ? [...state.messages, { ...request.answer, text: partial, incomplete: true }] : state.messages,
       streaming: null,
     }))
+    try { await persistAnswer(request) }
+    catch { if (epoch === owner) set({ error: i18n.t('review:freeAsk.saveFailed') }) }
   },
-
   reset: () => {
-    stopStreaming()
-    set((state) => {
-      for (const pending of state.pendingImages) URL.revokeObjectURL(pending.url)
-      return { messages: [], streaming: null, error: null, contextNote: null, draft: '', pendingImages: [] }
-    })
+    const request = activeRequest
+    activeRequest = null
+    request?.controller.abort()
+    if (request?.timer) clearTimeout(request.timer)
+    ++epoch
+    boundDatabase = null
+    loadingTask = null
+    releaseImages(get().pendingImages)
+    set({ ...initialView(), projectId: null })
   },
-
-  syncProject: (projectId) => {
-    if (get().projectId === projectId) return
-    stopStreaming()
-    set((state) => {
-      for (const pending of state.pendingImages) URL.revokeObjectURL(pending.url)
-      return {
-        projectId,
-        messages: [],
-        streaming: null,
-        error: null,
-        contextNote: null,
-        draft: '',
-        pendingImages: [],
-        imageUrlsByMessage: {},
+  ask: async (question) => {
+    const trimmed = question.trim()
+    if (!trimmed && get().pendingImages.length === 0) return
+    const workspace = useWorkspaceStore.getState()
+    const projectId = workspace.projectId
+    if (!projectId) return
+    if (get().projectId !== projectId || boundDatabase !== currentDatabaseName()) await get().syncProject(projectId)
+    await loadingTask
+    if (get().loading || get().projectId !== projectId) return
+    const started = epoch
+    const images = [...get().pendingImages]
+    if (!get().conversationId) {
+      await get().newConversation()
+      if (epoch !== started + 1 || get().projectId !== projectId) return
+      // First-send creation keeps the captured attachments; their preview URLs were released.
+      set({ pendingImages: images.map((image) => ({ ...image, url: URL.createObjectURL(image.asset.blob) })) })
+    }
+    const conversationId = get().conversationId
+    if (!conversationId) return
+    await get().cancel()
+    if (get().conversationId !== conversationId || get().projectId !== projectId || boundDatabase !== currentDatabaseName()) return
+    const owner = epoch
+    const repositories = getRepositories()
+    const request: ActiveRequest = {
+      controller: new AbortController(), repositories, text: '', writes: Promise.resolve(),
+      answer: { id: newId(), projectId, conversationId, role: 'assistant', text: '', createdAt: Date.now(), updatedAt: Date.now(), incomplete: true },
+    }
+    activeRequest = request
+    set({ streaming: { text: '', tools: [] }, error: null, contextNote: null })
+    const current = () => activeRequest === request && epoch === owner
+    try {
+      const urls: Record<Id, string> = {}
+      for (const image of images) {
+        await repositories.assets.create(image.asset)
+        urls[image.asset.id] = await assetToDataUrl(image.asset)
+        if (!current()) return
       }
-    })
+      const history: ContextMessage[] = get().messages.map((message) => ({ role: message.role, parts: historyParts(message, get().imageUrlsByMessage) }))
+      const now = Math.max(Date.now(), (get().messages.at(-1)?.createdAt ?? 0) + 1)
+      const asked: FreeAskMessage = { id: newId(), projectId, conversationId, role: 'user', text: trimmed, createdAt: now, updatedAt: now, ...(images.length ? { imageIds: images.map((image) => image.asset.id) } : {}) }
+      request.answer.createdAt = now + 1
+      await repositories.freeAsk.saveMessage(asked)
+      if (!current()) return
+      releaseImages(get().pendingImages)
+      set((state) => ({ messages: [...state.messages, asked], draft: '', pendingImages: [], imageUrlsByMessage: { ...state.imageUrlsByMessage, ...urls } }))
+      await persistDraft()
+      await refreshHistory(repositories, owner)
+      if (!current()) return
+      const result = await runFreeAskRequest({
+        settings: useSettingsStore.getState().settings, projectSettings: workspace.projectSettings,
+        projectName: workspace.project?.name, projectDescription: workspace.project?.description,
+        nodes: workspace.nodes, messagesByNode: new Map(Object.entries(workspace.messagesByNode)),
+        notes: Object.values(workspace.notesByMessage).flat(), history, imageDataUrls: Object.values(urls), text: trimmed, signal: request.controller.signal,
+        onDelta: (delta) => {
+          if (!current()) return
+          request.text += delta
+          const streaming = get().streaming
+          if (streaming) set({ streaming: { ...streaming, text: request.text } })
+          if (!request.timer) request.timer = setTimeout(() => {
+            void persistAnswer(request).catch(() => { if (current()) set({ error: i18n.t('review:freeAsk.saveFailed') }) })
+          }, 400)
+        },
+        onToolCall: (activity) => {
+          if (!current() || !get().streaming) return
+          const streaming = get().streaming!
+          set({ streaming: { ...streaming, tools: [...streaming.tools, { ...activity, status: 'running' }] } })
+        },
+        onToolResult: (outcome) => {
+          if (!current() || !get().streaming) return
+          const streaming = get().streaming!
+          set({ streaming: { ...streaming, tools: streaming.tools.map((tool) => tool.callId !== outcome.callId ? tool : outcome.error !== undefined ? { ...tool, status: 'error', error: outcome.error } : { ...tool, status: 'done', output: outcome.output }) } })
+        },
+      })
+      if (!current()) return
+      request.text = result.ok ? result.output.clean || i18n.t('common:ask.emptyAnswer') : stripReviewRating(result.failure.partial)
+      const complete = result.ok && !result.output.aborted
+      await persistAnswer(request, complete)
+      if (!current()) return
+      activeRequest = null
+      set((state) => ({
+        messages: request.text.trim() ? [...state.messages, { ...request.answer, text: request.text, incomplete: !complete }] : state.messages,
+        streaming: null,
+        error: result.ok ? result.output.aborted ? i18n.t('common:ask.abortedError') : null : result.failure.message,
+        contextNote: result.ok ? i18n.t('common:ask.contextNote', { listed: result.output.listed, total: result.output.total, notes: result.output.notes > 0 ? i18n.t('common:ask.contextNoteNotes', { count: result.output.notes }) : '' }) : null,
+      }))
+      await refreshHistory(repositories, owner)
+      const messages = await repositories.freeAsk.listMessages(conversationId)
+      if (epoch === owner) set({ messages: messages.filter((message) => message.text.trim() || message.imageIds?.length) })
+    } catch {
+      if (!current()) return
+      await get().cancel()
+      if (epoch === owner) set({ error: i18n.t('review:freeAsk.saveFailed') })
+    }
   },
 }))
 
-/** 历史消息 → 上下文 parts：文本必带，图片按资产 id 查现成的 dataUrl（没有就降级为文字占位）。 */
-function historyParts(
-  message: FreeAskMessage,
-  urls: Record<Id, string>,
-): ContextMessage['parts'] {
+function historyParts(message: FreeAskMessage, urls: Record<Id, string>): ContextMessage['parts'] {
   const parts: ContextMessage['parts'] = [{ type: 'text', text: message.text }]
   for (const id of message.imageIds ?? []) {
-    const dataUrl = urls[id]
-    if (dataUrl) parts.push({ type: 'image', dataUrl })
-    else parts.push({ type: 'text', text: '［图片］' })
+    if (urls[id]) parts.push({ type: 'image', dataUrl: urls[id] })
+    else parts.push({ type: 'text', text: i18n.t('review:freeAsk.missingImage') })
   }
   return parts
 }

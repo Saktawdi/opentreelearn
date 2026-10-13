@@ -19,6 +19,7 @@ import { createSyncLocal, purgeProjectRows, type SyncLocal } from '../sync-local
 import { SETTINGS_KEY, type AppDatabase } from './db'
 import { createReviewSessionRepository } from './review-sessions'
 import { createComposerDraftRepository } from './composer-drafts'
+import { createFreeAskRepository } from './free-ask'
 
 function createProjectRepository(db: AppDatabase, sync: SyncLocal): ProjectRepository {
   return {
@@ -212,6 +213,7 @@ export function createDexieRepositories(db: AppDatabase): Repositories {
     settings: createSettingsRepository(db, sync),
     reviewSessions: createReviewSessionRepository(db),
     composerDrafts: createComposerDraftRepository(db),
+    freeAsk: createFreeAskRepository(db, sync),
   }
 }
 
@@ -221,10 +223,12 @@ export function createDexieRepositories(db: AppDatabase): Repositories {
  */
 export async function purgeProject(db: AppDatabase, projectId: Id): Promise<void> {
   const project = await db.projects.get(projectId)
-  const [nodes, messages, notes] = await Promise.all([
+  const [nodes, messages, notes, conversations, freeAskMessages] = await Promise.all([
     db.nodes.where('projectId').equals(projectId).primaryKeys(),
     db.messages.where('projectId').equals(projectId).primaryKeys(),
     db.notes.where('projectId').equals(projectId).primaryKeys(),
+    db.freeAskConversations.where('projectId').equals(projectId).primaryKeys(),
+    db.freeAskMessages.where('projectId').equals(projectId).primaryKeys(),
   ])
 
   await purgeProjectRows(db, projectId)
@@ -236,6 +240,8 @@ export async function purgeProject(db: AppDatabase, projectId: Id): Promise<void
   for (const id of nodes) await sync.recordChange('node', id, 'delete')
   for (const id of messages) await sync.recordChange('message', id, 'delete')
   for (const id of notes) await sync.recordChange('note', id, 'delete')
+  for (const id of conversations) await sync.recordChange('freeAskConversation', id, 'delete')
+  for (const id of freeAskMessages) await sync.recordChange('freeAskMessage', id, 'delete')
 }
 
 /**

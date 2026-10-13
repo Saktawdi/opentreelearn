@@ -12,6 +12,7 @@ import type {
 } from '@/domain/models'
 import type { ReviewSessionRecord } from '@/domain/review/session'
 import type { SyncEntity } from '@/domain/sync'
+import type { FreeAskConversation, FreeAskMessage, FreeAskLocalState } from '@/domain/review/free-ask'
 
 /**
  * 复习会话文档。
@@ -89,6 +90,9 @@ export class AppDatabase extends Dexie {
   reviewSessions!: Table<ReviewSessionRow, Id>
   modelCatalog!: Table<ModelCatalogRecord, string>
   composerDrafts!: Table<ComposerDraft, Id>
+  freeAskConversations!: Table<FreeAskConversation, Id>
+  freeAskMessages!: Table<FreeAskMessage, Id>
+  freeAskLocal!: Table<FreeAskLocalState, Id>
 
   constructor(name = 'opentreelearn') {
     super(name)
@@ -132,6 +136,12 @@ export class AppDatabase extends Dexie {
     // 未完成的输入，跟着账号分库走即可，跨设备同步一份「没说完的话」没有意义。
     this.version(6).stores({
       composerDrafts: 'id, projectId',
+    })
+
+    this.version(7).stores({
+      freeAskConversations: 'id, projectId, updatedAt',
+      freeAskMessages: 'id, projectId, conversationId, [conversationId+createdAt]',
+      freeAskLocal: 'id, projectId',
     })
   }
 }

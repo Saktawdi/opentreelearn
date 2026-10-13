@@ -1,4 +1,5 @@
-import { accountDatabaseName, GUEST_DATABASE_NAME, switchDatabase } from '@/data'
+import { accountDatabaseName, currentDatabaseName, GUEST_DATABASE_NAME, switchDatabase } from '@/data'
+import { useFreeAskStore } from './free-ask-store'
 import { readAccountIdentity, readAccountToken } from '@/services/account/client'
 import { useProjectsStore } from './projects-store'
 import { useReviewSessionStore } from './review-session-store'
@@ -15,6 +16,10 @@ import { useWorkspaceStore } from './workspace-store'
  */
 export async function bindAccountDatabase(loginName: string | null): Promise<boolean> {
   const target = loginName ? accountDatabaseName(loginName) : GUEST_DATABASE_NAME
+  if (currentDatabaseName() !== target) {
+    await useFreeAskStore.getState().cancel()
+    await useFreeAskStore.getState().syncProject(null)
+  }
   const changed = await switchDatabase(target)
   if (changed) {
     // 换库就是换账号：内存里的复习会话属于上一个库，连在途请求一起丢弃 —— 否则迟到的
@@ -64,6 +69,7 @@ export async function reloadStores(): Promise<void> {
 
   // 到期概况也依赖库里内容（重载后可能整库换了），顺手标成未加载让页面自己刷新
   useReviewStore.getState().reset()
+  await useFreeAskStore.getState().reload()
 
   const workspace = useWorkspaceStore.getState()
   if (!workspace.projectId) return

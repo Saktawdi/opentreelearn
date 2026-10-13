@@ -28,7 +28,7 @@ export interface ComposerShellHandle {
  * 输入框里与「谁在用」无关的那部分数据。
  *
  * 可选字段就是能力开关：没有 `attachFiles` 就没有图片入口，没有 `quotes` 就没有
- * 引用栏 —— 自由问答不发图片，没必要为了形似摆一个点不动的按钮。
+ * 引用栏 —— 调用方只展示实际提供的能力。
  */
 export interface ComposerShellDraft {
   /** 草稿还在读：只渲染骨架，用户此刻打的字会被随后到达的草稿盖掉 */
@@ -79,7 +79,7 @@ const MAX_HEIGHT = 180
  * 边界划在这里 —— 组件只管**框**：自适应高度的正文、引用胶囊、待发图片、
  * Enter 发送与发送/停止按钮；内容从哪来、发出去做什么，由调用方的 `draft`
  * 与 `onSubmit` 决定。两处输入框长得一样、敲键行为一样，靠的就是这份共用；
- * 草稿存哪则各随各的（会话写 IndexedDB，自由问答随对话留在内存）。
+ * 草稿的保存由调用方处理，学习对话与自由问答各有自己的仓储。
  */
 export function ComposerShell({
   ref,

@@ -11,6 +11,7 @@ import type {
 } from '@/domain/models'
 import type { ComposerDraft } from '@/domain/composer/draft'
 import type { ReviewItemResult, ReviewSessionRecord } from '@/domain/review/session'
+import type { FreeAskConversation, FreeAskMessage, FreeAskLocalState } from '@/domain/review/free-ask'
 
 export interface ProjectRepository {
   list(): Promise<Project[]>
@@ -188,6 +189,16 @@ export interface ReviewSessionRepository {
   undo(input: UndoReviewInput): Promise<UndoReviewOutcome>
 }
 
+export interface FreeAskRepository {
+  listByProject(projectId: Id): Promise<FreeAskConversation[]>
+  get(id: Id): Promise<FreeAskConversation | undefined>
+  create(conversation: FreeAskConversation): Promise<void>
+  listMessages(conversationId: Id): Promise<FreeAskMessage[]>
+  saveMessage(message: FreeAskMessage): Promise<void>
+  getLocal(id: Id): Promise<FreeAskLocalState | undefined>
+  saveLocal(state: FreeAskLocalState): Promise<void>
+}
+
 export interface Repositories {
   projects: ProjectRepository
   projectSettings: ProjectSettingsRepository
@@ -198,4 +209,5 @@ export interface Repositories {
   settings: SettingsRepository
   reviewSessions: ReviewSessionRepository
   composerDrafts: ComposerDraftRepository
+  freeAsk: FreeAskRepository
 }

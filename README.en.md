@@ -34,6 +34,7 @@ Local-first: your data lives in your own browser (IndexedDB) and never leaves yo
 - 🌿 **Fork anywhere** — grow a new branch from any message; context is inherited automatically
 - 🤖 **Agent loop** — native function calling; read-only tools always on, write tools off by default, explicitly opt-in and strictly reversible
 - 🔁 **FSRS review** — spaced repetition + subtree mastery aggregation; weak points feed future review material
+- 💬 **Free Q&A history** — create and switch conversations in the Review Center, with messages and drafts saved automatically in browser IndexedDB. Conversations and messages participate in account data sync (requires an updated backend; image attachments remain local).
 - 🔒 **Local-first** — IndexedDB, works offline; optional cross-device sync (self-hosted)
 - 🔑 **BYOK, multi-provider** — OpenAI / Anthropic / Google / any OpenAI-compatible endpoint (LM Studio, Ollama, new-api, …)
 - 🌐 **Bilingual UI** — zh-CN (primary) / English, switchable in Settings

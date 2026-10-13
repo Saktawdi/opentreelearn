@@ -1,5 +1,6 @@
 import type { Id, ProjectSettings } from '@/domain/models'
 import { normalizeGlobalSettings } from '@/domain/normalize'
+import { freeAskConversationSchema, freeAskMessageSchema } from '@/domain/review/free-ask'
 import {
   GLOBAL_SETTINGS_ID,
   type SyncEntity,
@@ -48,6 +49,9 @@ export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<
       db.notes,
       db.reviewSessions,
       db.composerDrafts,
+      db.freeAskConversations,
+      db.freeAskMessages,
+      db.freeAskLocal,
     ],
     async () => {
       await db.projects.delete(projectId)
@@ -60,13 +64,16 @@ export async function purgeProjectRows(db: AppDatabase, projectId: Id): Promise<
       await db.reviewSessions.where('projectId').equals(projectId).delete()
       // 输入框草稿同理，还带着待发图片的 Blob，不清就是实打实的孤儿数据
       await db.composerDrafts.where('projectId').equals(projectId).delete()
+      await db.freeAskConversations.where('projectId').equals(projectId).delete()
+      await db.freeAskMessages.where('projectId').equals(projectId).delete()
+      await db.freeAskLocal.where('projectId').equals(projectId).delete()
     },
   )
 }
 
 /** 项目/节点/消息/笔记的形状一致：主键 id，带 updatedAt。 */
 function tableAdapter<T extends { id: Id; updatedAt?: number }>(
-  table: AppDatabase['projects'] | AppDatabase['nodes'] | AppDatabase['messages'] | AppDatabase['notes'],
+  table: AppDatabase['projects'] | AppDatabase['nodes'] | AppDatabase['messages'] | AppDatabase['notes'] | AppDatabase['freeAskConversations'] | AppDatabase['freeAskMessages'],
 ): EntityAdapter {
   const rows = table as unknown as {
     get(id: Id): Promise<T | undefined>
@@ -159,6 +166,9 @@ export async function importRecordsInto(
     [source.messages, target.messages],
     [source.notes, target.notes],
     [source.assets, target.assets],
+    [source.freeAskConversations, target.freeAskConversations],
+    [source.freeAskMessages, target.freeAskMessages],
+    [source.freeAskLocal, target.freeAskLocal],
   ] as const) {
     const rows = await sourceTable.toArray()
     if (rows.length > 0) {
@@ -250,6 +260,8 @@ export function createSyncLocal(db: AppDatabase) {
     node: tableAdapter(db.nodes),
     message: tableAdapter(db.messages),
     note: tableAdapter(db.notes),
+    freeAskConversation: tableAdapter(db.freeAskConversations),
+    freeAskMessage: tableAdapter(db.freeAskMessages),
     projectSettings: {
       // 主键是 projectId 而不是 id，且历史数据可能没有 updatedAt
       load: async (projectId) => {
@@ -411,6 +423,11 @@ export function createSyncLocal(db: AppDatabase) {
         return 'skipped'
       }
 
+      if (change.entity === 'freeAskConversation' || change.entity === 'freeAskMessage') {
+        const parsed = (change.entity === 'freeAskConversation' ? freeAskConversationSchema : freeAskMessageSchema).safeParse(change.data)
+        if (!parsed.success || parsed.data.id !== change.id) return 'skipped'
+      }
+
       if (stored) {
         if (isSamePayload(stored.data, change.data as Record<string, unknown>)) return 'skipped'
         const pending = await newestPendingStamp(change.entity, change.id)
@@ -458,6 +475,9 @@ export function createSyncLocal(db: AppDatabase) {
           db.notes,
           db.outbox,
           db.reviewSessions,
+          db.freeAskConversations,
+          db.freeAskMessages,
+          db.freeAskLocal,
         ],
         async () => {
           await Promise.all([
@@ -470,6 +490,9 @@ export function createSyncLocal(db: AppDatabase) {
             db.outbox.clear(),
             // 「以云端为准」= 本机被清空重拉；会话不参与同步，留下就成了孤儿
             db.reviewSessions.clear(),
+            db.freeAskConversations.clear(),
+            db.freeAskMessages.clear(),
+            db.freeAskLocal.clear(),
           ])
         },
       )

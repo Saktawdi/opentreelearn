@@ -17,6 +17,7 @@ import {
 import { useAccountStore } from './account-store'
 import { reloadStores } from './data-session'
 import { useReviewSessionStore } from './review-session-store'
+import { useFreeAskStore } from './free-ask-store'
 
 /** 单次同步最多拉多少页（防御：服务端游标异常时别无限循环）。 */
 const MAX_PULL_PAGES = 50
@@ -320,6 +321,7 @@ export const useSyncStore = create<SyncState>()(
       }
 
       if (policy === 'cloud') {
+        await useFreeAskStore.getState().syncProject(null)
         await local.clearLocalData()
         // 库里连会话一起清空了，内存里那份（属于刚被清掉的库）也必须丢弃，
         // 否则下一次草稿保存会把它写回去，留下一份引用不到节点的幽灵会话

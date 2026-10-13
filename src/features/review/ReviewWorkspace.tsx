@@ -36,7 +36,7 @@ interface ReviewWorkspaceProps {
  * - 原资料按需展开：桌面右侧侧边栏、窄屏抽屉；
  * - 刷新、浏览器后退都保留进度与草稿；
  * - 概览另提供「自由问答」面板：随口问进度（今天学了什么）不必走一遍练习流程，
- *   问答只在内存里，不写节点、不改排期；
+ *   问答有独立的持久化历史，并支持新建与切换对话；
  * - 与学习工作区完全解耦，不创建 kind: 'review' 节点。
  */
 export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
@@ -381,7 +381,7 @@ export function ReviewWorkspace({ projectId, onLeave }: ReviewWorkspaceProps) {
         </div>
       )}
 
-      {/* 自由问答面板：随口问进度用，问答不落库、不写节点 */}
+      {/* 自由问答面板：独立保存历史，不混入练习评分消息 */}
       <FreeAskPanel
         open={freeAskOpen}
         onOpenChange={setFreeAskOpen}

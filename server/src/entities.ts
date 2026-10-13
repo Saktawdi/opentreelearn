@@ -10,6 +10,8 @@ export const SYNC_ENTITIES = [
   'note',
   'globalSettings',
   'asset',
+  'freeAskConversation',
+  'freeAskMessage',
 ] as const
 
 export type SyncEntity = (typeof SYNC_ENTITIES)[number]

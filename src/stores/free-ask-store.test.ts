@@ -7,6 +7,8 @@ import { runFreeAskRequest } from '@/services/llm/free-ask'
 import { useFreeAskStore } from './free-ask-store'
 import { useSettingsStore } from './settings-store'
 import { useWorkspaceStore } from './workspace-store'
+import { getDatabase, getRepositories, getSyncLocal } from '@/data'
+import { bindAccountDatabase, reloadStores } from './data-session'
 
 vi.mock('@/services/llm/free-ask', () => ({ runFreeAskRequest: vi.fn() }))
 
@@ -53,12 +55,15 @@ function makeImageFile(): File {
   return new File([bytes], 'board.png', { type: 'image/png' })
 }
 
-beforeEach(() => {
-  useFreeAskStore.getState().syncProject(null)
+beforeEach(async () => {
+  await useFreeAskStore.getState().syncProject(null)
+  await bindAccountDatabase(null)
+  await Promise.all([getDatabase().freeAskConversations.clear(), getDatabase().freeAskMessages.clear(), getDatabase().freeAskLocal.clear(), getDatabase().outbox.clear()])
   useFreeAskStore.getState().reset()
   useSettingsStore.setState({ settings: createDefaultSettings(), loaded: true })
   seedWorkspace()
   mocked.mockReset()
+  await useFreeAskStore.getState().syncProject('p1')
 })
 
 describe('自由问答 store', () => {
@@ -122,7 +127,7 @@ describe('自由问答 store', () => {
     const pending = useFreeAskStore.getState().ask('今天我学了什么？')
     await waitFor(() => useFreeAskStore.getState().streaming?.text === '你已经学完了《极限》')
 
-    useFreeAskStore.getState().cancel()
+    await useFreeAskStore.getState().cancel()
     await pending
 
     const state = useFreeAskStore.getState()
@@ -132,21 +137,43 @@ describe('自由问答 store', () => {
     expect(state.messages.some((message) => message.text.includes('迟到内容'))).toBe(false)
   })
 
-  it('换项目即清空对话，避免上一个项目的主题串到新项目', async () => {
+  it('换项目显示各自的历史，再切回仍能恢复原对话', async () => {
     mocked.mockResolvedValueOnce(okOutput())
     await useFreeAskStore.getState().ask('今天我学了什么？')
     expect(useFreeAskStore.getState().messages).toHaveLength(2)
 
-    useFreeAskStore.getState().syncProject('p2')
+    await useFreeAskStore.getState().syncProject('p2')
     expect(useFreeAskStore.getState().messages).toEqual([])
     expect(useFreeAskStore.getState().contextNote).toBeNull()
 
     // 同一项目内开关面板不会丢对话
-    useFreeAskStore.getState().syncProject('p2')
+    await useFreeAskStore.getState().syncProject('p2')
     expect(useFreeAskStore.getState().projectId).toBe('p2')
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().messages).toHaveLength(2)
   })
 
-  it('输入框草稿留在 store 里：提问进对话即归零，换项目与清空一并带走', async () => {
+  it('重置发生在项目切换等待期间时，旧加载不能恢复已退出的项目', async () => {
+    const pending = useFreeAskStore.getState().syncProject('p2')
+    useFreeAskStore.getState().reset()
+    await pending
+    expect(useFreeAskStore.getState().projectId).toBeNull()
+    expect(useFreeAskStore.getState().loading).toBe(false)
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().projectId).toBe('p1')
+  })
+
+  it('加载历史失败后，再打开同一项目能够重试', async () => {
+    const list = vi.spyOn(getRepositories().freeAsk, 'listByProject').mockRejectedValueOnce(new Error('temporary'))
+    await useFreeAskStore.getState().syncProject('p2')
+    expect(useFreeAskStore.getState().error).toBe(i18n.t('review:freeAsk.loadFailed'))
+    await useFreeAskStore.getState().syncProject('p2')
+    expect(useFreeAskStore.getState().error).toBeNull()
+    expect(useFreeAskStore.getState().loading).toBe(false)
+    list.mockRestore()
+  })
+
+  it('输入框草稿：提问进对话即归零，换项目与重置会清理显示', async () => {
     mocked.mockResolvedValueOnce(okOutput())
 
     // 关掉面板再打开不经过 store，草稿必须原样留着
@@ -158,12 +185,89 @@ describe('自由问答 store', () => {
     expect(useFreeAskStore.getState().draft).toBe('')
 
     useFreeAskStore.getState().setDraft('换项目前打的半句')
-    useFreeAskStore.getState().syncProject('p2')
+    await useFreeAskStore.getState().syncProject('p2')
     expect(useFreeAskStore.getState().draft).toBe('')
 
     useFreeAskStore.getState().setDraft('清空前打的半句')
     useFreeAskStore.getState().reset()
     expect(useFreeAskStore.getState().draft).toBe('')
+  })
+
+  it('新建、切换、刷新恢复：每个对话有自己的消息与草稿，继续提问只带当前历史', async () => {
+    mocked.mockResolvedValue(okOutput())
+    await useFreeAskStore.getState().ask('第一份对话')
+    const firstId = useFreeAskStore.getState().conversationId!
+    useFreeAskStore.getState().setDraft('第一份草稿')
+    await useFreeAskStore.getState().newConversation()
+    const secondId = useFreeAskStore.getState().conversationId!
+    expect(secondId).not.toBe(firstId)
+    expect(useFreeAskStore.getState().messages).toEqual([])
+    await useFreeAskStore.getState().ask('第二份对话')
+    expect(mocked.mock.calls[1][0].history).toEqual([])
+    await useFreeAskStore.getState().selectConversation(firstId)
+    expect(useFreeAskStore.getState().draft).toBe('第一份草稿')
+    expect(useFreeAskStore.getState().messages[0].text).toBe('第一份对话')
+    useFreeAskStore.getState().reset()
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().conversationId).toBe(firstId)
+    expect(useFreeAskStore.getState().draft).toBe('第一份草稿')
+    expect(useFreeAskStore.getState().conversations).toHaveLength(2)
+    await useFreeAskStore.getState().ask('接着问第一份')
+    expect(mocked.mock.calls[2][0].history[0].parts[0].text).toBe('第一份对话')
+    expect(JSON.stringify(mocked.mock.calls[2][0].history)).not.toContain('第二份对话')
+  })
+
+  it('生成时切换对话保存部分回答，迟到回调不串入新对话', async () => {
+    await useFreeAskStore.getState().newConversation()
+    const firstId = useFreeAskStore.getState().conversationId!
+    mocked.mockImplementationOnce(async (input) => {
+      input.onDelta('```mermaid\nflowchart LR\n A-->B\n```')
+      await new Promise<void>((resolve) => input.signal.addEventListener('abort', () => resolve()))
+      input.onDelta('迟到的消息')
+      return okOutput({ clean: '迟到的消息' })
+    })
+    const pending = useFreeAskStore.getState().ask('画图')
+    await waitFor(() => Boolean(useFreeAskStore.getState().streaming?.text))
+    await useFreeAskStore.getState().newConversation()
+    await pending
+    expect(useFreeAskStore.getState().messages).toEqual([])
+    await useFreeAskStore.getState().selectConversation(firstId)
+    expect(useFreeAskStore.getState().messages.at(-1)).toMatchObject({ incomplete: true, text: '```mermaid\nflowchart LR\n A-->B\n```' })
+    expect(JSON.stringify(useFreeAskStore.getState().messages)).not.toContain('迟到')
+  })
+
+  it('流式内容定期保存，模拟刷新能恢复已生成的部分', async () => {
+    mocked.mockImplementationOnce(async (input) => {
+      input.onDelta('刷新前已经生成的内容')
+      await new Promise<void>((resolve) => input.signal.addEventListener('abort', () => resolve()))
+      return okOutput()
+    })
+    const pending = useFreeAskStore.getState().ask('问题')
+    await waitFor(() => Boolean(useFreeAskStore.getState().streaming?.text))
+    await waitFor(() => getDatabase().isOpen())
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    useFreeAskStore.getState().reset()
+    await pending
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().messages.at(-1)).toMatchObject({ text: '刷新前已经生成的内容', incomplete: true })
+  })
+
+  it('同步拉取后更新历史与当前消息，账号切换隔离历史', async () => {
+    mocked.mockResolvedValueOnce(okOutput())
+    await useFreeAskStore.getState().ask('本机问题')
+    const conversationId = useFreeAskStore.getState().conversationId!
+    await getRepositories().projects.create({ id: 'p1', name: '数学', tags: [], createdAt: 1, updatedAt: 1 })
+    await getSyncLocal().applyRemote({ entity: 'freeAskMessage', id: 'remote-question', rev: 1, updatedAt: Date.now(), deletedAt: null,
+      data: { id: 'remote-question', conversationId, projectId: 'p1', role: 'user', text: '另一台设备的问题', createdAt: Date.now() + 100, updatedAt: Date.now() },
+    })
+    await reloadStores()
+    expect(useFreeAskStore.getState().messages.at(-1)?.text).toBe('另一台设备的问题')
+    await bindAccountDatabase('free-ask-test-account')
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().messages).toEqual([])
+    await bindAccountDatabase(null)
+    await useFreeAskStore.getState().syncProject('p1')
+    expect(useFreeAskStore.getState().messages.some((message) => message.text === '本机问题')).toBe(true)
   })
 
   it('随问贴图：图片落 assets、dataUrl 附上本轮提问，问句与图片一起进消息', async () => {
