@@ -16,11 +16,11 @@ import { normalizeForRender } from './render-source'
  */
 
 describe('渲染坐标系（登记源文 === 渲染串）', () => {
-  it('含不受支持命令的消息：公式前后的标注区间都切出正确原文', () => {
+  it.each(['user', 'assistant'] as const)('%s 消息含不受支持命令时，公式前后的标注区间都切出正确原文', (role) => {
     const message = makeMessage({
       id: 'm1',
       nodeId: 'n1',
-      role: 'assistant',
+      role,
       parts: [{ type: 'text', text: '记号 $\\centernot\\implies$ 之后是后文。' }],
     })
     const source = messageSource(message)
@@ -36,6 +36,36 @@ describe('渲染坐标系（登记源文 === 渲染串）', () => {
     const tail = source.indexOf('之后是后文。')
     // 文字单位的区间含公式后的那个空格（17,24）
     expect(html).toContain(`data-otl-src="${tail - 1},${tail + 6}"`)
+  })
+
+  it('用户引用与多段正文渲染 Markdown、公式、表格和代码，后文坐标仍与源码一致', () => {
+    const message = makeMessage({
+      id: 'm1',
+      nodeId: 'n1',
+      role: 'user',
+      parts: [
+        { type: 'quote', text: '**已知** $\\mathbbm{R}$' },
+        { type: 'text', text: '# 求解\n\n$$\nx^2 = 4\n$$\n\n- **步骤** `x`\n\n| x | y |\n|---|---|\n| 2 | 4 |' },
+        { type: 'text', text: '```python\nx = 2\n```\n\n后文定位。\n\n[[rating:good]]' },
+      ],
+    })
+    const source = messageSource(message)
+    const html = renderToStaticMarkup(createElement(MarkdownView, { content: source }))
+
+    expect(html).toContain('<blockquote>')
+    expect(html).toContain('<strong>')
+    expect(html).toContain('<h1>')
+    expect(html).toContain('katex-display')
+    expect(html).toContain('<ul>')
+    expect(html).toContain('<table>')
+    expect(html).toContain('shiki-fallback')
+    expect(html).not.toContain('katex-error')
+    // 用户输入保留评分字样；只有助手回答处理协议。
+    expect(html).toContain('[[rating:good]]')
+    const tail = source.indexOf('后文定位。')
+    expect(html).toContain(`data-otl-src="${tail},${tail + 5}"`)
+    const formula = source.indexOf('$\\mathbb{R}$')
+    expect(html).toContain(`data-otl-src="${formula},${formula + '$\\mathbb{R}$'.length}"`)
   })
 
   it('列表项 cases 修复后：后文标题的源文区间仍然成立', () => {

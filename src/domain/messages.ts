@@ -33,7 +33,7 @@ export function messageText(message: Message): string {
     .trim()
 }
 
-/** 用户自己敲的正文（不含引用与图片），气泡与标题用它。 */
+/** 用户自己敲的正文（不含引用与图片），编辑与标题用它。 */
 export function messageBodyText(message: Message): string {
   return message.parts
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -135,60 +135,10 @@ export function deriveTitle(message: Message): string {
  * （DOM 文字是 `r2=2a2cos2θ`）、反引号与围栏被吃掉 —— 用户框选到的是字形，
  * 但标注、AI 上下文与写工具要的是模型能读懂的原文（见 lib/markdown/source-map.ts）。
  *
- * 两边口径必须与渲染端完全一致：助手气泡走 MarkdownView，它渲染的就是
- * `normalizeForRender(stripReviewRating(messageText))`（见 lib/markdown/render-source，
- * 那一个入口是渲染与坐标的双份保证）；用户气泡直接渲染引用与正文，
- * 所以用它自己的 `messageText`（其中引用带 `> ` 前缀，与进 AI 上下文的样子相同）。
+ * 用户与助手气泡都走 MarkdownView，坐标与渲染共用 normalizeForRender。
+ * 只有助手消息剥掉复习评分协议；用户输入中的同样文字按原意保留。
  */
 export function messageSource(message: Message): string {
   const text = messageText(message)
-  return message.role === 'user' ? text : normalizeForRender(stripReviewRating(text))
-}
-
-/** 源文里的一截：`[start, end)`，供 JSX 直接标到对应元素上（见 note-anchor.sourceSpanProps）。 */
-export interface SourceSpan {
-  start: number
-  end: number
-}
-
-export interface UserBodySpans {
-  /** 与 `messageQuotes()` 下标对齐；引用块按整段锚定（渲染时 `> ` 前缀被去掉了） */
-  quotes: (SourceSpan | null)[]
-  body: SourceSpan | null
-  /** 正文渲染文字与源文是否逐字一致（多段正文拼在一起时对不上，只能整段锚定） */
-  bodyExact: boolean
-}
-
-/**
- * 用户气泡里各块的源文区间。
- *
- * 用户气泡不走 Markdown：引用渲染成 blockquote、正文渲染成一个 `<p>`，所以要在这里
- * 把「哪一块对应源文的哪一截」算出来，框选与高亮才有坐标可用。
- */
-export function userBodySpans(message: Message): UserBodySpans {
-  const source = messageText(message)
-  const quotes: (SourceSpan | null)[] = []
-  const bodies: SourceSpan[] = []
-  let cursor = 0
-
-  for (const part of message.parts) {
-    const block = part.type === 'quote' ? quoteBlock(part.text) : part.type === 'text' ? part.text : null
-    const at = block?.trim() ? source.indexOf(block, cursor) : -1
-    if (at < 0 || block === null) {
-      if (part.type === 'quote') quotes.push(null)
-      continue
-    }
-
-    cursor = at + block.length
-    const span = { start: at, end: cursor }
-    if (part.type === 'quote') quotes.push(span)
-    else bodies.push(span)
-  }
-
-  // 气泡里的正文是一个整体（`messageBodyText` 把所有 text part 接在一起），
-  // 只有单段时才与源文逐字一致；多段则整段锚定，宁可粗也不要错位。
-  const first = bodies[0]
-  const last = bodies[bodies.length - 1]
-  const body = first && last ? { start: first.start, end: last.end } : null
-  return { quotes, body, bodyExact: bodies.length === 1 }
+  return normalizeForRender(message.role === 'user' ? text : stripReviewRating(text))
 }

@@ -10,7 +10,9 @@
     "send": "发送",
     "busyElsewhere": "另一个节点正在生成，等它结束",
     "quotedDraft_other": "已引用 {{count}} 段内容…",
-    "promptTitle": "探讨与提问"
+    "promptTitle": "探讨与提问",
+    "showPreview": "显示预览",
+    "hidePreview": "收起预览"
   },
   "action": {
     "cancel": "取消",

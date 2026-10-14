@@ -220,16 +220,8 @@ export function FreeAskPanel({ open, onOpenChange, projectId, hasChatModel }: Fr
                     <span>{message.role === 'assistant' ? t('roles.mentor') : t('roles.learner')}</span>
                     <span>{formatRelativeTime(message.createdAt)}</span>
                   </div>
-                  {message.role === 'assistant' ? (
-                    <MarkdownView content={message.text} />
-                  ) : (
-                    <>
-                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink">
-                        {message.text}
-                      </p>
-                      {(message.imageIds?.length ?? 0) > 0 ? <MessageImages imageIds={message.imageIds!} /> : null}
-                    </>
-                  )}
+                  <MarkdownView content={message.text} />
+                  {(message.imageIds?.length ?? 0) > 0 ? <MessageImages imageIds={message.imageIds!} /> : null}
                   {message.incomplete ? (
                     <p className="mt-2 text-2xs text-faint">{t('freeAsk.incomplete')}</p>
                   ) : null}

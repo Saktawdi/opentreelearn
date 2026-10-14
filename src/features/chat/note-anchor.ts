@@ -31,8 +31,7 @@ export function bodyElement(messageId: Id): HTMLElement | null {
 }
 
 /**
- * 写在正文元素上的源文区间。用户气泡的引用 / 正文是直接渲染的（不走 Markdown），
- * 它们的可标注单位由 JSX 自己标注，口径与 rehype 插件一致，所以在这里给出同一套属性。
+ * 给直接渲染的正文元素标记源文区间，口径与 Markdown 的 rehype 插件一致。
  */
 export function sourceSpanProps(
   span: { start: number; end: number },

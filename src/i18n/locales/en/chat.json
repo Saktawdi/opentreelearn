@@ -11,7 +11,9 @@
     "busyElsewhere": "Another node is generating; wait for it to finish",
     "quotedDraft_one": "{{count}} quote attached…",
     "quotedDraft_other": "{{count}} quotes attached…",
-    "promptTitle": "Discuss & Ask"
+    "promptTitle": "Discuss & Ask",
+    "showPreview": "Show preview",
+    "hidePreview": "Hide preview"
   },
   "action": {
     "cancel": "Cancel",

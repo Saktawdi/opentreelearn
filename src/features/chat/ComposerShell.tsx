@@ -7,11 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip } from '@/components/ui/tooltip'
 import type { Id } from '@/domain/models'
 import { ENTER_FAST } from '@/lib/motion'
-import { normalizeWhitespace } from '@/lib/text'
+import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { useIsMobile } from '@/lib/use-is-mobile'
 import { cn } from '@/lib/utils'
 import { imagesFromDataTransfer } from '@/services/images'
 import type { PendingImage } from './useComposerDraft'
+import { MarkdownPreview } from './MarkdownPreview'
 
 /** 待发图片的形状由草稿钩子定义，这里转出去，调用方不必绕到实现文件里取类型。 */
 export type { PendingImage }
@@ -271,26 +272,28 @@ export function ComposerShell({
         <div className="flex flex-wrap gap-1.5 px-2 pt-2 empty:hidden">
           <AnimatePresence initial={false}>
             {quotes.map((quote) => (
-              <motion.span
+              <motion.div
                 key={quote}
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
                 transition={ENTER_FAST}
                 title={quote}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-accent/25 bg-accent-soft/50 py-0.5 pl-2 pr-1 text-2xs text-ink-soft"
+                className="inline-flex min-w-0 max-w-full items-start gap-1.5 rounded-lg border border-accent/25 bg-accent-soft/50 py-1.5 pl-2 pr-1 text-2xs text-ink-soft"
               >
-                <MessageSquareQuote className="h-3 w-3 shrink-0 text-accent/80" />
-                <span className="max-w-[280px] truncate">{normalizeWhitespace(quote)}</span>
+                <MessageSquareQuote className="mt-0.5 h-3 w-3 shrink-0 text-accent/80" />
+                <div className="min-w-0 max-w-[280px] max-h-24 overflow-auto">
+                  <MarkdownView content={quote} className="text-xs" />
+                </div>
                 <button
                   type="button"
                   aria-label={t('composer.removeQuoteAria')}
                   onClick={() => draft.removeQuote?.(quote)}
-                  className="rounded-full p-0.5 text-muted transition-colors hover:text-ink"
+                  className="shrink-0 rounded-full p-0.5 text-muted transition-colors hover:text-ink"
                 >
                   <X className="h-3 w-3" />
                 </button>
-              </motion.span>
+              </motion.div>
             ))}
           </AnimatePresence>
         </div>
@@ -299,27 +302,30 @@ export function ComposerShell({
         {draft.loading ? (
           <Skeleton className="mx-3 my-3 h-5 w-2/3" />
         ) : (
-          <textarea
-            ref={textareaRef}
-            id={textareaId}
-            value={draft.text}
-            rows={1}
-            onChange={(event) => draft.setText(event.target.value)}
-            onPaste={onPaste}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && isMobile && collapsibleOnMobile) {
-                event.preventDefault()
-                setMobileExpanded(false)
-                return
-              }
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault()
-                if (canSubmit) void handleFormSubmit()
-              }
-            }}
-            placeholder={placeholder}
-            className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
-          />
+          <>
+            <textarea
+              ref={textareaRef}
+              id={textareaId}
+              value={draft.text}
+              rows={1}
+              onChange={(event) => draft.setText(event.target.value)}
+              onPaste={onPaste}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && isMobile && collapsibleOnMobile) {
+                  event.preventDefault()
+                  setMobileExpanded(false)
+                  return
+                }
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault()
+                  if (canSubmit) void handleFormSubmit()
+                }
+              }}
+              placeholder={placeholder}
+              className="max-h-[180px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none placeholder:text-faint"
+            />
+            <MarkdownPreview content={draft.text} className="mx-3 mb-1" />
+          </>
         )}
 
         <div className="flex items-center justify-between px-2 pb-1.5">

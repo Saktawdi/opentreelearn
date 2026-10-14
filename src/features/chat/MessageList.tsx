@@ -48,16 +48,14 @@ import {
   messagePreview,
   messageQuotes,
   messageSource,
-  messageText,
   messageToolParts,
   replaceMessageText,
-  userBodySpans,
 } from '@/domain/messages'
 import type { Id, Message, MessagePart } from '@/domain/models'
 import type { NodeActionKind } from '@/domain/node-ops/actions'
 import { clampAgentMaxSteps } from '@/domain/defaults'
 import { MAX_THREAD_VERSIONS } from '@/domain/thread/mutations'
-import { stripReviewRating, stripStreamingReviewRating } from '@/domain/review/protocol'
+import { stripStreamingReviewRating } from '@/domain/review/protocol'
 import { resolveThread, summarizeSlotVersions } from '@/domain/thread/resolve'
 import { MarkdownView } from '@/lib/markdown/MarkdownView'
 import { formatClock } from '@/lib/time'
@@ -66,10 +64,8 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { isStreamingIn, useWorkspaceStore } from '@/stores/workspace-store'
 import { MessageNotes } from './MessageNotes'
 import { ToolActivities, type ToolActivityItem } from './ToolActivities'
-import {
-  bodyProps,
-  sourceSpanProps,
-} from './note-anchor'
+import { bodyProps } from './note-anchor'
+import { MarkdownPreview } from './MarkdownPreview'
 import { useAssetUrls } from './useAssetUrls'
 import { useNoteHighlights } from './useNoteHighlights'
 import { useThrottledValue } from './useThrottledValue'
@@ -276,9 +272,9 @@ const MessageEditor = memo(function MessageEditor({
           {quotes.map((quote, index) => (
             <blockquote
               key={index}
-              className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
+              className="rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
             >
-              {quote}
+              <MarkdownView content={quote} className="text-xs" />
             </blockquote>
           ))}
         </div>
@@ -309,6 +305,8 @@ const MessageEditor = memo(function MessageEditor({
         }}
         className="max-h-[180px] w-full resize-none bg-transparent text-base leading-relaxed text-ink outline-none"
       />
+
+      <MarkdownPreview content={text} />
 
       {assetUrls.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -380,16 +378,9 @@ const MessageBubble = memo(function MessageBubble({
 }) {
   const { t } = useTranslation('chat')
   const isUser = message.role === 'user'
-  const text = messageText(message)
-  const quotes = messageQuotes(message)
-  const body = messageBodyText(message)
   const notes = useWorkspaceStore((state) => state.notesByMessage[message.id]) ?? []
   // 标注坐标系的源文（见 domain/messages.messageSource）：渲染与锚点共用这一串
   const source = messageSource(message)
-  const userSpans = useMemo(
-    () => (isUser ? userBodySpans(message) : null),
-    [isUser, message],
-  )
   // 落库的工具记录：渲染成工具卡（在正文容器之外），让「查过什么」在刷新后仍然可见
   const toolItems: ToolActivityItem[] = messageToolParts(message).map((part) => ({
     callId: part.callId,
@@ -406,10 +397,7 @@ const MessageBubble = memo(function MessageBubble({
   const bodyRef = useRef<HTMLDivElement>(null)
   useNoteHighlights(bodyRef, message.id, notes, source)
 
-  const cleanText = stripReviewRating(text).trim()
-  const hasContent = isUser
-    ? quotes.length > 0 || Boolean(body?.trim()) || assetUrls.length > 0
-    : Boolean(cleanText) || assetUrls.length > 0
+  const hasContent = Boolean(source.trim()) || assetUrls.length > 0
 
   if (editing && isUser) {
     return (
@@ -453,34 +441,9 @@ const MessageBubble = memo(function MessageBubble({
               : 'rounded-xl rounded-bl-sm border border-line/40 bg-surface/70 px-3.5 py-3',
           )}
         >
-          {isUser ? (
-            <div ref={bodyRef} {...bodyProps(message.id)} className="flex flex-col gap-2">
-              {quotes.map((quote, index) => (
-                <blockquote
-                  key={index}
-                  {...(userSpans?.quotes[index]
-                    ? sourceSpanProps(userSpans.quotes[index])
-                    : {})}
-                  className="whitespace-pre-wrap rounded-md border-l-2 border-accent/40 bg-canvas/40 px-2.5 py-1.5 text-xs leading-relaxed text-muted"
-                >
-                  {quote}
-                </blockquote>
-              ))}
-              {body ? (
-                <p
-                  {...(userSpans?.body ? sourceSpanProps(userSpans.body, userSpans.bodyExact) : {})}
-                  className="whitespace-pre-wrap text-base leading-relaxed text-ink"
-                >
-                  {body}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <div ref={bodyRef} {...bodyProps(message.id)}>
-              {/* 复习评分标记是给客户端与模型看的协议，不进正文 */}
-              <MarkdownView content={source} />
-            </div>
-          )}
+          <div ref={bodyRef} {...bodyProps(message.id)}>
+            <MarkdownView content={source} />
+          </div>
           <MessageImages urls={assetUrls} />
         </div>
       ) : null}
