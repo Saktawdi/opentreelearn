@@ -20,6 +20,7 @@ export function SyncPanel() {
   const pending = useSyncStore((state) => state.pending)
   const lastSyncedAt = useSyncStore((state) => state.lastSyncedAt)
   const syncNow = useSyncStore((state) => state.syncNow)
+  const dataTransferBusy = useSyncStore((state) => state.dataTransferBusy)
   const [running, setRunning] = useState(false)
 
   const busy = running || phase === 'syncing'
@@ -67,7 +68,7 @@ export function SyncPanel() {
           </p>
         </div>
 
-        <Button variant="secondary" size="sm" disabled={busy} onClick={() => void run()}>
+        <Button variant="secondary" size="sm" disabled={busy || dataTransferBusy} onClick={() => void run()}>
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (

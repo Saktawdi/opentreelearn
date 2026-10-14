@@ -147,6 +147,19 @@ afterEach(() => {
 })
 
 describe('推送与拉取', () => {
+  it('导入导出数据期间暂停手动与自动同步，避免云端覆盖备份操作', async () => {
+    const sync = useSyncStore.getState()
+    sync.setDataTransferBusy(true)
+    try {
+      expect(await sync.syncNow()).toEqual({ ok: false, pushed: 0, pulled: 0 })
+      expect(await sync.autoSync('focus')).toBeNull()
+      expect(server.calls).toEqual([])
+      expect(useSyncStore.getState().phase).toBe('idle')
+    } finally {
+      sync.setDataTransferBusy(false)
+    }
+  })
+
   it('把本地变更推到服务端，并清空台账、推进状态', async () => {
     await getRepositories().projects.create(makeProject('p1', '本机项目'))
 

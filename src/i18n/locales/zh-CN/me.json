@@ -65,7 +65,7 @@
   },
   "page": {
     "title": "我的",
-    "subtitle": "账号信息与个人背景。",
+    "subtitle": "账号信息、个人背景与数据备份。",
     "account": {
       "title": "账号",
       "description": "登录后使用同一账号；数据按账号分别保存在本机。",
@@ -94,6 +94,26 @@
       "saved": "已保存",
       "signedOut": "已退出登录"
     }
+  },
+  "backup": {
+    "title": "导入与导出",
+    "description": "导出当前账号（未登录时为游客）的全部本机数据：所有项目、节点、完整对话及历史版本、图片、标注、复习排期与会话、自由问答、输入草稿、个人背景和模型设置。",
+    "export": "导出全部数据",
+    "import": "导入数据",
+    "exporting": "正在导出…",
+    "importing": "正在导入…",
+    "fileHint": "使用 JSON 备份文件导入。备份包含模型服务的 API Key，请妥善保存。",
+    "confirmTitle": "导入备份数据",
+    "confirmDescription": "备份数据将合并到当前账号。相同记录及个人设置会以备份为准，其他现有数据会保留；登录后，导入的学习数据会按当前账号的同步设置同步。",
+    "summary": "{{projects}} 个项目 · {{nodes}} 个节点 · {{messages}} 条对话消息 · {{images}} 张已发送图片（另含草稿中的图片）",
+    "cancel": "取消",
+    "confirmImport": "确认导入",
+    "exported": "已导出全部数据",
+    "imported": "已导入备份，包含 {{count}} 个项目",
+    "exportFailed": "导出失败：{{message}}",
+    "importFailed": "导入失败：{{message}}",
+    "invalidFile": "无效或不兼容的备份文件，请选择从「我的」页面导出的 JSON 备份",
+    "accountChanged": "当前账号已切换，请重新选择备份文件"
   },
   "sync": {
     "status": {

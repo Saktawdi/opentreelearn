@@ -66,7 +66,7 @@
   },
   "page": {
     "title": "Me",
-    "subtitle": "Account info and personal background.",
+    "subtitle": "Account info, personal background and data backups.",
     "account": {
       "title": "Account",
       "description": "Sign in to use the same account everywhere; data is stored locally per account.",
@@ -95,6 +95,26 @@
       "saved": "Saved",
       "signedOut": "Signed out"
     }
+  },
+  "backup": {
+    "title": "Import and export",
+    "description": "Export all local data for the current account (or guest): every project, node, full chat and historical version, image, note, review schedule and session, free Q&A, draft, personal background and model setting.",
+    "export": "Export all data",
+    "import": "Import data",
+    "exporting": "Exporting…",
+    "importing": "Importing…",
+    "fileHint": "Import a JSON backup file. Backups include model provider API keys; keep them secure.",
+    "confirmTitle": "Import backup data",
+    "confirmDescription": "Merge this backup into the current account. Matching records and personal settings will use the backup version; other existing data will be kept. When signed in, imported learning data will follow this account's sync settings.",
+    "summary": "{{projects}} projects · {{nodes}} nodes · {{messages}} chat messages · {{images}} sent images (draft images also included)",
+    "cancel": "Cancel",
+    "confirmImport": "Confirm import",
+    "exported": "All data exported",
+    "imported": "Backup imported with {{count}} projects",
+    "exportFailed": "Export failed: {{message}}",
+    "importFailed": "Import failed: {{message}}",
+    "invalidFile": "Invalid or incompatible backup. Choose a JSON backup exported from the Me page.",
+    "accountChanged": "The current account changed. Select the backup file again."
   },
   "sync": {
     "status": {

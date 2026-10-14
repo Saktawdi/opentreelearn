@@ -48,6 +48,9 @@ export interface SyncOutcome {
 
 interface SyncState {
   phase: 'idle' | 'syncing' | 'error'
+  /** Pause cloud writes while a local backup is being imported or exported. */
+  dataTransferBusy: boolean
+  setDataTransferBusy: (busy: boolean) => void
   error: string | null
   lastSyncedAt: number | null
   /** 最近一次**尝试**同步的时间（含失败）：自动同步用它做节流，避免失败后疯狂重试 */
@@ -194,6 +197,8 @@ async function pullRemote(): Promise<number> {
 export const useSyncStore = create<SyncState>()(
   immer((set, get) => ({
     phase: 'idle',
+    dataTransferBusy: false,
+    setDataTransferBusy: (busy) => set((draft) => { draft.dataTransferBusy = busy }),
     error: null,
     lastSyncedAt: null,
     lastAttemptAt: 0,
@@ -237,6 +242,7 @@ export const useSyncStore = create<SyncState>()(
     },
 
     syncNow: async () => {
+      if (get().dataTransferBusy) return { ok: false, pushed: 0, pulled: 0 }
       if (get().phase === 'syncing') {
         return { ok: false, pushed: 0, pulled: 0, error: i18n.t('common:sync.alreadySyncing') }
       }
@@ -293,7 +299,7 @@ export const useSyncStore = create<SyncState>()(
       if (!useAccountStore.getState().token) return null
 
       const state = get()
-      if (state.phase === 'syncing' || state.needsPolicy) return null
+      if (state.phase === 'syncing' || state.needsPolicy || state.dataTransferBusy) return null
 
       const local = getSyncLocal()
       const stored = await local.readState()

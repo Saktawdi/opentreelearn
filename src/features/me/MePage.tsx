@@ -10,6 +10,7 @@ import { resolveAvatarUrl, type AccountUser } from '@/services/account/client'
 import { useAccountStore } from '@/stores/account-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { AuthDialog } from './AuthDialog'
+import { DataTransferPanel } from './DataTransferPanel'
 import { SyncPanel } from './SyncPanel'
 import type { AuthMode } from './auth-form'
 
@@ -179,6 +180,10 @@ export function MePage() {
             <SyncPanel />
           </Section>
         ) : null}
+
+        <Section title={t('backup.title')}>
+          <DataTransferPanel onImported={() => setProfile(useSettingsStore.getState().settings.backgroundProfile)} />
+        </Section>
 
         <p className="border-t border-line pt-5 text-xs leading-relaxed text-muted">
           {status === 'authenticated'
