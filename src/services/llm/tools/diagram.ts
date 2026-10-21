@@ -7,7 +7,7 @@ export const DIAGRAM_TOOL_NAME = 'create_diagram'
 
 export const diagramInputSchema = z.object({
   title: z.string().trim().min(1).max(120).describe('图表标题，使用学习者的语言'),
-  source: z.string().min(1).max(MERMAID_SOURCE_LIMIT).describe('完整 Mermaid 源码，不含 Markdown 围栏、YAML frontmatter 或 init 配置。思维导图用 mindmap；DAG/AOV/AOE/带权图用 flowchart，AOE 活动和耗时放在边标签上。'),
+  source: z.string().min(1).max(MERMAID_SOURCE_LIMIT).describe('完整 Mermaid 源码，不含 Markdown 围栏、YAML frontmatter 或 init 配置。思维导图用 mindmap；DAG/AOV/AOE/带权图用 flowchart，AOE 活动和耗时放在边标签上。数学公式使用 $$...$$ 包裹 LaTeX（不是单个 $），保留反斜杠；例如节点标签「代数方程 $$Ax = \\lambda x$$」。含公式或特殊符号的节点标签用双引号包裹，例如 flowchart 的 A["$$Ax = \\lambda x$$"]、mindmap 的 n["方程 $$Ax = \\lambda x$$"]。不要把 \\lambda 等公式命令退化成 lambda 等普通文字。'),
 })
 
 export function buildDiagramTools() {

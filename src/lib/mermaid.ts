@@ -26,7 +26,8 @@ async function loadEngine() {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      htmlLabels: false,
+      // Mermaid's KaTeX output is MathML inside an HTML label, including in mindmaps.
+      htmlLabels: true,
       suppressErrorRendering: true,
       maxTextSize: MERMAID_SOURCE_LIMIT,
       maxEdges: 300,
@@ -75,14 +76,21 @@ export async function renderMermaid(raw: string): Promise<string> {
     document.body.appendChild(host)
     try {
       const { svg } = await mermaid.render(`otl-diagram-${++nextId}`, source, host)
-      return DOMPurify.sanitize(svg, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-        FORBID_TAGS: ['foreignObject', 'script', 'image', 'a'],
-        FORBID_ATTR: ['href', 'xlink:href'],
-      })
+      return sanitizeMermaidSvg(svg)
     } finally {
       host.remove()
     }
+  })
+}
+
+/** Retain Mermaid's text/MathML labels without allowing links or embedded media. */
+export function sanitizeMermaidSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true, mathMl: true },
+    ADD_TAGS: ['foreignObject', 'div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i'],
+    HTML_INTEGRATION_POINTS: { foreignobject: true },
+    FORBID_TAGS: ['script', 'image', 'a'],
+    FORBID_ATTR: ['href', 'xlink:href', 'src'],
   })
 }
 
