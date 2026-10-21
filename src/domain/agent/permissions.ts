@@ -174,6 +174,13 @@ export const TOOL_GUARDS: Record<string, ToolGuard> = {
         : {}),
     }),
   },
+  get_current_time: {
+    kind: 'read',
+    describe: () => ({
+      title: { key: 'approval.askTitle.get_current_time' },
+      rows: [toolRow('get_current_time')],
+    }),
+  },
   get_tree_outline: {
     kind: 'read',
     describe: () => ({

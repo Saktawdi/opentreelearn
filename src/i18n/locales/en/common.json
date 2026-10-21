@@ -138,6 +138,7 @@
     "feedbackMessage": "**What you got right**\n\n{{strengths}}\n\n**What to add or fix**\n\n{{gaps}}",
     "activity": {
       "createDiagram": "Created a diagram",
+      "getCurrentTime": "Read the current date, time, and time zone",
       "searchNotes": "Searched annotations",
       "searchNodes": "Searched topics",
       "getNode": "Opened topic details",

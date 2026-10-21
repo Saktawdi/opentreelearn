@@ -839,6 +839,7 @@ const REVIEW_DELIVERY_TOOL_NAMES = new Set([
  */
 const TOOL_ACTIVITY_LABEL_KEY: Record<string, `common:${ParseKeys<'common'>}`> = {
   create_diagram: 'common:session.activity.createDiagram',
+  get_current_time: 'common:session.activity.getCurrentTime',
   search_notes: 'common:session.activity.searchNotes',
   search_nodes: 'common:session.activity.searchNodes',
   get_node: 'common:session.activity.getNode',

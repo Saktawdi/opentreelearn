@@ -155,6 +155,7 @@
   "tool": {
     "createDiagram": "Create diagram “{{title}}”",
     "listTools": "List available tools",
+    "getCurrentTime": "Read the current date, time, and time zone",
     "searchNodes": "Searched nodes \"{{query}}\"",
     "searchNodesPlain": "Search nodes",
     "getNode": "View node details",
@@ -220,6 +221,7 @@
     },
     "toolName": {
       "create_diagram": "Create diagram",
+      "get_current_time": "Read the current date, time, and time zone",
       "search_nodes": "Search nodes",
       "get_node": "Read node",
       "get_tree_outline": "View tree outline",
@@ -233,6 +235,7 @@
     },
     "askTitle": {
       "create_diagram": "Agent wants to create a diagram",
+      "get_current_time": "Agent wants to read the current date, time, and time zone",
       "get_node": "Agent wants to read a node",
       "search_notes": "Agent wants to search annotations",
       "get_review_history": "Agent wants to read review history",

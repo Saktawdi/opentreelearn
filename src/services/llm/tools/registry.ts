@@ -46,6 +46,7 @@ export { asData, failure, TOOL_RESULT_LIMIT } from './result'
 export const TOOLS_SYSTEM = [
   '## 工具使用',
   '- 你可以使用当前会话注册的检索工具查这个学习项目的数据（检索节点、看节点详情、看树大纲、查用户标注）；其他能力以 list_tools 返回的清单为准。',
+  '- 需要当前真实日期、时间或时区时调用 get_current_time；不要凭模型自身的时间感知回答。',
   '- 需要项目里的信息（「我之前在哪学过…」「我有哪些没搞懂的」）时必须先查，不要凭印象编造。',
   '- 不需要查就能回答的问题直接回答，不要为了显得勤快去调用工具。',
   '- 需要思维导图、DAG、AOV/AOE、带权图、流程图或其他图示时，调用 create_diagram，使用 Mermaid，不画 ASCII 图。成功后的图表自动加入回答，不要重复输出源码；失败时修正语法再调用。图表语法校验不等于算法结果验证。',
@@ -121,6 +122,46 @@ function outlinePayload(outline: TreeOutline) {
 }
 
 /**
+ * 当前时间工具的稳定载荷：同时给出 UTC 时间戳和本地时间，避免模型把时区
+ * 误当成 UTC 或把本地日期解释成用户所在的另一时区。
+ */
+function currentTimePayload(now = new Date()) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(now)
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, value]),
+  ) as Record<string, string>
+  const date = `${parts.year}-${parts.month}-${parts.day}`
+  const time = `${parts.hour}:${parts.minute}:${parts.second}`
+  const offsetMinutes = -now.getTimezoneOffset()
+  const offsetSign = offsetMinutes >= 0 ? '+' : '-'
+  const absoluteOffset = Math.abs(offsetMinutes)
+  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, '0')
+  const offsetRemainder = String(absoluteOffset % 60).padStart(2, '0')
+
+  return {
+    timestamp: now.toISOString(),
+    date,
+    time,
+    dateTime: `${date}T${time}`,
+    timeZone,
+    utcOffset: `UTC${offsetSign}${offsetHours}:${offsetRemainder}`,
+    utcOffsetMinutes: offsetMinutes,
+  }
+}
+
+/**
  * 构造不修改项目数据的工具：检索和图表生成。检索闭包住本轮的数据快照。
  */
 export function buildReadOnlyTools(runtime: ToolRuntime) {
@@ -132,6 +173,12 @@ export function buildReadOnlyTools(runtime: ToolRuntime) {
 
   const tools = {
     ...buildDiagramTools(),
+    get_current_time: tool({
+      description:
+        '读取运行此应用的系统当前日期、时间和时区信息。用户询问现在的日期、时间、时区或今天是哪天时使用；不要凭模型自身的时间感知回答。此工具只读取系统时钟，不修改项目数据。',
+      inputSchema: z.object({}),
+      execute: async () => asData(currentTimePayload()),
+    }),
     search_nodes: tool({
       description:
         '在当前学习项目里按关键词搜节点（匹配标题、摘要与对话内容）。用户问「我之前在哪学过某个东西」时用它，不要凭记忆编造节点名。绑定复习作用域时默认只查本次框选的主题。',

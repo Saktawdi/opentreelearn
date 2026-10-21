@@ -134,6 +134,7 @@
     "feedbackMessage": "**做对的地方**\n\n{{strengths}}\n\n**待补充 / 需要修正**\n\n{{gaps}}",
     "activity": {
       "createDiagram": "生成了图表",
+      "getCurrentTime": "读取了当前日期、时间和时区",
       "searchNotes": "查了标注",
       "searchNodes": "搜了主题",
       "getNode": "看了主题资料",

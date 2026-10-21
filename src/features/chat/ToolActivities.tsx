@@ -26,6 +26,8 @@ function toolLabel(t: TFunction<'chat'>, name: string, input: unknown): string {
       return t('tool.createDiagram', { title: typeof args.title === 'string' ? args.title : '' })
     case 'list_tools':
       return t('tool.listTools')
+    case 'get_current_time':
+      return t('tool.getCurrentTime')
     case 'search_nodes':
       return query ? t('tool.searchNodes', { query }) : t('tool.searchNodesPlain')
     case 'get_node':

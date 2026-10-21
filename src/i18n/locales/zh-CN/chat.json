@@ -154,6 +154,7 @@
   "tool": {
     "createDiagram": "生成图表《{{title}}》",
     "listTools": "查看可用工具",
+    "getCurrentTime": "读取当前日期、时间和时区",
     "searchNodes": "查询节点「{{query}}」",
     "searchNodesPlain": "查询节点",
     "getNode": "查看节点详情",
@@ -219,6 +220,7 @@
     },
     "toolName": {
       "create_diagram": "生成图表",
+      "get_current_time": "读取当前日期、时间和时区",
       "search_nodes": "检索节点",
       "get_node": "读节点详情",
       "get_tree_outline": "看树大纲",
@@ -232,6 +234,7 @@
     },
     "askTitle": {
       "create_diagram": "Agent 想生成图表",
+      "get_current_time": "Agent 想读取当前日期、时间和时区",
       "get_node": "Agent 想读一个节点",
       "search_notes": "Agent 想检索标注",
       "get_review_history": "Agent 想查复习历史",

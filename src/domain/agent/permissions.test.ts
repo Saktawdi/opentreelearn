@@ -47,6 +47,7 @@ function ctx(overrides: Partial<GateContext> = {}): GateContext {
 
 const WRITE_TOOLS = ['create_node', 'rename_node', 'tag_span', 'update_assessment']
 const READ_TOOLS = [
+  'get_current_time',
   'search_nodes',
   'get_node',
   'get_tree_outline',

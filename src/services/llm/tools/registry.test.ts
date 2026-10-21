@@ -85,6 +85,19 @@ describe('read-only tool registry', () => {
     expect(found).not.toContain('只是书签')
   })
 
+  it('returns the system date, time, and time zone as structured data', async () => {
+    const output = await run(tools().get_current_time, {})
+    const data = payload(output)
+
+    expect(data.timestamp).toEqual(expect.any(String))
+    expect(data.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(data.time).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    expect(data.dateTime).toBe(`${data.date}T${data.time}`)
+    expect(data.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
+    expect(data.utcOffset).toMatch(/^UTC[+-]\d{2}:\d{2}$/)
+    expect(data.utcOffsetMinutes).toEqual(expect.any(Number))
+  })
+
   it('searches nodes and answers with the node title for cross-node questions', async () => {
     const found = await run(tools().search_nodes, { query: '动量' })
     expect(found).toContain('动量守恒')
