@@ -5,7 +5,6 @@
     "storageNote": "项目、节点、对话与图片都存在浏览器 IndexedDB 里，清空浏览器数据会一并丢失。"
   },
   "section": {
-    "context": "上下文",
     "preferences": "偏好",
     "agent": "智能体（Agent）",
     "models": "模型分配",
@@ -16,16 +15,11 @@
   },
   "toast": {
     "saved": "已保存",
-    "budgetClamped": "已保存（超出 {{min}}–{{max}}，按 {{value}} 保存）",
     "stepsClamped": "已保存（合法区间 0–{{max}}，按 {{value}} 保存）",
     "stepsUnlimited": "已保存：不限制步数，生成过程中可随时手动停止",
     "testOkTools": "{{label}} 连接正常，支持工具调用",
     "testOkNoTools": "{{label}} 连接正常，但没有探测到工具调用能力：后续对话按无工具模式进行",
     "testFailed": "连接失败：{{error}}"
-  },
-  "context": {
-    "budgetLabel": "上下文预算（tokens）",
-    "budgetHint": "超出后自动压缩更早的父链对话。可填 {{min}}–{{max}}，超出部分会按边界保存。"
   },
   "prefs": {
     "dialogToggleTitle": "新建子节点时弹出快捷小窗",

@@ -1,30 +1,15 @@
 import type { ParseKeys } from 'i18next'
 import type { BranchPromptPreference, GlobalSettings } from '@/domain/models'
 
-export const DEFAULT_CONTEXT_BUDGET = 24_000
+/** 模型未提供上下文上限时的保守兜底（tokens）。 */
+export const DEFAULT_CONTEXT_LIMIT = 256_000
 export const DEFAULT_RECENT_MESSAGES = 8
-
-/**
- * 上下文预算的合法区间。配置页的输入校验与存储读回时的归一化共用同一份边界，
- * 避免两处各写一套魔数后漂移。
- */
-export const MIN_CONTEXT_BUDGET = 2_000
-/**
- * 上限按当前最大的模型上下文给（Gemini 1.5/2.x 的 1M）；上限的作用只是挡住
- * 明显无意义的输入（手滑多按几个 0），不是替用户判断模型能吃多少 ——
- * 预算超出模型窗口时由模型侧报错，比在这里静默截断更容易被理解。
- */
-export const MAX_CONTEXT_BUDGET = 1_000_000
-
-export function clampContextBudget(value: number): number {
-  return Math.min(Math.max(value, MIN_CONTEXT_BUDGET), MAX_CONTEXT_BUDGET)
-}
 
 /**
  * Agent 工具循环的步数上限（一步 = 一次完整的模型调用，含最终作答那一步）。
  *
  * **0 = 不限制**：不设步数停止条件，模型自己决定何时收尾，用户随时可点停止。
- * 上限只是挡手滑（多按几个 0），不是替用户判断合理值 —— 与 MAX_CONTEXT_BUDGET 同哲学。
+ * 上限只是挡手滑（多按几个 0），不是替用户判断合理值。
  */
 export const DEFAULT_AGENT_MAX_STEPS = 50
 export const MAX_AGENT_MAX_STEPS = 1_000
@@ -107,7 +92,6 @@ export function createDefaultSettings(): GlobalSettings {
     defaultChatModelRef: null,
     titleModelRef: null,
     summaryModelRef: null,
-    contextBudget: DEFAULT_CONTEXT_BUDGET,
     agentMaxSteps: DEFAULT_AGENT_MAX_STEPS,
     branchPrompt: { ...DEFAULT_BRANCH_PROMPT },
     providers: [],

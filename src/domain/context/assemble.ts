@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT_BUDGET, DEFAULT_RECENT_MESSAGES } from '@/domain/defaults'
+import { DEFAULT_CONTEXT_LIMIT, DEFAULT_RECENT_MESSAGES } from '@/domain/defaults'
 import { messageText, quoteBlock } from '@/domain/messages'
 import type { Id, Message, Node } from '@/domain/models'
 import { buildStudyDigest, renderStudyDigest } from '@/domain/review/digest'
@@ -41,7 +41,8 @@ export interface AssembleInput {
   backgroundProfile?: string
   projectBackground?: string
   projectSystemPrompt?: string
-  budgetTokens?: number
+  /** 当前模型的上下文上限；缺省使用 DEFAULT_CONTEXT_LIMIT。 */
+  contextLimit?: number
   recentMessages?: number
   /** 当前节点正处在复习会话中：`review` = 回忆巩固，`relearn` = 低掌握度重新学习 */
   reviewMode?: 'review' | 'relearn'
@@ -286,7 +287,7 @@ function partsCost(parts: ContextPart[]): number {
 }
 
 export function assembleContext(input: AssembleInput): AssembleResult {
-  const budget = input.budgetTokens ?? DEFAULT_CONTEXT_BUDGET
+  const contextLimit = input.contextLimit ?? DEFAULT_CONTEXT_LIMIT
   const recent = input.recentMessages ?? DEFAULT_RECENT_MESSAGES
 
   const segments = collectHistorySegments(input.node, input.nodes, input.messagesByNode)
@@ -352,7 +353,7 @@ export function assembleContext(input: AssembleInput): AssembleResult {
 
     const droppedCount = modes.filter((mode) => mode === 'dropped').length
     if (droppedCount > 0) {
-      sections.push(`（更早的 ${droppedCount} 个前置节点因上下文预算已省略）`)
+      sections.push(`（更早的 ${droppedCount} 个前置节点因模型上下文上限已省略）`)
     }
 
     if (input.reviewMode && input.node.kind !== 'review') {
@@ -399,24 +400,24 @@ const materialize = (): Materialized => {
 
   let state = materialize()
 
-  for (let i = 0; i < historySegments.length && cost(state) > budget; i += 1) {
+  for (let i = 0; i < historySegments.length && cost(state) > contextLimit; i += 1) {
     modes[i] = 'note'
     notes.set(historySegments[i].node.id, renderNote(historySegments[i]))
     state = materialize()
   }
 
-  for (let i = 0; i < historySegments.length && cost(state) > budget; i += 1) {
+  for (let i = 0; i < historySegments.length && cost(state) > contextLimit; i += 1) {
     if (modes[i] !== 'note') continue
     modes[i] = 'dropped'
     state = materialize()
   }
 
-  if (cost(state) > budget) {
+  if (cost(state) > contextLimit) {
     hardMode = true
     state = materialize()
   }
 
-  if (cost(state) > budget && ownSegment.messages.length > MIN_KEEP_OWN_ROUNDS * 2) {
+  if (cost(state) > contextLimit && ownSegment.messages.length > MIN_KEEP_OWN_ROUNDS * 2) {
     for (let i = 0; i < historySegments.length; i += 1) {
       if (modes[i] === 'note') {
         modes[i] = 'dropped'

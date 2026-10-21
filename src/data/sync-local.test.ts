@@ -307,6 +307,7 @@ describe('applyRemote', () => {
     expect(stored.backgroundProfile).toBe('云端背景')
     expect(stored.providers[0].label).toBe('云端名字')
     expect(stored.providers[0].apiKey).toBe('sk-local-secret')
+    expect(stored).not.toHaveProperty('contextBudget')
   })
 
   it('上传的全局设置里 API Key 被抹掉', async () => {

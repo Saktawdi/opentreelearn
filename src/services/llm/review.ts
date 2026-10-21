@@ -12,7 +12,7 @@ import type { ReviewItemPhase, ReviewRequestPurpose, ReviewSessionItem } from '@
 import { stripReviewRating } from '@/domain/review/protocol'
 import { newId } from '@/lib/id'
 import { describeLlmError, formatErrorMessage } from './errors'
-import { findProvider } from './catalog'
+import { contextLimitForModel, findProvider } from './catalog'
 import { requireModel } from './providers'
 import { streamReply, toModelMessages, type ChatUsage, type ToolActivity, type ToolOutcome } from './chat'
 import type { ToolSet } from 'ai'
@@ -209,7 +209,7 @@ export async function runReviewRequest(
     messagesByNode: input.messagesByNode,
     notesByMessage: input.notesByMessage,
     reviewNotes: input.reviewNotes,
-    budgetTokens: input.settings.contextBudget,
+    contextLimit: contextLimitForModel(input.settings.providers, ref),
   })
 
   const history = itemHistory(input.item, input.imageUrls)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultSettings, DEFAULT_CONTEXT_BUDGET } from './defaults'
+import { createDefaultSettings } from './defaults'
 import {
   normalizeComposerDraft,
   normalizeGlobalSettings,
@@ -142,7 +142,7 @@ describe('normalizeGlobalSettings', () => {
     const settings = normalizeGlobalSettings({ providers: null })
 
     expect(settings.providers).toEqual([])
-    expect(settings.contextBudget).toBe(DEFAULT_CONTEXT_BUDGET)
+    expect(settings).not.toHaveProperty('contextBudget')
   })
 
   it('keeps valid providers and discards broken ones', () => {
@@ -154,14 +154,9 @@ describe('normalizeGlobalSettings', () => {
     expect(settings.providers[0].models).toEqual([])
   })
 
-  it('clamps out-of-range budgets and nulls malformed model refs', () => {
-    expect(normalizeGlobalSettings({ contextBudget: 10 }).contextBudget).toBe(2_000)
-    expect(normalizeGlobalSettings({ contextBudget: 10_000_000 }).contextBudget).toBe(1_000_000)
-    // 1M 是最大模型窗口的上限值，必须原样留下（不要被当成越界截断）
-    expect(normalizeGlobalSettings({ contextBudget: 1_000_000 }).contextBudget).toBe(1_000_000)
-    expect(normalizeGlobalSettings({ contextBudget: '24000' }).contextBudget).toBe(
-      DEFAULT_CONTEXT_BUDGET,
-    )
+  it('drops the removed global context budget and nulls malformed model refs', () => {
+    expect(normalizeGlobalSettings({ contextBudget: 10 })).not.toHaveProperty('contextBudget')
+    expect(normalizeGlobalSettings({ contextBudget: 1_000_000 })).not.toHaveProperty('contextBudget')
     expect(
       normalizeGlobalSettings({ defaultChatModelRef: { providerId: 'v1' } }).defaultChatModelRef,
     ).toBeNull()

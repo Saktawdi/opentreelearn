@@ -1,4 +1,5 @@
 import i18n from '@/i18n'
+import { DEFAULT_CONTEXT_LIMIT } from '@/domain/defaults'
 import type { ModelRef, ProviderConfig, ProviderKind } from '@/domain/models'
 
 /** 提供商类型的展示标签；品牌名保持原样，只有 openai-compatible 走本地化。
@@ -66,4 +67,22 @@ export function listAvailableModelRefs(providers: ProviderConfig[]): ModelRef[] 
 
 export function describeProviderModels(provider: ProviderConfig): string {
   return provider.models.join(' · ')
+}
+
+/**
+ * 读取实际选中模型的上下文上限。
+ *
+ * 模型级配置优先；旧数据、手填但未补充上限的模型使用稳定兜底，避免把未配置
+ * 误当成「无限上下文」而把整棵历史树送进请求。
+ */
+export function contextLimitForModel(
+  providers: ProviderConfig[],
+  ref: ModelRef | null | undefined,
+): number {
+  if (!ref) return DEFAULT_CONTEXT_LIMIT
+  const provider = providers.find((item) => item.id === ref.providerId)
+  const limit = provider?.modelConfigs?.[ref.modelId]?.contextLimit
+  return typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+    ? limit
+    : DEFAULT_CONTEXT_LIMIT
 }

@@ -206,7 +206,7 @@ describe('settings repository', () => {
   it('falls back to defaults and persists updates', async () => {
     const initial = await repositories.settings.load()
     expect(initial.providers).toEqual([])
-    expect(initial.contextBudget).toBeGreaterThan(0)
+    expect(initial).not.toHaveProperty('contextBudget')
 
     await repositories.settings.save({ ...initial, backgroundProfile: '计算机专业' })
     const reloaded = await repositories.settings.load()

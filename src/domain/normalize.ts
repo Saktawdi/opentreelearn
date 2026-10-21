@@ -1,5 +1,5 @@
 import i18n from '@/i18n'
-import { createDefaultSettings, clampAgentMaxSteps, clampContextBudget, DEFAULT_BRANCH_PROMPT } from './defaults'
+import { createDefaultSettings, clampAgentMaxSteps, DEFAULT_BRANCH_PROMPT } from './defaults'
 import type { ComposerDraft } from './composer/draft'
 import type {
   Asset,
@@ -404,9 +404,6 @@ export function normalizeGlobalSettings(value: unknown): GlobalSettings {
     defaultChatModelRef: normalizeModelRef(value.defaultChatModelRef),
     titleModelRef: normalizeModelRef(value.titleModelRef),
     summaryModelRef: normalizeModelRef(value.summaryModelRef),
-    contextBudget: clampContextBudget(
-      readNumber(value.contextBudget, defaults.contextBudget),
-    ),
     agentMaxSteps: clampAgentMaxSteps(readNumber(value.agentMaxSteps, defaults.agentMaxSteps)),
     branchPrompt: normalizeBranchPrompt(value.branchPrompt),
     providers: Array.isArray(value.providers)

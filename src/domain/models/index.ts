@@ -397,7 +397,6 @@ export interface GlobalSettings {
   defaultChatModelRef: ModelRef | null
   titleModelRef: ModelRef | null
   summaryModelRef: ModelRef | null
-  contextBudget: number
   /** Agent 工具循环的步数上限；0 = 不限制（归一化见 defaults.clampAgentMaxSteps） */
   agentMaxSteps: number
   /** 新建子节点快捷小窗的偏好，见 BranchPromptPreference。 */

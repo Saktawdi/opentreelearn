@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_CONTEXT_LIMIT } from '@/domain/defaults'
+import { contextLimitForModel } from './catalog'
 import {
   effectiveReasoningEffort,
   isValidReasoningLevel,
@@ -7,6 +9,7 @@ import {
   unionReasoningCandidates,
   type ModelCatalogEntries,
 } from './model-catalog'
+import type { ProviderConfig } from '@/domain/models'
 
 /** 模拟 models.dev 目录结构（reasoning_options 两种形态 + 不支持推理 + 超集档位 max）。 */
 const entries: ModelCatalogEntries = {
@@ -193,5 +196,32 @@ describe('生效值与合法性', () => {
     expect(effectiveReasoningEffort('auto', 'auto')).toBeUndefined()
     expect(effectiveReasoningEffort(undefined, 'invalid_val')).toBeUndefined()
     expect(effectiveReasoningEffort(undefined, undefined)).toBeUndefined()
+  })
+})
+
+describe('contextLimitForModel', () => {
+  const providers: ProviderConfig[] = [
+    {
+      id: 'p1',
+      label: '测试提供商',
+      kind: 'openai',
+      apiKey: 'key',
+      models: ['wide', 'default'],
+      modelConfigs: { wide: { contextLimit: 512_000 }, invalid: { contextLimit: 0 } },
+    },
+  ]
+
+  it('uses the selected model limit and falls back to 256k when missing', () => {
+    expect(contextLimitForModel(providers, { providerId: 'p1', modelId: 'wide' })).toBe(512_000)
+    expect(contextLimitForModel(providers, { providerId: 'p1', modelId: 'default' })).toBe(
+      DEFAULT_CONTEXT_LIMIT,
+    )
+    expect(contextLimitForModel(providers, null)).toBe(DEFAULT_CONTEXT_LIMIT)
+  })
+
+  it('ignores non-positive model limits', () => {
+    expect(contextLimitForModel(providers, { providerId: 'p1', modelId: 'invalid' })).toBe(
+      DEFAULT_CONTEXT_LIMIT,
+    )
   })
 })

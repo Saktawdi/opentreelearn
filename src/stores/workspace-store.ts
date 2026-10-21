@@ -42,7 +42,7 @@ import { assessmentUpdateSchema, type AssessmentUpdate } from '@/domain/assessme
 import { threadPathFingerprint } from '@/domain/thread/resolve'
 import { newId } from '@/lib/id'
 import { streamReply, toModelMessages } from '@/services/llm/chat'
-import { findProvider } from '@/services/llm/catalog'
+import { contextLimitForModel, findProvider } from '@/services/llm/catalog'
 import { clampAgentMaxSteps } from '@/domain/defaults'
 import {
   TOOLS_SYSTEM,
@@ -1390,7 +1390,7 @@ async function streamAssistant(nodeId: Id, messageId: Id = newId()): Promise<voi
     backgroundProfile: settings.backgroundProfile,
     projectBackground: projectSettings?.backgroundProfile,
     projectSystemPrompt: projectSettings?.systemPrompt,
-    budgetTokens: settings.contextBudget,
+    contextLimit: contextLimitForModel(settings.providers, modelRef),
     now: Date.now(),
   })
 

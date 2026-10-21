@@ -11,11 +11,8 @@ import type { BranchPromptPreference, ProviderConfig } from '@/domain/models'
 import {
   BRANCH_QUICK_CHOICES,
   clampAgentMaxSteps,
-  clampContextBudget,
   findBranchQuickChoice,
   MAX_AGENT_MAX_STEPS,
-  MAX_CONTEXT_BUDGET,
-  MIN_CONTEXT_BUDGET,
 } from '@/domain/defaults'
 import { cn, errorMessage } from '@/lib/utils'
 import i18n from '@/i18n'
@@ -51,13 +48,6 @@ function maskKey(key: string): string {
   return `${key.slice(0, 5)}····${key.slice(-4)}`
 }
 
-/** 预算这种大数字按 k 显示更好读：20000 → 20k，1000000 → 1M。 */
-function formatBudget(value: number): string {
-  if (value >= 1_000_000) return `${value / 1_000_000}M`
-  if (value >= 1_000) return `${Math.round(value / 1_000)}k`
-  return String(value)
-}
-
 export function SettingsPage() {
   // 快捷指令芯片的 label/hint 是跨 feature 词表（common）：数组形式让 t(`common:${...}`) 能过类型校验
   const { t } = useTranslation(['settings', 'common'])
@@ -67,42 +57,20 @@ export function SettingsPage() {
   const removeProvider = useSettingsStore((state) => state.removeProvider)
   const updateProvider = useSettingsStore((state) => state.updateProvider)
 
-  const [budget, setBudget] = useState(() => String(settings.contextBudget))
   const [maxSteps, setMaxSteps] = useState(() => String(settings.agentMaxSteps))
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
-  const budgetDirty = budget !== String(settings.contextBudget)
   const maxStepsDirty = maxSteps !== String(settings.agentMaxSteps)
 
   const branchPrompt = settings.branchPrompt
   const setBranchPrompt = (next: Partial<BranchPromptPreference>) =>
     void patch({ branchPrompt: { ...branchPrompt, ...next } })
 
-  const saveBudget = async () => {
-    const parsed = Number.parseInt(budget, 10)
-    // 先把输入框回填成真正落库的值：超出区间时用户能立刻看见被夹到了哪，
-    // 而不是「保存成功」之后输入框里还留着 10000000、下次刷新才变。
-    const next = Number.isFinite(parsed)
-      ? clampContextBudget(parsed)
-      : settings.contextBudget
-    setBudget(String(next))
-    await patch({ contextBudget: next })
-    toast.success(
-      Number.isFinite(parsed) && parsed !== next
-        ? t('toast.budgetClamped', {
-            min: formatBudget(MIN_CONTEXT_BUDGET),
-            max: formatBudget(MAX_CONTEXT_BUDGET),
-            value: formatBudget(next),
-          })
-        : t('toast.saved'),
-    )
-  }
-
   const saveMaxSteps = async () => {
     const parsed = Number.parseInt(maxSteps, 10)
-    // 与预算同一套「回填落库值」交互；非法输入回落到当前值而不是默认值
+    // 回填真正落库的值；非法输入回落到当前值而不是默认值
     const next = Number.isFinite(parsed) ? clampAgentMaxSteps(parsed) : settings.agentMaxSteps
     setMaxSteps(String(next))
     await patch({ agentMaxSteps: next })
@@ -140,30 +108,6 @@ export function SettingsPage() {
           <h1 className="text-xl font-semibold tracking-tight text-ink">{t('page.title')}</h1>
           <p className="mt-1 text-xs text-muted">{t('page.subtitle')}</p>
         </div>
-
-        <Section title={t('section.context')}>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <label className="block">
-              <span className="mb-1.5 block text-sm text-ink-soft">{t('context.budgetLabel')}</span>
-              <Input
-                value={budget}
-                inputMode="numeric"
-                onChange={(event) => setBudget(event.target.value)}
-                className="w-[150px] font-mono text-xs"
-              />
-              <span className="mt-1 block text-xs text-muted">
-                {t('context.budgetHint', {
-                  min: formatBudget(MIN_CONTEXT_BUDGET),
-                  max: formatBudget(MAX_CONTEXT_BUDGET),
-                })}
-              </span>
-            </label>
-
-            <Button variant="primary" size="sm" onClick={() => void saveBudget()} disabled={!budgetDirty}>
-              {t('action.save')}
-            </Button>
-          </div>
-        </Section>
 
         <Section title={t('section.preferences')}>
           <div className="space-y-2">

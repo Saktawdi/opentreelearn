@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT_BUDGET } from '@/domain/defaults'
+import { DEFAULT_CONTEXT_LIMIT } from '@/domain/defaults'
 import { messageText } from '@/domain/messages'
 import type { Id, Message, Node, Note, ReviewGrade } from '@/domain/models'
 import {
@@ -39,7 +39,7 @@ export interface ReviewContextMessage {
 }
 
 export interface ReviewMaterial {
-  /** 经预算裁剪后**实际使用**的材料文本 */
+  /** 经模型上下文上限裁剪后**实际使用**的材料文本 */
   text: string
   /** 材料来源版本指纹（可见路径） */
   versionId: string
@@ -65,7 +65,8 @@ export interface ReviewMaterialInput {
    * 而且两种标注的投喂口径不同 —— 复习期标注只送标签与备注（见 renderLabeledNotes）。
    */
   reviewNotes?: Note[]
-  budgetTokens?: number
+  /** 当前模型的上下文上限；缺省使用 DEFAULT_CONTEXT_LIMIT。 */
+  contextLimit?: number
 }
 
 const MATERIAL_HEADER = '## 学习资料（只作为出题与点评的依据，不要直接整段念给学习者）'
@@ -128,7 +129,7 @@ function collectLabeledNotes(
  */
 export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial {
   const { node, nodes, messagesByNode } = input
-  const budget = input.budgetTokens ?? DEFAULT_CONTEXT_BUDGET
+  const contextLimit = input.contextLimit ?? DEFAULT_CONTEXT_LIMIT
   const index = buildTreeIndex(nodes)
   const ancestors = ancestorsOf(index, node.id)
   const path = resolveThread(node, messagesByNode.get(node.id) ?? []).path
@@ -147,8 +148,8 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
     return `${position + 1}. ${speaker}：${truncate(normalizeWhitespace(messageText(message)) || '［图片］', 600)}`
   })
 
-  // 材料预算只占上下文预算的一部分：对话还要留位置，否则一长段材料会把回答挤掉
-  const materialBudget = Math.max(600, Math.floor(budget * 0.6))
+  // 材料只占模型上下文上限的一部分：对话还要留位置，否则一长段材料会把回答挤掉
+  const materialBudget = Math.max(600, Math.floor(contextLimit * 0.6))
   const sections = (): string[] => [
     `## 当前主题\n${pathLine}`,
     node.summary ? `## 学习摘要\n${truncate(normalizeWhitespace(node.summary), 200)}` : '',
@@ -176,7 +177,7 @@ export function buildReviewMaterial(input: ReviewMaterialInput): ReviewMaterial 
       .join('\n\n')
   }
 
-  // 第二轮：只留最近的若干轮，仍超预算就再砍一半
+  // 第二轮：只留最近的若干轮，仍超模型上限就再砍一半
   for (let keep = 12; keep >= 2 && estimateTokens(body) > materialBudget; keep = Math.floor(keep / 2)) {
     truncated = true
     const recent = transcriptLines.slice(-keep)

@@ -11,7 +11,7 @@ import {
   type ToolOutcome,
 } from './chat'
 import { describeLlmError, formatErrorMessage } from './errors'
-import { findProvider } from './catalog'
+import { contextLimitForModel, findProvider } from './catalog'
 import { requireReviewModel } from './review'
 import { clampAgentMaxSteps } from '@/domain/defaults'
 import { TOOLS_SYSTEM, buildReadOnlyTools } from './tools/registry'
@@ -116,7 +116,7 @@ export async function runFreeAskRequest(
     backgroundProfile: input.settings.backgroundProfile,
     projectBackground: input.projectSettings?.backgroundProfile,
     projectSystemPrompt: input.projectSettings?.systemPrompt,
-    budgetTokens: input.settings.contextBudget,
+    contextLimit: contextLimitForModel(input.settings.providers, ref),
     now: input.now,
   })
 

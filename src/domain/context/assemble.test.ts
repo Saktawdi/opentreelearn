@@ -275,7 +275,7 @@ describe('assembleContext', () => {
         ]],
         ['c', []],
       ]),
-      budgetTokens: 2000,
+      contextLimit: 2000,
     })
 
     expect(result.stats.compactedNodeIds).toEqual(['a'])
@@ -351,7 +351,7 @@ describe('assembleContext', () => {
       node,
       nodes: [node],
       messagesByNode: messagesByNode([['n1', messages]]),
-      budgetTokens: 1400,
+      contextLimit: 1400,
       recentMessages: 4,
     })
 
@@ -417,7 +417,7 @@ describe('assembleContext: 工具记录', () => {
       node,
       nodes: [node],
       messagesByNode: messagesByNode([['n1', messages]]),
-      budgetTokens: 600,
+      contextLimit: 600,
       recentMessages: 4,
     })
 
@@ -452,7 +452,7 @@ describe('assembleContext: 工具记录', () => {
       node,
       nodes: [node],
       messagesByNode: messagesByNode([['n1', messages]]),
-      budgetTokens: 1400,
+      contextLimit: 1400,
       recentMessages: 4,
     })
 

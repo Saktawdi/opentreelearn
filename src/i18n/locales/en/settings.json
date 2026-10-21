@@ -5,7 +5,6 @@
     "storageNote": "Projects, nodes, conversations and images live in the browser's IndexedDB; clearing browser data wipes them too."
   },
   "section": {
-    "context": "Context",
     "preferences": "Preferences",
     "agent": "Agent",
     "models": "Model assignment",
@@ -16,16 +15,11 @@
   },
   "toast": {
     "saved": "Saved",
-    "budgetClamped": "Saved (beyond {{min}}–{{max}}, saved as {{value}})",
     "stepsClamped": "Saved (valid range 0–{{max}}, saved as {{value}})",
     "stepsUnlimited": "Saved: no step limit; you can stop generation manually at any time",
     "testOkTools": "{{label}} connected; tool calling supported",
     "testOkNoTools": "{{label}} connected, but no tool-calling capability was detected: chat will proceed without tools",
     "testFailed": "Connection failed: {{error}}"
-  },
-  "context": {
-    "budgetLabel": "Context budget (tokens)",
-    "budgetHint": "Once exceeded, earlier parent-chain conversations are compressed automatically. Allowed range {{min}}–{{max}}; values beyond it are saved at the boundary."
   },
   "prefs": {
     "dialogToggleTitle": "Show quick-prompt dialog when creating a child node",

@@ -1,4 +1,4 @@
-import { DEFAULT_CONTEXT_BUDGET } from '@/domain/defaults'
+import { DEFAULT_CONTEXT_LIMIT } from '@/domain/defaults'
 import type { Id, Node, Note, ReviewGrade } from '@/domain/models'
 import {
   collectUsedLabels,
@@ -43,7 +43,7 @@ const NOTE_LIMIT = 12
 const NOTE_QUOTE_CHARS = 100
 
 /**
- * 预算不够时的取舍阶梯：先砍每条摘要，再砍清单条数，最后才丢标注。
+ * 上下文上限不够时的取舍阶梯：先砍每条摘要，再砍清单条数，最后才丢标注。
  *
  * 顺序是刻意的 —— 摘要最长、也最容易被标题代替；而标注是**用户亲口确认的判断**
  * （错题 / 没懂），模型推断不出来，所以排在主题清单之后才牺牲。
@@ -90,7 +90,7 @@ export interface StudyInventoryEntry {
   score: number | null
   /** 掌握档位；未评估为 null */
   band: ReviewGrade | null
-  /** 摘要（按预算可能被裁掉） */
+  /** 摘要（按模型上下文上限可能被裁掉） */
   summary: string | null
   createdAt: number
   updatedAt: number
@@ -170,7 +170,7 @@ export function renderStudyInventory(inventory: StudyInventory): string {
   if (inventory.total === 0) return '（这个项目还没有学习主题）'
 
   const lines = inventory.entries.map(renderInventoryEntry)
-  if (inventory.omitted > 0) lines.push(`（还有 ${inventory.omitted} 个主题因上下文预算未列出）`)
+  if (inventory.omitted > 0) lines.push(`（还有 ${inventory.omitted} 个主题因模型上下文上限未列出）`)
   if (inventory.archived > 0) lines.push(`（另有 ${inventory.archived} 个已归档主题未列出）`)
   return lines.join('\n')
 }
@@ -205,7 +205,8 @@ export interface FreeAskContextInput {
   backgroundProfile?: string
   projectBackground?: string
   projectSystemPrompt?: string
-  budgetTokens?: number
+  /** 当前模型的上下文上限；缺省使用 DEFAULT_CONTEXT_LIMIT。 */
+  contextLimit?: number
   /** 学习快照与清单的时间基准；缺省取当前时间 */
   now?: number
 }
@@ -230,7 +231,7 @@ function messageCost(message: ContextMessage): number {
 }
 
 export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskContext {
-  const budget = input.budgetTokens ?? DEFAULT_CONTEXT_BUDGET
+  const contextLimit = input.contextLimit ?? DEFAULT_CONTEXT_LIMIT
   const now = input.now ?? Date.now()
 
   const buildSystem = (
@@ -272,7 +273,7 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
   }
 
   // 历史必须留位置：问答历史就是用户看得到的那部分内容，被清单挤掉比清单少几条更糟
-  const historyBudget = Math.max(400, Math.floor(budget * 0.35))
+  const historyBudget = Math.max(400, Math.floor(contextLimit * 0.35))
   let chosen = buildSystem(
     INVENTORY_LADDER[0].withSummary,
     INVENTORY_LADDER[0].limit,
@@ -280,13 +281,13 @@ export function assembleFreeAskContext(input: FreeAskContextInput): FreeAskConte
   )
   for (const step of INVENTORY_LADDER) {
     chosen = buildSystem(step.withSummary, step.limit, step.withNotes)
-    if (estimateTokens(chosen.system) + historyBudget <= budget) break
+    if (estimateTokens(chosen.system) + historyBudget <= contextLimit) break
   }
 
   const systemTokens = estimateTokens(chosen.system)
-  const remaining = Math.max(400, budget - systemTokens)
+  const remaining = Math.max(400, contextLimit - systemTokens)
 
-  // 超预算就丢最旧的历史，但**永远保留最后一条**（那是本轮提问，丢了就等于没问）
+  // 超出模型上限就丢最旧的历史，但**永远保留最后一条**（那是本轮提问，丢了就等于没问）
   let start = 0
   while (start < input.history.length - 1) {
     const cost = input.history.slice(start).reduce((sum, message) => sum + messageCost(message), 0)

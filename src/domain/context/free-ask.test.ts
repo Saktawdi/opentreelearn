@@ -75,7 +75,7 @@ describe('free-ask inventory', () => {
     expect(inventory.omitted).toBe(4)
     // 最近编辑的 n0 必须留下，并且还原成树序（不按编辑时间重排）
     expect(inventory.entries.map((entry) => entry.nodeId)).toEqual(['n0', 'n5'])
-    expect(renderStudyInventory(inventory)).toContain('（还有 4 个主题因上下文预算未列出）')
+    expect(renderStudyInventory(inventory)).toContain('（还有 4 个主题因模型上下文上限未列出）')
   })
 })
 
@@ -123,13 +123,13 @@ describe('free-ask context assembly', () => {
       history: [userMessage('今天学了什么')],
       // 系统提示加入了公式围栏写法约定（约 60 token），预算随之上调，
       // 继续钉住第 2 档行为：砍掉摘要、30 个主题一个不少
-      budgetTokens: 3300,
+      contextLimit: 3300,
       now: NOW,
     })
 
     expect(context.system).not.toContain('摘要：')
     expect(context.listed).toBe(30)
-    expect(context.system).not.toContain('因上下文预算未列出')
+    expect(context.system).not.toContain('因模型上下文上限未列出')
     expect(context.estimatedTokens).toBeLessThanOrEqual(3300)
   })
 
@@ -141,13 +141,13 @@ describe('free-ask context assembly', () => {
     const context = assembleFreeAskContext({
       nodes: many,
       history: [userMessage('今天学了什么')],
-      budgetTokens: 1600,
+      contextLimit: 1600,
       now: NOW,
     })
 
     expect(context.listed).toBeLessThan(30)
     expect(context.total).toBe(30)
-    expect(context.system).toContain('因上下文预算未列出')
+    expect(context.system).toContain('因模型上下文上限未列出')
   })
 
   it('keeps the newest question and drops the oldest history when history is too large', () => {
@@ -160,7 +160,7 @@ describe('free-ask context assembly', () => {
     const context = assembleFreeAskContext({
       nodes,
       history,
-      budgetTokens: 2400,
+      contextLimit: 2400,
       now: NOW,
     })
 
